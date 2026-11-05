@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><WebView2LoaderPreference>None</WebView2LoaderPreference></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ConduitPlus.Core/ConduitPlus.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1938.49" ExcludeAssets="runtime;build;buildTransitive" GeneratePathProperty="true" />
+    <Reference Include="Microsoft.Web.WebView2.Core"><HintPath>$(PkgMicrosoft_Web_WebView2)/lib/netcoreapp3.0/Microsoft.Web.WebView2.Core.dll</HintPath><Private>false</Private></Reference>
+    <Compile Include="../../src/ConduitPlus.Rhino/Rendering/WebSurface.cs" Link="WebSurface.cs" />
+    <EmbeddedResource Include="../../src/ConduitPlus.Web/dist/cards.html" LogicalName="ConduitPlus.cards.html" />
+    <None Include="$(PkgMicrosoft_Web_WebView2)/runtimes/win-x64/native/WebView2Loader.dll" Link="WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

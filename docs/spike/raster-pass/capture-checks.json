@@ -1,0 +1,238 @@
+{
+  "checks": [
+    {
+      "scenario": "six cards, source 1874x1729",
+      "passed": true,
+      "renderer": "Native",
+      "multiplier": 1,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1874,
+      "height": 1729,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": null
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "passed": true,
+      "renderer": "Raster",
+      "multiplier": 1,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1874,
+      "height": 1729,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": {
+        "scale": 2,
+        "renders": 6,
+        "cards": [
+          {
+            "id": "metric-0",
+            "rev": 1,
+            "width": 560,
+            "height": 184
+          },
+          {
+            "id": "metric-1",
+            "rev": 2,
+            "width": 560,
+            "height": 184
+          },
+          {
+            "id": "metric-2",
+            "rev": 3,
+            "width": 560,
+            "height": 184
+          },
+          {
+            "id": "metric-3",
+            "rev": 4,
+            "width": 560,
+            "height": 184
+          },
+          {
+            "id": "members",
+            "rev": 5,
+            "width": 560,
+            "height": 976
+          },
+          {
+            "id": "results",
+            "rev": 6,
+            "width": 760,
+            "height": 668
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "passed": true,
+      "renderer": "Web",
+      "multiplier": 1,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1874,
+      "height": 1729,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": null
+    },
+    {
+      "scenario": "six cards, source 974x829; overflow allowed",
+      "passed": true,
+      "renderer": "Native",
+      "multiplier": 2,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1948,
+      "height": 1658,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": null
+    },
+    {
+      "scenario": "six cards, source 974x829; overflow allowed",
+      "passed": true,
+      "renderer": "Raster",
+      "multiplier": 2,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1948,
+      "height": 1658,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": {
+        "scale": 4,
+        "renders": 12,
+        "cards": [
+          {
+            "id": "metric-0",
+            "rev": 1,
+            "width": 1120,
+            "height": 368
+          },
+          {
+            "id": "metric-1",
+            "rev": 2,
+            "width": 1120,
+            "height": 368
+          },
+          {
+            "id": "metric-2",
+            "rev": 3,
+            "width": 1120,
+            "height": 368
+          },
+          {
+            "id": "metric-3",
+            "rev": 4,
+            "width": 1120,
+            "height": 368
+          },
+          {
+            "id": "members",
+            "rev": 5,
+            "width": 1120,
+            "height": 1952
+          },
+          {
+            "id": "results",
+            "rev": 6,
+            "width": 1520,
+            "height": 1336
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "one 180x92 metric, source 474x329",
+      "passed": true,
+      "renderer": "Native",
+      "multiplier": 4,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1896,
+      "height": 1316,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": null
+    },
+    {
+      "scenario": "one 180x92 metric, source 474x329",
+      "passed": true,
+      "renderer": "Raster",
+      "multiplier": 4,
+      "prepareWeb": false,
+      "dpi": 2,
+      "width": 1896,
+      "height": 1316,
+      "cornerAlpha": 0,
+      "cardAlpha": 255,
+      "raster": {
+        "scale": 8,
+        "renders": 2,
+        "cards": [
+          {
+            "id": "metric-0",
+            "rev": 1,
+            "width": 1440,
+            "height": 736
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "renderer": "Native",
+      "multiplier": 2,
+      "passed": false,
+      "reason": "ViewCapture returned without invoking DrawForeground; blank output refused"
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "renderer": "Native",
+      "multiplier": 4,
+      "passed": false,
+      "reason": "ViewCapture returned without invoking DrawForeground; blank output refused"
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "renderer": "Raster",
+      "multiplier": 2,
+      "passed": false,
+      "reason": "ViewCapture returned without invoking DrawForeground; blank output refused"
+    },
+    {
+      "scenario": "six cards, source 1874x1729",
+      "renderer": "Raster",
+      "multiplier": 4,
+      "passed": false,
+      "reason": "ViewCapture returned without invoking DrawForeground; blank output refused"
+    },
+    {
+      "scenario": "six cards, source 974x829",
+      "renderer": "Raster",
+      "multiplier": 4,
+      "passed": false,
+      "reason": "ViewCapture returned without invoking DrawForeground; blank output refused"
+    }
+  ],
+  "pdf": {
+    "passed": false,
+    "create": "FilePdf.Create stalled for 60 seconds before page creation",
+    "explicitLoad": "Installed export_PDF.rhp LoadPlugIn also stalled; stopped probe at 20 seconds",
+    "sampleSaved": false
+  },
+  "visualInspection": {
+    "sourceAlpha": "transparent corners, opaque interior, antialiased edges, no colour fringes on dark/gray/magenta",
+    "captureAlpha": "0 outside, 255 interior; partly transparent edge RGB has gray matte tint also present in Web",
+    "representatives": [
+      "captures/raster-1x-direct.png",
+      "captures/raster-line-2x.png",
+      "captures/web-line-2x.png"
+    ]
+  }
+}
