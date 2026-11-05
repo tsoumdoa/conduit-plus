@@ -54,7 +54,7 @@ public sealed class ConduitPlusDemo : Command
     {
         var renderer = RendererKind.Native;
         using var get = new GetOption(); get.SetCommandPrompt("Structural HUD renderer"); get.AcceptNothing(true);
-        var index = get.AddOptionList("Renderer", ["Native", "Web"], 0);
+        var index = get.AddOptionList("Renderer", ["Native", "Raster", "Web"], 0);
         while (true)
         {
             var result = get.Get();
@@ -64,7 +64,7 @@ public sealed class ConduitPlusDemo : Command
         }
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
-        return CommandRunner.Run(() => OverlayManager.SetAsync(doc, view, Guid.Empty, StructuralDemo.Create(), renderer));
+        return CommandRunner.Run(() => OverlayManager.SetAsync(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line()], renderer));
     }
 }
 
@@ -87,12 +87,14 @@ public sealed class ConduitPlusCapture : Command
         });
     }
 
-    public static async Task RunAutomatedAsync(RhinoDoc doc, RhinoView view, string renderer, int scale, bool prepare)
+    public static async Task RunAutomatedAsync(RhinoDoc doc, RhinoView view, string renderer, int scale, bool prepare, bool compact = false)
     {
         UiContext.Ensure();
         if (scale is not (1 or 2 or 4)) throw new ArgumentOutOfRangeException(nameof(scale));
         var session = OverlayManager.Get(doc, view);
-        await session.UpdateAsync(StructuralDemo.Create(), Enum.Parse<RendererKind>(renderer, true));
+        var fixture = StructuralDemo.Create();
+        if (compact) fixture = [fixture[0] with { Width = 180 }];
+        await session.UpdateAsync(fixture, Enum.Parse<RendererKind>(renderer, true));
         for (var i = 0; i < 5; i++) { view.Redraw(); RhinoApp.Wait(); }
         await CaptureAsync(session, scale, prepare);
     }
@@ -110,7 +112,7 @@ public sealed class ConduitPlusCapture : Command
             if (s.FrameCount == framesBefore) throw new InvalidOperationException("ViewCapture did not draw the overlay; refusing to save a blank PNG.");
             var name = $"{s.Renderer.ToString().ToLowerInvariant()}-{multiplier}x-{(prepareWeb ? "prepared" : "direct")}.png";
             var path = Path.Combine(SpikePaths.Captures, name); image.Save(path, ImageFormat.Png);
-            File.WriteAllText(Path.ChangeExtension(path, ".json"), CardJson.Serialize(new { renderer = s.Renderer.ToString(), multiplier, prepareWeb, dpi = UiContext.Dpi(s.View), width = image.Width, height = image.Height, cornerAlpha = image.GetPixel(0, 0).A, cardAlpha = image.GetPixel((int)(20 * s.Scale), (int)(45 * s.Scale)).A }));
+            File.WriteAllText(Path.ChangeExtension(path, ".json"), CardJson.Serialize(new { renderer = s.Renderer.ToString(), multiplier, prepareWeb, dpi = UiContext.Dpi(s.View), width = image.Width, height = image.Height, cornerAlpha = image.GetPixel(0, 0).A, cardAlpha = image.GetPixel((int)(20 * s.Scale), (int)(45 * s.Scale)).A, raster = s.RasterCaptureState }));
             RhinoApp.WriteLine($"Saved {path}"); return path;
         }
         finally
@@ -143,6 +145,7 @@ public sealed class ConduitPlusBench : Command
     }
     public static async Task RunAutomatedAsync(RhinoDoc doc, RhinoView view)
     {
+        ConduitPlus.Rendering.RasterBenchmark.Run(SpikePaths.Root);
         var session = OverlayManager.Get(doc, view);
         var original = session.Cards; var originalRenderer = session.Renderer;
         var report = new StringBuilder($"# Rhino renderer benchmark\n\nMeasured {DateTimeOffset.Now:O}. Rhino {RhinoApp.Version}; OS {Environment.OSVersion}; .NET {Environment.Version}.\n\nViewport {view.ActiveViewport.Size.Width} × {view.ActiveViewport.Size.Height}; DPI scale {F(UiContext.Dpi(view))}.\n\n60 measured updates + 60 hover changes after warmup; 120 Redraw + UI message-pump calls per scenario. No geometry is added to the owner's model.\n\n");
@@ -159,7 +162,7 @@ public sealed class ConduitPlusBench : Command
             var canRedraw = session.FrameCount > before;
             report.AppendLine(canRedraw ? $"| No overlay | — | — | {F(baseline.Ms)} | {F(baseline.Fps)} | — |" : "| No overlay | — | — | not measured (no draw callback) | not measured | — |");
             if (!canRedraw) notes.AppendLine("- Hidden/minimized viewport did not draw on Redraw. Native latency below uses forced 1× ViewCapture draw callbacks; no redraw FPS is reported.");
-            foreach (var renderer in new[] { RendererKind.Native, RendererKind.Web })
+            foreach (var renderer in Enum.GetValues<RendererKind>())
             {
                 try
                 {
@@ -171,7 +174,7 @@ public sealed class ConduitPlusBench : Command
                         var cards = session.Cards.Select(c => c.Id == "metric-0" ? c with { Value = (18.4 + i / 100d).ToString("0.00", CultureInfo.InvariantCulture) } : c).ToArray();
                         var timer = Stopwatch.StartNew(); await session.UpdateAsync(cards, renderer); var prepare = timer.Elapsed.TotalMilliseconds;
                         DrawForLatency(session, canRedraw);
-                        if (i >= 5) updates.Add(renderer == RendererKind.Web ? prepare : prepare + session.LastLayoutMs + session.LastCardPaintMs["metric-0"]);
+                        if (i >= 5) updates.Add(renderer != RendererKind.Native ? prepare : prepare + session.LastLayoutMs + session.LastCardPaintMs["metric-0"]);
                     }
                     var demo = session.Cards;
                     var bar = demo.Single(c => c.Id == "members") with { Width = 240, Values = demo.Single(c => c.Id == "members").Values.Take(6).ToArray(), Labels = demo.Single(c => c.Id == "members").Labels.Take(6).ToArray(), Keys = demo.Single(c => c.Id == "members").Keys.Take(6).ToArray() };
@@ -179,7 +182,7 @@ public sealed class ConduitPlusBench : Command
                     for (var i = 0; i < 65; i++)
                     {
                         var timer = Stopwatch.StartNew(); await session.UpdateAsync([bar with { HoverKey = bar.Keys[i % 6] }], renderer); var prepare = timer.Elapsed.TotalMilliseconds; DrawForLatency(session, canRedraw);
-                        if (i >= 5) hovers.Add(renderer == RendererKind.Web ? prepare : prepare + session.LastPaintMs);
+                        if (i >= 5) hovers.Add(renderer != RendererKind.Native ? prepare : prepare + session.LastPaintMs);
                     }
                     await session.UpdateAsync(demo, renderer); DrawForLatency(session, canRedraw);
                     var frameCountBefore = session.FrameCount;
@@ -221,7 +224,7 @@ public sealed class ConduitPlusBench : Command
         {
             session.CaptureMultiplier = 1; session.Visible = true;
             await session.UpdateAsync(original.Length == 0 ? StructuralDemo.Create() : original, originalRenderer); view.Redraw();
-            report.AppendLine("\nNative latency = spec/revision preparation + measured layout and immediate-mode paint in DrawForeground. Web latency = spec/revision preparation + HTML layout + sequential CDP card capture + PNG decode + DisplayBitmap creation, before redraw. GPU completion and end-to-end mouse input latency are not measured.\n");
+            report.AppendLine("\nNative latency = spec/revision preparation + measured layout and immediate-mode paint in DrawForeground. Raster latency = spec/revision preparation + GDI+ render + DisplayBitmap creation, before redraw. Web latency = spec/revision preparation + HTML layout + sequential CDP card capture + PNG decode + DisplayBitmap creation, before redraw. GPU completion and end-to-end mouse input latency are not measured.\n");
             report.AppendLine("Redraw timings include the UI message pump and measure CPU wall time; these are not measured orbit FPS and cannot establish the ≤5% orbit gate. 10 cards × 4 viewports, mixed-monitor DPI changes, browser crash recovery in Rhino, focus behavior and human visual approval: not measured by this command. Review PNG alpha and text at 1×/2×/4×. Direct web captures intentionally reuse display-scale textures; prepared captures regenerate at target scale.\n");
             File.WriteAllText(Path.Combine(SpikePaths.Root, "results-rhino.md"), report + "\n" + notes);
             RhinoApp.WriteLine($"Benchmark finished: {Path.Combine(SpikePaths.Root, "results-rhino.md")}");

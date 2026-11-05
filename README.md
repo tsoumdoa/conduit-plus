@@ -5,7 +5,8 @@
 Created in [T3 Code](https://t3.codes).
 
 Windows feasibility spike for a structural-results HUD in Rhino 8 and Grasshopper.
-Both renderers consume the same card spec, paper theme, revision store and slot layout.
+Native, Raster (GDI+) and Web renderers consume the same card spec, paper theme,
+revision store and slot layout. Raster and Native share the C# card painter.
 See [the plan](docs/PLAN.md) and [measured results](docs/spike/results.md).
 
 ## Building & running the spike
@@ -60,18 +61,23 @@ The installer copies only our three assemblies into
 `%APPDATA%/Grasshopper/Libraries/ConduitPlusSpike`. It never copies RhinoCommon,
 Grasshopper or WebView2 assemblies. Remove that folder to uninstall the GH components.
 Under **Conduit+**, connect Metric/Bar/Table outputs to Overlay's Cards list;
-Renderer accepts `Native` (default) or `Web`. Bar Keys and Table Keys are unique
+Renderer accepts `Native` (default), `Raster` or `Web`. Bar Keys and Table Keys are unique
 within each card; shared keys across cards refer to the same member. Selection
 outputs clicked keys; Events keeps the last 32 click events as JSON. Table Rows
 uses one branch per row. NaN in Bar Values is treated as a missing value.
 
 Commands:
 
-- `ConduitPlusDemo Renderer=Native` / `Renderer=Web`, then Enter: six demo cards.
+- `ConduitPlusDemo`, choose `Renderer=Native`, `Raster` or `Web`, then Enter:
+  seven demo cards, including a Line chart of utilisation over load cases.
 - `ConduitPlusBench`: 60 updates and 60 single-card hover changes per renderer,
   120 redraw calls, 10-card variant, direct and prepared captures at 1×/2×/4×.
-- `ConduitPlusCapture 2`: pre-render at target scale, capture the current overlay
-  as transparent PNG, then restore display-scale textures.
+- `ConduitPlusCapture 2`: capture the current overlay as transparent PNG. Web
+  pre-renders at target scale; Raster synchronously regenerates textures in the
+  draw callback and restores screen-scale textures on the next screen draw.
+- `ConduitPlusPdf`: experimental vector export of the active view and cards.
+  Compiles, but safe-mode RhinoCore stalled loading Rhino's PDF writer; a normal
+  Rhino export and visual inspection are still required. No sample PDF is claimed.
 
 Results go to `docs/spike` when running from the checkout; installed copies
 default to `Documents/ConduitPlus/spike`. Set `CONDUITPLUS_RESULTS` to an absolute
@@ -88,7 +94,8 @@ It exercises off-screen, hidden and minimized HWNDs, 1×/1.5×/2×/4× device sc
 50 measured full-batch updates and 50 single compact-bar hover changes, alpha
 readback, and browser kill/reinitialization/resync. It uses Rhino's exact Core
 assembly but never loads RhinoCommon. Its latency excludes DisplayBitmap/GPU upload.
-Tests write native GDI snapshot PNGs under the test output's `artifacts/` folder.
+Tests write GDI snapshot PNGs under the test output's `artifacts/` folder and
+check Raster alpha at 1×/2×/4×, clipping and pure Line tick generation.
 
 An additional real-Rhino in-process harness can reproduce timing measurements:
 
@@ -102,23 +109,45 @@ code against Rhino's real DisplayPipeline. This is **not** a normal interactive
 GPU/orbit benchmark. It skips repeated captures because safe-mode ViewCapture
 failed and left subsequent captures blank in this environment. Experimental
 single captures can be attempted in a fresh process with
-`-- --capture Native 1 prepared` (or `Web`, scales `2`/`4`, `direct`/`prepared`).
-The 2× variant stalled in native `CaptureToBitmap`; use normal Rhino for gate
-verification. Some safe-mode runs also stalled during RhinoCore shutdown after
-writing the report; only the test processes launched for this spike were stopped.
+`-- --capture Raster 1 direct` (or `Native`/`Web`, scales `2`/`4`, `direct`/`prepared`).
+This pass's large 2×/4× targets did not invoke overlay callbacks. Smaller 2×
+targets and a single compact metric at 4× worked; full-scene high-resolution
+capture still needs normal Rhino verification. Safe-mode RhinoCore shutdown
+can stall after the workload and overlay/view cleanup have completed.
+
+For bounded probe processes that handle that shutdown stall and keep this pass's
+evidence separate from the lead's earlier results:
+
+```powershell
+./tools/Run-RhinoProbe.ps1                         # three-way timings + 2x raster micro-benchmark
+./tools/Run-RhinoProbe.ps1 -Mode Line              # dirty-cache checks + Raster/Web Line snapshots
+./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 1
+./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 2 -Small
+./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 4 -Compact
+./tools/Run-RhinoProbe.ps1 -Mode Pdf -TimeoutSeconds 20  # currently stalls loading the PDF writer
+./tools/Measure-LineLoc.ps1
+```
+
+The wrapper defaults to `docs/spike/raster-pass`; use `-Output` to change it.
+`-Small` uses a 1000×900 floating window (six cards can overflow). `-Compact`
+uses a 500×400 window and one 180×92 metric. These do not change the timing
+fixture. Its raw `--line` / `--pdf` modes are also available via `dotnet run`.
 
 ## Spike scope
 
-Metric, signed Bar, Table, deterministic slots (`wired > manual > auto`), keyed
+Metric, signed Bar, Table, Line (demo/Core spec), deterministic slots (`wired > manual > auto`), keyed
 hover/click selection, per-view lifecycle and captures are implemented. Slot
 overflow is currently allowed; maximize the viewport or use the large test view.
 No drag editor, Inspector, geometry Link/highlight, persistence, undo, Yak package
 or cross-platform renderer is included. Text uses Segoe UI system fonts. Native
-cell text truncates with an ellipsis; web cell text clips. Rounded corners use
-native horizontal strips rather than a fully antialiased path. The paper theme
-is fixed for this spike. Mixed-monitor DPI resync needs a new card update.
+cell text truncates with an ellipsis; web cell text clips. Raster uses real GDI+
+rounded paths, clipping, antialiasing, ellipsis and polygon fills. Native uses
+horizontal strips for rounded corners and a degraded outline for Line area
+fills. The paper theme is fixed. Raster scale changes regenerate synchronously;
+mixed-monitor Web DPI resync still needs a new card update.
 
-Only prepared state is read by drawing callbacks. WebView2 work is serialized
+Drawing callbacks never await; Raster can synchronously regenerate at a changed
+capture/DPI scale. WebView2 work is serialized
 on the UI thread, and bitmap/spec/hit-region revisions publish together.
 Document/view closure and plug-in shutdown disable conduits, mouse callbacks
 and close WebView2 controllers. A browser failure requests resync from the host

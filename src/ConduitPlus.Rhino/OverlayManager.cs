@@ -57,6 +57,7 @@ public static class OverlayManager
         view.Redraw();
     }
     public static void Remove(Guid owner) => RemoveWhere(k => k.Owner == owner);
+    internal static OverlaySession[] InView(RhinoDoc doc, RhinoView view) => Sessions.Values.Where(s => s.Document.RuntimeSerialNumber == doc.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
 
     /// <summary>
     /// Starts async overlay work from a UI-thread callback (InvokeOnUiThread, mouse events). Continuations resume on
@@ -130,10 +131,12 @@ internal sealed class OverlaySession : IDisposable
     public long FrameCount { get; private set; }
     public bool Visible { get => _conduit.Enabled; set => _conduit.Enabled = value; }
     public uint BrowserProcessId => _web?.BrowserProcessId ?? 0;
+    public object? RasterCaptureState => _raster is null ? null : new { scale = _raster.Scale, renders = _raster.RenderCount, cards = _raster.Prepared.Values.Select(p => new { id = p.Capture.Spec.Id, rev = p.Capture.Spec.Rev, width = p.Capture.Bitmap.Width, height = p.Capture.Bitmap.Height }).ToArray() };
     private readonly CardStore _store = new();
     private readonly SessionConduit _conduit;
     private readonly NativeCardRenderer _native = new();
     private WebCardRenderer? _web;
+    private RasterCardRenderer? _raster;
     private bool _disposed;
     private bool _interactionRunning;
     private CardSpec[]? _pending;
@@ -150,6 +153,11 @@ internal sealed class OverlaySession : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             _store.Update(specs);
             var next = _store.Snapshot;
+            if (renderer == RendererKind.Raster)
+            {
+                _raster ??= new RasterCardRenderer();
+                _raster.Prepare(next, Theme, UiContext.Dpi(View));
+            }
             if (renderer == RendererKind.Web)
             {
                 if (_web is null)
@@ -171,7 +179,8 @@ internal sealed class OverlaySession : IDisposable
         foreach (var layout in SlotLayout.Place(Cards, Theme, new(size.Width, size.Height), UiContext.Dpi(View)).AsEnumerable().Reverse())
         {
             if (!new Rect2(layout.X, layout.Y, layout.W, layout.H).Contains(x, y)) continue;
-            var hits = Renderer == RendererKind.Web && _web!.Prepared.TryGetValue(layout.Id, out var p) ? p.Capture.Layout.HitRegions : layout.HitRegions;
+            var prepared = Renderer == RendererKind.Web ? _web?.Prepared : Renderer == RendererKind.Raster ? _raster?.Prepared : null;
+            var hits = prepared is not null && prepared.TryGetValue(layout.Id, out var p) ? p.Capture.Layout.HitRegions : layout.HitRegions;
             var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / UiContext.Dpi(View), (y - layout.Y) / UiContext.Dpi(View)));
             return (layout.Id, hit?.Key ?? "");
         }
@@ -214,11 +223,25 @@ internal sealed class OverlaySession : IDisposable
         var viewport = e.Display.IsInViewCapture ? new Size2(View.ActiveViewport.Size.Width * CaptureMultiplier, View.ActiveViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
         var layouts = SlotLayout.Place(Cards, Theme, viewport, scale);
         LastLayoutMs = watch.Elapsed.TotalMilliseconds;
+        // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
+        // including direct captures; the next screen draw lazily restores screen resolution.
+        if (Renderer == RendererKind.Raster && _raster!.Scale != scale)
+        {
+            // Never let an exception escape a display conduit (e.g. GDI+ out of memory for a very large capture):
+            // keep drawing the existing bitmaps, scaled as they are, and report once.
+            try { _raster.Prepare(Cards, Theme, scale); }
+            catch (Exception ex) when (ex is OutOfMemoryException or ArgumentException or System.ComponentModel.Win32Exception or OverflowException)
+            { RhinoApp.WriteLine($"Conduit+ raster at {scale:0.##}× failed; using screen-resolution cards. {ex.Message}"); }
+        }
         foreach (var layout in layouts)
         {
             var start = watch.Elapsed.TotalMilliseconds;
             if (Renderer == RendererKind.Native) _native.Paint(e.Display, Cards.Single(c => c.Id == layout.Id), Theme, layout, scale);
-            else if (_web!.Prepared.TryGetValue(layout.Id, out var p)) e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X), (int)Math.Round(layout.Y));
+            else
+            {
+                var prepared = Renderer == RendererKind.Raster ? _raster!.Prepared : _web!.Prepared;
+                if (prepared.TryGetValue(layout.Id, out var p)) e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X), (int)Math.Round(layout.Y));
+            }
             LastCardPaintMs[layout.Id] = watch.Elapsed.TotalMilliseconds - start;
         }
         LastPaintMs = watch.Elapsed.TotalMilliseconds;
@@ -228,7 +251,7 @@ internal sealed class OverlaySession : IDisposable
     {
         if (_disposed) return;
         _disposed = true; _conduit.Enabled = false;
-        _web?.Dispose(); _web = null; _pending = null;
+        _web?.Dispose(); _web = null; _raster?.Dispose(); _raster = null; _pending = null;
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit
     { protected override void DrawForeground(DrawEventArgs e) => session.Draw(e); }

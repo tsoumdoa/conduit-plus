@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace ConduitPlus.Core;
 
-public enum CardKind { Metric, Bar, Table }
+public enum CardKind { Metric, Bar, Table, Line }
 public enum Slot { Tl, Tr, Bl, Br, Lc, Rc }
 public sealed record TableRow(string Key, string?[] Cells);
 public sealed record CardSpec
@@ -33,7 +33,8 @@ public sealed record CardSpec
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
         if (!double.IsFinite(Threshold) || Threshold <= 0) throw new ArgumentException("Threshold must be positive and finite.");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");
-        if (Kind == CardKind.Bar && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Bar values, labels and keys must have equal lengths.");
+        if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
+        if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
         if (keys.Any(string.IsNullOrWhiteSpace) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
@@ -50,6 +51,8 @@ public sealed record Theme
     public string Accent { get; init; } = "#2B59F0";
     public string Bad { get; init; } = "#C2334D";
     public string Good { get; init; } = "#1F8A5B";
+    public string Area { get; init; } = "#E7EDFF";
+    public string ThresholdBand { get; init; } = "#FCECEF";
     public string Font { get; init; } = "Segoe UI";
     public double Padding { get; init; } = 12;
     public double FontSize { get; init; } = 12;
@@ -96,6 +99,7 @@ public sealed class CardStore
 
 public static class StructuralDemo
 {
+    public static CardSpec Line() => new() { Id = "load-cases", Kind = CardKind.Line, Title = "M01 utilisation / load case", Width = 340, Values = [.32, .58, .91, 1.12, null, .73, .86, 1.04], Keys = Enumerable.Range(1, 8).Select(i => $"LC{i:00}").ToArray(), Labels = Enumerable.Range(1, 8).Select(i => $"LC{i:00}").ToArray(), WiredSlot = Slot.Bl };
     public static CardSpec[] Create(int metricCount = 4)
     {
         var cards = new List<CardSpec>();

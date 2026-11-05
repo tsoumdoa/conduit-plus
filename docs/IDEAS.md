@@ -15,6 +15,8 @@ Ideas beyond Conduit's feature set. These are for future reference and are not s
 | **Gradient-aware Legend** | Reads colours and range straight from a GH Gradient wire. | Medium | Low |
 | **Second screen** | The same runtime served on localhost, so a tablet or second monitor can show the dashboard or act as a presentation remote. | Medium | Medium |
 | **Dashboard export** | A standalone HTML file with the data baked in, for reports and sharing. | Medium | Medium |
+| **Vector PDF of the view** | Rhino's own `FilePdf` (vector model via `AddPage(ViewCaptureSettings)`) with the cards drawn on top as vectors through the same `ICanvas2D` code as the on-screen renderer. One drawing path, so the PDF can't drift from the screen. | High | Low–medium |
+| **PDF report** | A multi-page report with paginated tables, notes and charts. HTML/CSS print layout via WebView2 `PrintToPdfAsync` is the natural fit; latency doesn't matter for export, so web's slow capture is irrelevant here. | High | Medium |
 
 ## Structural-results angle
 Structural results are the first workflow, so these variants matter most:

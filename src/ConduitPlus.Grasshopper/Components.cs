@@ -113,7 +113,7 @@ public sealed class OverlayComponent : GH_Component
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar or Table cards", GH_ParamAccess.list);
-        p.AddTextParameter("Renderer", "R", "Native or Web", GH_ParamAccess.item, "Native");
+        p.AddTextParameter("Renderer", "R", "Native|Raster|Web", GH_ParamAccess.item, "Native");
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -138,7 +138,7 @@ public sealed class OverlayComponent : GH_Component
         var wrapped = new List<IGH_Goo>(); string renderer = "Native";
         if (!da.GetDataList(0, wrapped)) { RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); return; }
         da.GetData(1, ref renderer);
-        if (!Enum.TryParse<RendererKind>(renderer, true, out var kind)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Renderer must be Web or Native."); return; }
+        if (!Enum.TryParse<RendererKind>(renderer, true, out var kind) || !Enum.IsDefined(kind)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Renderer must be Native, Raster or Web."); return; }
         var cards = wrapped.Select(g => g.ScriptVariable()).OfType<CardSpec>().Select(c => c with { SelectedKeys = c.Keys.Concat(c.Rows.Select(r => r.Key)).Where(_selection.Contains).ToArray() }).ToArray();
         if (cards.Length != wrapped.Count) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Cards must come from Conduit+ card components."); return; }
         da.SetDataList(0, _selection.Order()); da.SetDataList(1, _events.ToArray());

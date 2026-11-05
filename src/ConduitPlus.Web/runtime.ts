@@ -1,13 +1,14 @@
-type Hit = {key:string,x:number,y:number,w:number,h:number};
-type Card = {id:string,rev:number,kind:'metric'|'bar'|'table',title:string,value:string|null,unit:string,values:(number|null)[],labels:string[],keys:string[],threshold:number,headers:string[],rows:{key:string,cells:(string|null)[]}[],width:number,hoverKey:string|null,selectedKeys:string[]};
-type Theme = {surface:string,ink:string,muted:string,line:string,track:string,accent:string,bad:string,good:string,font:string,padding:number,fontSize:number,rowHeight:number,radius:number};
+import {renderLine} from './line';
+export type Hit = {key:string,x:number,y:number,w:number,h:number};
+export type Card = {id:string,rev:number,kind:'metric'|'bar'|'table'|'line',title:string,value:string|null,unit:string,values:(number|null)[],labels:string[],keys:string[],threshold:number,headers:string[],rows:{key:string,cells:(string|null)[]}[],width:number,hoverKey:string|null,selectedKeys:string[]};
+export type Theme = {surface:string,ink:string,muted:string,line:string,track:string,accent:string,bad:string,good:string,area:string,thresholdBand:string,font:string,padding:number,fontSize:number,rowHeight:number,radius:number};
 function render(cardsJson:string,themeJson:string,scale:number) {
   if (!Number.isFinite(scale) || scale <= 0) throw new Error('Invalid scale');
   const cards:Card[]=JSON.parse(cardsJson), t:Theme=JSON.parse(themeJson);
   document.body.replaceChildren();
   let atlasY=0;
   return cards.map(c=>{
-    const h=c.kind==='metric'?92:48+(c.kind==='bar'?c.values.length:c.rows.length+1)*t.rowHeight;
+    const h=c.kind==='metric'?92:c.kind==='line'?220:48+(c.kind==='bar'?c.values.length:c.rows.length+1)*t.rowHeight;
     const el=document.createElement('div'); el.className='card'; el.dataset.id=c.id;
     Object.assign(el.style,{left:'0px',top:`${atlasY}px`,width:`${c.width}px`,height:`${h}px`,background:t.surface,borderRadius:`${t.radius}px`,fontFamily:t.font});
     document.body.append(el);
@@ -20,6 +21,8 @@ function render(cardsJson:string,themeJson:string,scale:number) {
     else if(c.kind==='bar'){
       const max=Math.max(c.threshold,...c.values.map(v=>Math.abs(v??0))), signed=c.values.some(v=>v!==null&&v<0);
       c.values.forEach((v,i)=>{const r=row(c.keys[i],i);text(c.labels[i],r.x+2,r.y+2,t.fontSize,t.ink,51);const x=r.x+55,w=r.w-110,y=r.y+7,origin=signed?x+w/2:x,span=signed?w/2:w;box(x,y,w,8,t.track);if(v!==null)box(v<0?origin-Math.abs(v)/max*span:origin,y,Math.abs(v)/max*span,8,v>c.threshold?t.bad:t.good);box(origin+c.threshold/max*span,y-2,1,12,t.muted);text(v===null?'—':v.toFixed(2),r.x+r.w-43,r.y+2,t.fontSize,t.ink);});
+    } else if(c.kind==='line') {
+      hitRegions.push(...renderLine(el,c,t));
     } else {
       const w=(c.width-2*t.padding)/c.headers.length;
       c.headers.forEach((s,j)=>text(s,t.padding+j*w+2,38,t.fontSize,t.muted,w-5));

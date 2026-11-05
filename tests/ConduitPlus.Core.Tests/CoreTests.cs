@@ -54,9 +54,63 @@ public sealed class CoreTests
         {
             var size = CardMeasure.Measure(c, Theme.Paper);
             using var bitmap = new Bitmap((int)(size.Width * scale), (int)(size.Height * scale), PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bitmap)) { g.Clear(Color.Transparent); g.ScaleTransform((float)scale, (float)scale); NativeCardPainter.Paint(new GdiCanvas(g), c, Theme.Paper); }
+            using (var g = Graphics.FromImage(bitmap)) { g.Clear(Color.Transparent); g.ScaleTransform((float)scale, (float)scale); using var canvas = new GdiCanvas(g); NativeCardPainter.Paint(canvas, c, Theme.Paper); }
             bitmap.Save(Path.Combine(output, $"{c.Id}-{scale:0.0}x.png"), ImageFormat.Png);
             Assert.Equal(0, bitmap.GetPixel(0, 0).A); Assert.Equal(255, bitmap.GetPixel(bitmap.Width / 2, bitmap.Height - 5).A);
         }
+    }
+
+    [Fact]
+    public void RasterUsesPremultipliedAlphaWithTransparentCornersAndCoveredInterior()
+    {
+        foreach (var c in StructuralDemo.Create().Append(StructuralDemo.Line()))
+        foreach (var scale in new[] { 1d, 2d, 4d })
+        {
+            using var bitmap = RasterDrawing.Render(c, Theme.Paper, scale);
+            Assert.Equal(PixelFormat.Format32bppPArgb, bitmap.PixelFormat);
+            Assert.Equal(0, bitmap.GetPixel(0, 0).A);
+            Assert.Equal(0, bitmap.GetPixel(bitmap.Width - 1, 0).A);
+            Assert.Equal(255, bitmap.GetPixel(bitmap.Width / 2, bitmap.Height - 8).A);
+            Assert.Contains(Enumerable.Range(0, (int)(6 * scale)).SelectMany(x =>
+                Enumerable.Range(0, (int)(6 * scale)).Select(y => bitmap.GetPixel(x, y).A)), alpha => alpha is > 0 and < 255);
+        }
+    }
+
+    [Fact]
+    public void GdiNestedClipsRestoreAndDoNotLeakTextOrFill()
+    {
+        using var bitmap = new Bitmap(100, 60, PixelFormat.Format32bppPArgb);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        using var canvas = new GdiCanvas(graphics);
+        using (canvas.Clip(new(10, 10, 50, 40)))
+        {
+            using (canvas.Clip(new(20, 20, 10, 10))) canvas.Rect(new(0, 0, 100, 60), "#FF0000");
+            Assert.Equal(0, bitmap.GetPixel(35, 25).A);
+            canvas.Rect(new(40, 30, 10, 10), "#0000FF");
+            canvas.Text(new string('W', 100), new(10, 10), 12, "#000000", "Segoe UI");
+        }
+        Assert.Equal(255, bitmap.GetPixel(25, 25).A);
+        Assert.Equal(Color.Blue.ToArgb(), bitmap.GetPixel(45, 35).ToArgb());
+        Assert.Equal(0, bitmap.GetPixel(61, 15).A);
+        canvas.Rect(new(80, 40, 10, 10), "#00FF00");
+        Assert.Equal(255, bitmap.GetPixel(85, 45).A);
+    }
+
+    [Fact]
+    public void LineTicksCoverDomainWithNiceUniformSteps()
+    {
+        Assert.Equal(new[] { 0d, .5, 1, 1.5 }, ChartTicks.Nice(0, 1.12));
+        Assert.Equal(new[] { -1d, -.5, 0, .5, 1 }, ChartTicks.Nice(-.7, .8));
+        Assert.Equal(new[] { 0d, .005, .01, .015 }, ChartTicks.Nice(0, .012));
+        foreach (var (min, max) in new[] { (2d, 2d), (-18d, 37d), (0d, .00012) })
+        {
+            var ticks = ChartTicks.Nice(min, max);
+            Assert.True(ticks[0] <= min && ticks[^1] >= max);
+            Assert.InRange(ticks.Length, 2, 7);
+            Assert.All(ticks.Zip(ticks.Skip(1)), pair => Assert.Equal(ticks[1] - ticks[0], pair.Second - pair.First, 10));
+        }
+        Assert.Throws<ArgumentOutOfRangeException>(() => ChartTicks.Nice(double.NaN, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ChartTicks.Nice(2, 1));
     }
 }

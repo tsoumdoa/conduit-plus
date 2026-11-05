@@ -22,6 +22,7 @@ public interface ICanvas2D
     void Line(Point2 from, Point2 to, string color, double width = 1);
     void Text(string text, Point2 topLeft, double size, string color, string font);
     void Polyline(IReadOnlyList<Point2> points, string color, double width = 1);
+    void FillPolygon(IReadOnlyList<Point2> points, string fill);
     IDisposable Clip(Rect2 rect);
 }
 
@@ -30,6 +31,7 @@ public static class CardMeasure
     public static Size2 Measure(CardSpec c, Theme t) => new(c.Width, c.Kind switch
     {
         CardKind.Metric => 92,
+        CardKind.Line => 220,
         CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
         _ => 48 + (c.Rows.Length + 1) * t.RowHeight
     });
@@ -37,6 +39,7 @@ public static class CardMeasure
     {
         CardKind.Bar => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Table => c.Rows.Select((row, i) => new HitRegion(row.Key, t.Padding, 36 + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Line => LineCardPainter.Hits(c),
         _ => []
     };
 }
@@ -75,6 +78,7 @@ public static class NativeCardPainter
         using var clip = canvas.Clip(new(0, 0, size.Width, size.Height));
         canvas.RoundedRect(new(0, 0, size.Width, size.Height), t.Radius, t.Surface);
         canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
+        if (c.Kind == CardKind.Line) { LineCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Metric)
         {
             var value = c.Value ?? "—";

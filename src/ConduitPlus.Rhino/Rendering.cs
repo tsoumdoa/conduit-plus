@@ -7,7 +7,7 @@ using Rhino.Geometry;
 
 namespace ConduitPlus.Rhino;
 
-public enum RendererKind { Native, Web }
+public enum RendererKind { Native, Raster, Web }
 
 /// <summary>DisplayPipeline adapter. Coordinates are CSS pixels until this final transform.</summary>
 internal sealed class RhinoCanvas(DisplayPipeline pipeline, double x, double y, double scale) : ICanvas2D
@@ -71,6 +71,12 @@ internal sealed class RhinoCanvas(DisplayPipeline pipeline, double x, double y, 
     }
     public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1)
     { for (var i = 1; i < points.Count; i++) Line(points[i - 1], points[i], color, width); }
+    // Rhino 8's 2D API has no filled path: retain its outline as an explicit degraded fallback.
+    public void FillPolygon(IReadOnlyList<Point2> points, string fill)
+    {
+        if (points.Count < 3) return;
+        Polyline(points, fill); Line(points[^1], points[0], fill);
+    }
     public IDisposable Clip(Rect2 r)
     {
         var old = _clip;
