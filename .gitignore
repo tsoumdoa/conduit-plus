@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/artifacts/
+.vs/
+*.user
+*.suo
+**/dist/
+docs/spike/errors.log
+docs/spike/rhino-*.log

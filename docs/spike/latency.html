@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:var(--font-sans,system-ui);color:var(--foreground)}
+p{font-size:13px;color:var(--muted-foreground);margin:0 0 16px;line-height:1.5}
+.group{margin:0 0 20px}.label{font-weight:600;font-size:14px;margin-bottom:10px}
+.row{display:grid;grid-template-columns:62px minmax(0,1fr) 82px;gap:10px;align-items:center;margin:9px 0;font-size:13px}
+.track{position:relative;height:20px;background:var(--secondary);border-radius:3px}
+.fill{height:100%;border-radius:3px;min-width:3px}.native{background:var(--chart-1)}.web{background:var(--chart-2)}
+.gate{position:absolute;height:26px;top:-3px;border-left:2px dashed var(--warning)}
+.value{text-align:right;font-family:var(--font-mono,monospace);font-size:12px}.note{font-size:12px;line-height:1.55;color:var(--muted-foreground)}
+</style></head><body>
+<p>Real Rhino 8.36 · .NET 8.0.33 · 200% DPI · 60 updates per series · p95 latency</p>
+<div class="group"><div class="label">One metric update <span class="note">— gate 50 ms</span></div>
+<div class="row"><span>Native</span><div class="track"><div class="gate" style="left:41.667%"></div><div class="fill native" style="width:.841%"></div></div><span class="value">1.009 ms</span></div>
+<div class="row"><span>Web</span><div class="track"><div class="gate" style="left:41.667%"></div><div class="fill web" style="width:82.563%"></div></div><span class="value">99.076 ms</span></div></div>
+<div class="group"><div class="label">Single-card hover <span class="note">— gate 33 ms</span></div>
+<div class="row"><span>Native</span><div class="track"><div class="gate" style="left:27.5%"></div><div class="fill native" style="width:1.014%"></div></div><span class="value">1.217 ms</span></div>
+<div class="row"><span>Web</span><div class="track"><div class="gate" style="left:27.5%"></div><div class="fill web" style="width:91.305%"></div></div><span class="value">109.566 ms</span></div></div>
+<div class="note">Linear scale: 0–120 ms. Dashed guides show the latency gates.<br>Native includes preparation, layout and paint. Web includes render, capture, decode and DisplayBitmap construction. Hidden safe-mode RhinoCore harness; GPU completion and interactive orbit performance are unmeasured.</div>
+</body></html>

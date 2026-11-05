@@ -1,0 +1,1 @@
+{"name":"conduit-plus-web","version":"0.1.0","private":true,"type":"module","scripts":{"build":"tsc --noEmit && node build.mjs"},"devDependencies":{"esbuild":"0.25.12","typescript":"5.9.3"}}

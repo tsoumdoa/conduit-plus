@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><TargetExt>.gha</TargetExt></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
+    <ProjectReference Include="../ConduitPlus.Rhino/ConduitPlus.Rhino.csproj" Private="false" />
+    <PackageReference Include="Grasshopper" Version="8.21.25188.17001" ExcludeAssets="runtime" />
+    <PackageReference Include="RhinoCommon" Version="8.21.25188.17001" ExcludeAssets="runtime" />
+    <Reference Update="Grasshopper;GH_IO;RhinoCommon"><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>
