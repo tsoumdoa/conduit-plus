@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conduit+ Concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a technical brief. A live viewport mock up top, then canvas comparison, component set, architecture, plan. */
+:root {
+  --paper: #f2f3ef;
+  --surface: #ffffff;
+  --ink: #15171c;
+  --muted: #5b616d;
+  --line: #d8dad3;
+  --accent: #2b59f0;
+  --accent-ink: #ffffff;
+  --warn: #c76a0a;
+  --good: #1f8a5b;
+  --bad: #c2334d;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  /* data colours: land use */
+  --use-office: #3a66f2;
+  --use-res: #e99a2c;
+  --use-retail: #d4467a;
+  --use-civic: #23a88e;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111317; --surface: #1a1d23; --ink: #e9eaee; --muted: #9aa0ac; --line: #2c3039;
+    --accent: #6d8cff; --accent-ink: #0b0d12; --warn: #f0a24a; --good: #4cc48e; --bad: #f06d86;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111317; --surface: #1a1d23; --ink: #e9eaee; --muted: #9aa0ac; --line: #2c3039;
+  --accent: #6d8cff; --accent-ink: #0b0d12; --warn: #f0a24a; --good: #4cc48e; --bad: #f06d86;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.55 var(--font-body); }
+a { color: var(--accent); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+header.top { padding: 36px 20px 18px; display: grid; gap: 10px; }
+.kicker { font: 500 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 800 clamp(30px, 5vw, 46px)/1.05 var(--font-display); margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+h2 { font: 700 26px/1.15 var(--font-display); margin: 0 0 6px; letter-spacing: -.01em; text-wrap: balance; }
+h3 { font: 700 17px/1.25 var(--font-display); margin: 0 0 6px; }
+p { margin: 0 0 10px; max-width: 70ch; }
+.lede { font-size: 17px; color: var(--muted); max-width: 72ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 3px; align-content: start; }
+.tile .k { font: 600 12px var(--font-mono); color: var(--accent); }
+.tile b { font: 700 16px/1.2 var(--font-display); }
+.tile span:last-child { font-size: 13px; color: var(--muted); }
+section { padding: 34px 0; border-top: 1px solid var(--line); }
+section > .wrap > p.sub { color: var(--muted); }
+.mono { font-family: var(--font-mono); }
+code { font: 13px var(--font-mono); background: color-mix(in srgb, var(--line) 55%, transparent); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- Viewport mock ---------- */
+.mock-toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 14px 0 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { font: 500 13px var(--font-body); border: 0; background: transparent; color: var(--ink); padding: 6px 11px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { font: 600 13px var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tb-label { font: 500 12px var(--font-mono); color: var(--muted); margin-right: 6px; }
+.hint { font-size: 13px; color: var(--muted); }
+
+.rhino { border: 1px solid #8e949c; border-radius: 6px; overflow: hidden; background: #c9ced5; box-shadow: 0 10px 30px -18px rgba(0,0,0,.45); }
+.rhino-bar { height: 28px; background: #e7e9ec; border-bottom: 1px solid #a9aeb5; display: flex; align-items: center; gap: 8px; padding: 0 10px; font: 12px var(--font-body); color: #333; }
+.rhino-bar .dots { display: flex; gap: 5px; }
+.rhino-bar .dots i { width: 9px; height: 9px; border-radius: 50%; background: #b8bdc4; display: block; }
+.rhino-bar .cmd { flex: 1; font: 12px var(--font-mono); color: #4a4f57; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewport { position: relative; height: 600px; background: linear-gradient(#a9b2bd, #d8dce1 70%); touch-action: none; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.viewport canvas.dragging { cursor: grabbing; }
+.vp-name { position: absolute; top: 8px; left: 10px; font: 600 12px var(--font-body); color: #1f2329; background: rgba(255,255,255,.55); padding: 2px 8px; border-radius: 3px; z-index: 3; pointer-events: none; }
+
+/* Overlay themes: independent of page theme, like the plugin's Theme component */
+.overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  --c-bg: rgba(255,255,255,.97); --c-ink: #17191e; --c-muted: #626875; --c-line: #e3e5e9;
+  --c-track: #eef0f3; --c-blur: 0px; --c-radius: 4px; --c-shadow: 0 1px 0 rgba(0,0,0,.08), 0 4px 14px -8px rgba(0,0,0,.25); --c-accent: #2b59f0; font-family: var(--font-body); }
+.overlay.theme-smoke {
+  --c-bg: rgba(18, 21, 28, .80); --c-ink: #f2f4f8; --c-muted: #a9b0bf; --c-line: rgba(255,255,255,.12);
+  --c-track: rgba(255,255,255,.10); --c-blur: 0px; --c-radius: 10px; --c-shadow: 0 8px 24px -10px rgba(0,0,0,.5);
+  --c-accent: #8fb0ff; }
+.overlay.theme-blueprint { --c-bg: rgba(10, 38, 84, .80); --c-ink: #e6f1ff; --c-muted: #8fb4e3; --c-line: rgba(140, 190, 255, .25);
+  --c-track: rgba(140, 190, 255, .14); --c-blur: 0px; --c-radius: 0px; --c-shadow: none; --c-accent: #7fd3ff; }
+.overlay.theme-blueprint .card { border: 1px solid rgba(140,190,255,.45); }
+
+.slot { position: absolute; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.slot[data-slot="tl"] { top: 38px; left: 10px; }
+.slot[data-slot="tr"] { top: 10px; right: 10px; align-items: flex-end; }
+.slot[data-slot="bl"] { bottom: 10px; left: 10px; justify-content: flex-end; }
+.slot[data-slot="br"] { bottom: 10px; right: 10px; align-items: flex-end; justify-content: flex-end; }
+.slot[data-slot="tc"] { top: 10px; left: 50%; transform: translateX(-50%); align-items: center; }
+.slot[data-slot="bc"] { bottom: 10px; left: 50%; transform: translateX(-50%); align-items: center; }
+.slot[data-slot="lc"] { left: 10px; top: 50%; transform: translateY(-50%); }
+.slot[data-slot="rc"] { right: 10px; top: 50%; transform: translateY(-50%); align-items: flex-end; }
+.editing .slot { pointer-events: auto; min-width: 150px; min-height: 64px; outline: 1.5px dashed rgba(43, 89, 240, .75); outline-offset: 3px; border-radius: 8px; background: rgba(43, 89, 240, .06); }
+.editing .slot::before { content: attr(data-label); position: absolute; top: -20px; left: 0; font: 500 10px var(--font-mono); color: #1d3fb8; background: rgba(255,255,255,.8); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+.editing .slot.drop-target { background: rgba(43, 89, 240, .18); outline-style: solid; }
+
+.card { pointer-events: auto; width: 236px; background: var(--c-bg); color: var(--c-ink); border-radius: var(--c-radius);
+  box-shadow: var(--c-shadow); backdrop-filter: blur(var(--c-blur)); -webkit-backdrop-filter: blur(var(--c-blur));
+  padding: 10px 12px 11px; font-size: 12px; line-height: 1.35; }
+.card h4 { margin: 0 0 7px; font: 600 11px/1.2 var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--c-muted); display: flex; justify-content: space-between; gap: 8px; }
+.card h4 .meta { font: 400 10px var(--font-mono); letter-spacing: 0; text-transform: none; }
+.editing .card { cursor: grab; outline: 1px solid rgba(43,89,240,.9); }
+.editing .card * { pointer-events: none; }
+.card.ghost { position: fixed; z-index: 50; opacity: .85; pointer-events: none; transform: rotate(-1.5deg); }
+
+.metric { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2px 10px; padding: 6px 0; border-top: 1px solid var(--c-line); }
+.metric:first-of-type { border-top: 0; padding-top: 0; }
+.metric .lbl { color: var(--c-muted); font-size: 11px; grid-column: 1 / -1; }
+.metric .val { font: 600 20px/1.1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.metric .val small { font: 500 11px var(--font-body); color: var(--c-muted); margin-left: 3px; }
+.chip { font: 500 10px var(--font-mono); padding: 1px 5px; border-radius: 99px; white-space: nowrap; }
+.chip.up { background: rgba(76, 196, 142, .2); color: #2fae74; }
+.chip.down { background: rgba(240, 109, 134, .2); color: #e0546f; }
+.chip.flat { background: var(--c-track); color: var(--c-muted); }
+.overlay:not(.theme-smoke):not(.theme-blueprint) .chip.up { color: #157a4c; } .overlay:not(.theme-smoke):not(.theme-blueprint) .chip.down { color: #b52842; }
+.spark { grid-column: 1 / -1; display: block; width: 100%; height: 22px; margin-top: 2px; }
+
+.bars { display: grid; gap: 5px; }
+.bar { display: grid; grid-template-columns: 70px 1fr 54px; align-items: center; gap: 8px; cursor: pointer; border-radius: 4px; padding: 1px 2px; }
+.bar .t { height: 9px; background: var(--c-track); border-radius: 2px; overflow: hidden; }
+.bar .t i { display: block; height: 100%; border-radius: 2px; transition: width .35s ease; }
+.bar .n { text-align: right; font: 500 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.bar.dim { opacity: .35; }
+.bar:hover, .bar.on { background: var(--c-track); }
+.card .foot { margin-top: 7px; font: 400 10px var(--font-mono); color: var(--c-muted); }
+
+.cols { display: flex; align-items: flex-end; gap: 4px; height: 70px; padding-top: 4px; border-bottom: 1px solid var(--c-line); }
+.cols .c { flex: 1; border-radius: 2px 2px 0 0; cursor: pointer; transition: height .35s ease, opacity .2s; position: relative; min-width: 8px; }
+.cols .c.dim { opacity: .3; }
+.cols-x { display: flex; gap: 4px; margin-top: 3px; }
+.cols-x span { flex: 1; text-align: center; font: 500 9px var(--font-mono); color: var(--c-muted); }
+
+.ctl { display: grid; gap: 3px; margin-top: 4px; }
+.ctl + .ctl { margin-top: 9px; }
+.ctl label { display: flex; justify-content: space-between; font-size: 11px; color: var(--c-muted); }
+.ctl label b { color: var(--c-ink); font: 600 12px var(--font-mono); }
+.ctl input[type="range"] { width: 100%; accent-color: var(--c-accent); margin: 0; }
+.ctl .to { font: 400 9.5px var(--font-mono); color: var(--c-muted); opacity: .85; }
+
+.pin { position: absolute; z-index: 1; transform: translate(-50%, -100%); pointer-events: auto; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
+.pin .tag { background: var(--c-bg); color: var(--c-ink); font: 600 11px var(--font-body); padding: 3px 7px; border-radius: 5px; white-space: nowrap; box-shadow: var(--c-shadow); backdrop-filter: blur(var(--c-blur)); display: flex; gap: 6px; align-items: center; }
+.pin .tag i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+.pin .tag em { font: 400 10px var(--font-mono); font-style: normal; color: var(--c-muted); }
+.pin .stem { width: 1px; height: 16px; background: var(--c-ink); opacity: .55; }
+.pin .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--c-ink); margin-top: -2px; }
+.pin.on .tag { outline: 2px solid var(--c-accent); }
+.pins { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+
+.tooltip { position: absolute; z-index: 4; pointer-events: none; background: var(--c-bg); color: var(--c-ink); border-radius: 6px; padding: 6px 9px; font-size: 11px; box-shadow: var(--c-shadow); backdrop-filter: blur(var(--c-blur)); display: none; min-width: 140px; }
+.tooltip b { display: block; font-size: 12px; margin-bottom: 2px; }
+.tooltip span { display: flex; justify-content: space-between; gap: 12px; color: var(--c-muted); }
+.tooltip span em { font-style: normal; color: var(--c-ink); font-family: var(--font-mono); }
+
+.bridge { background: #0f1115; color: #c9d1dc; font: 12px/1.55 var(--font-mono); padding: 8px 12px; border-top: 1px solid #2a2f38; height: 96px; overflow: hidden; display: flex; flex-direction: column-reverse; }
+.bridge div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bridge .to { color: #8fb0ff; } .bridge .from { color: #7fdcaa; } .bridge .ui { color: #f0b46a; }
+.bridge .t { color: #5d6573; margin-right: 8px; }
+
+.card.stale { opacity: .55; }
+.card .err { margin: 0 0 8px; padding: 6px 8px; border-left: 3px solid #e0546f; background: rgba(224, 84, 111, .12); font-size: 11px; }
+.card .pend { font: 500 10px var(--font-mono); color: var(--c-accent); }
+.slot .more { pointer-events: auto; font: 600 11px var(--font-body); background: var(--c-bg); color: var(--c-ink); border: 1px solid var(--c-line); border-radius: 99px; padding: 4px 10px; cursor: pointer; box-shadow: var(--c-shadow); }
+.qrow { display: grid; grid-template-columns: 16px 1fr; gap: 6px; padding: 3px 0; align-items: start; }
+.qrow .ic { width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center; font: 700 9px var(--font-mono); color: #fff; margin-top: 1px; }
+.qrow .ic.ok { background: #1f8a5b; } .qrow .ic.warn { background: #c76a0a; }
+.budget .track { height: 8px; background: var(--c-track); border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
+.budget .track i { display: block; height: 100%; background: var(--c-accent); transition: width .35s ease; }
+.budget.over .track i { background: #e0546f; }
+.budget .row { display: flex; justify-content: space-between; font: 500 11px var(--font-mono); color: var(--c-muted); }
+.budget button { margin-top: 7px; font: 600 11px var(--font-body); border: 1px solid var(--c-line); background: transparent; color: var(--c-ink); padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.textcard p { margin: 0; font-size: 12px; }
+.editing .card.locked { outline: 1px dashed #c76a0a; cursor: not-allowed; }
+.editing .card.locked::after { content: "Slot wired in GH · locked"; display: block; margin-top: 6px; font: 500 10px var(--font-mono); color: #c76a0a; }
+.edit-only { display: none; }
+.is-editing .edit-only { display: inline-flex; }
+.bar:focus-visible, .cols .c:focus-visible, .pin:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+@media (max-width: 720px) {
+  .viewport { height: 760px; }
+  .card { width: 196px; padding: 8px 10px; }
+  .slot[data-slot="tc"], .slot[data-slot="bc"] { display: none; }
+}
+
+/* ---------- Canvas comparison ---------- */
+.compare { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.panel-h { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.panel-h h3 { margin: 0; }
+.stat { font: 500 12px var(--font-mono); color: var(--muted); }
+.stat b { color: var(--ink); }
+.ghc { overflow-x: auto; background:
+  radial-gradient(circle, color-mix(in srgb, var(--muted) 30%, transparent) 1px, transparent 1.2px) 0 0 / 16px 16px,
+  color-mix(in srgb, var(--paper) 70%, var(--surface)); }
+.ghc svg { display: block; width: 100%; height: auto; }
+#ghOld { min-width: 600px; } #ghNew { min-width: 440px; }
+.panel-f { padding: 10px 14px 12px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* ---------- Tables / lists ---------- */
+.tablewrap { overflow-x: auto; margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: color-mix(in srgb, var(--paper) 60%, var(--surface)); }
+tr:last-child td { border-bottom: 0; }
+td .nm { font: 700 14px var(--font-display); }
+td .io { font: 12px var(--font-mono); color: var(--muted); }
+.tag-pill { display: inline-block; font: 500 11px var(--font-mono); padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tag-pill.core { border-color: var(--accent); color: var(--accent); }
+.tag-pill.later { border-style: dashed; }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.box ul { margin: 6px 0 0; padding-left: 18px; }
+.box li { margin: 3px 0; }
+.box.rec { border-left: 4px solid var(--accent); }
+
+.phases { display: grid; gap: 10px; margin-top: 14px; }
+.phase { display: grid; grid-template-columns: 150px 1fr 120px; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; align-items: start; }
+.phase .when { font: 600 13px var(--font-mono); }
+.phase .when small { display: block; font-weight: 400; color: var(--muted); }
+.phase .eff { text-align: right; font: 700 18px var(--font-display); font-variant-numeric: tabular-nums; }
+.phase .eff small { display: block; font: 400 11px var(--font-mono); color: var(--muted); }
+.phase ul { margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
+@media (max-width: 640px) { .phase { grid-template-columns: 1fr; } .phase .eff { text-align: left; } }
+.gantt { margin-top: 14px; }
+.risk { display: grid; grid-template-columns: 74px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.risk:first-child { border-top: 0; }
+.sev { font: 600 11px var(--font-mono); text-transform: uppercase; padding: 2px 6px; border-radius: 4px; text-align: center; align-self: start; }
+.sev.hi { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.sev.md { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.sev.lo { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.arch svg { width: 100%; height: auto; display: block; }
+.arch { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 14px; }
+.arch svg { min-width: 760px; }
+footer { padding: 30px 0 50px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="wrap top">
+  <div class="kicker">conduit-plus · concept, plan and mocks · Nov 2026</div>
+  <h1>Conduit+: web-rendered HUDs for the Rhino viewport</h1>
+  <p class="lede">A rethink of Proving Ground's Conduit for Grasshopper. Charts, metrics and labels are written in HTML and drawn over the Rhino viewport. You place them by dragging them in the viewport, not by building rectangles in the XY plane, and they talk back to Grasshopper.</p>
+  <div class="tiles" aria-label="Plan at a glance">
+    <div class="tile"><span class="k">Week 1–2</span><b>Feasibility gate</b><span>Web-to-bitmap cards in Rhino's display pipeline, measured against pass/fail numbers. Native drawing is the fallback.</span></div>
+    <div class="tile"><span class="k">6 weeks</span><b>Pilot with real users</b><span>Overlay plus five cards, keyed selection, PNG capture, Yak package.</span></div>
+    <div class="tile"><span class="k">6–8 months</span><b>Windows v1, full scope</b><span>One experienced C# + TypeScript developer. Includes inputs, pins, layout editing, export and the SDK.</span></div>
+    <div class="tile"><span class="k">+6–10 weeks</span><b>macOS, then GH2</b><span>WKWebView surface and packaging. A GH2 adapter once its SDK settles.</span></div>
+  </div>
+</header>
+
+<!-- ================= VIEWPORT MOCK ================= -->
+<section id="viewport" style="border-top:0; padding-top: 6px;">
+  <div class="wrap">
+    <h2>1 · The viewport</h2>
+    <p class="sub">A working mock. Drag the viewport to orbit and the pinned labels follow the geometry. Hover a bar or a building to brush both ways. Move a slider to send a value back to Grasshopper and watch the cards re-solve. Turn on <b>Edit layout</b> and drag cards between slots.</p>
+
+    <div class="mock-toolbar" role="toolbar" aria-label="Mock controls" id="toolbar">
+      <button class="btn" id="editBtn" aria-pressed="false">Edit layout</button>
+      <span><span class="tb-label">Theme</span><span class="seg" id="themeSeg">
+        <button data-v="paper" aria-pressed="true">Paper</button><button data-v="smoke" aria-pressed="false">Smoke</button><button data-v="blueprint" aria-pressed="false">Blueprint</button>
+      </span></span>
+      <span><span class="tb-label">Labels</span><span class="seg" id="pinSeg">
+        <button data-v="tall" aria-pressed="true">Tall</button><button data-v="all" aria-pressed="false">All</button><button data-v="off" aria-pressed="false">Off</button>
+      </span></span>
+      <span><span class="tb-label">Cards</span><span class="seg" id="cardSeg">
+        <button data-v="4" aria-pressed="true">4</button><button data-v="8" aria-pressed="false">8 (stress)</button>
+      </span></span>
+      <span><span class="tb-label">Solve</span><span class="seg" id="solveSeg">
+        <button data-v="fast" aria-pressed="true">Fast</button><button data-v="slow" aria-pressed="false">Slow</button><button data-v="fail" aria-pressed="false">Fails</button>
+      </span></span>
+      <button class="btn edit-only" id="undoBtn">Undo move</button>
+      <button class="btn edit-only" id="resetBtn">Reset to automatic</button>
+      <span class="hint" id="modeHint">Drag the viewport to orbit</span>
+    </div>
+
+    <div class="rhino">
+      <div class="rhino-bar"><span class="dots"><i></i><i></i><i></i></span><span class="cmd" id="cmdline">Command: _Grasshopper · Conduit+ overlay (mock) · Perspective</span></div>
+      <div class="viewport" id="vp">
+        <canvas id="cv" aria-label="Mock Rhino perspective viewport showing nine massing blocks"></canvas>
+        <div class="vp-name">Perspective</div>
+        <div class="overlay" id="ov">
+          <div class="pins" id="pins"></div>
+          <div class="slot" data-slot="tl" data-label="top-left"></div>
+          <div class="slot" data-slot="tc" data-label="top-center"></div>
+          <div class="slot" data-slot="tr" data-label="top-right"></div>
+          <div class="slot" data-slot="lc" data-label="left"></div>
+          <div class="slot" data-slot="rc" data-label="right"></div>
+          <div class="slot" data-slot="bl" data-label="bottom-left"></div>
+          <div class="slot" data-slot="bc" data-label="bottom-center"></div>
+          <div class="slot" data-slot="br" data-label="bottom-right"></div>
+          <div class="tooltip" id="tip"></div>
+        </div>
+      </div>
+      <div class="bridge" id="bridge" aria-live="polite"></div>
+    </div>
+    <p class="hint" style="margin-top:8px">Everything here is simulated in the browser. Timings, payload sizes and "saved" messages are illustrative. The dark strip is a developer view of what would cross the Grasshopper ↔ renderer bridge; users never see it. Slider drags stay pending until you release, then a solve runs. Switch <b>Solve</b> to Slow or Fails to see the stale and error states.</p>
+  </div>
+</section>
+
+<!-- ================= CANVAS COMPARISON ================= -->
+<section id="canvas">
+  <div class="wrap">
+    <h2>2 · The Grasshopper canvas</h2>
+    <p class="sub">Roughly the same result: a chart and a line of text in the view. The Conduit side is its minimal setup, since its Font, Palette and Style Sheet inputs are optional (adding them makes 14 components). Component counts end up close. The real differences are elsewhere. In Conduit the layout is geometry you build and keep rebuilding. In Conduit+ each card needs only its data plus one Overlay, layout is direct manipulation, and the <code>Link</code> component says which geometry each key refers to. That makes brushing and selection possible, which Conduit has no equivalent for.</p>
+    <div class="compare">
+      <div class="panel">
+        <div class="panel-h"><h3>Conduit today</h3><span class="stat"><b id="oldN">0</b> components · <b id="oldW">0</b> wires · 1 Rhino rectangle · output only</span></div>
+        <div class="ghc"><svg id="ghOld" viewBox="0 0 660 330" role="img" aria-label="Minimal Conduit definition: rectangle, grid tiles, list items, draw chart, draw text, merge, HUD"></svg></div>
+        <div class="panel-f">Position is the tile rectangle's place inside a rectangle drawn in model space. Moving the chart means re-tiling or redrawing.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3>Conduit+</h3><span class="stat"><b id="newN">0</b> components · <b id="newW">0</b> wires · incl. selection</span></div>
+        <div class="ghc"><svg id="ghNew" viewBox="0 0 480 330" role="img" aria-label="Conduit+ definition: data into Bar and Metric cards, geometry and keys into Link, all into Overlay"></svg></div>
+        <div class="panel-f">The smallest working setup is two components: data → <code>Bar</code> → <code>Overlay</code>. Slot and theme come from the viewport and are stored on the Overlay. A wired <code>Slot</code> wins over a manual drag, which wins over automatic placement; wired properties show a lock in Edit layout.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= COMPONENTS ================= -->
+<section id="components">
+  <div class="wrap">
+    <h2>3 · Component set</h2>
+    <p class="sub">Each card needs its data and one <b>Overlay</b>; everything else has a default. <b>Link</b> binds keys to geometry so charts and the model can highlight each other. Optional inputs stay hidden until you zoom in on the component (ZUI), so the default face stays small. Precedence is always: wired input, then manual edit in the viewport, then automatic.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Component</th><th>Required in → out</th><th>Optional (ZUI)</th><th>Notes</th><th>Phase</th></tr></thead>
+        <tbody id="compTable"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section id="architecture">
+  <div class="wrap">
+    <h2>4 · Architecture</h2>
+    <p class="sub" id="archLede">Loading…</p>
+    <div class="arch"><svg id="archSvg" viewBox="0 0 1000 384" role="img" aria-label="Architecture diagram"></svg></div>
+    <div class="grid2" id="archBoxes"></div>
+  </div>
+</section>
+
+<!-- ================= PLAN ================= -->
+<section id="plan">
+  <div class="wrap">
+    <h2>5 · Plan and effort</h2>
+    <p class="sub" id="planLede">Loading…</p>
+    <div class="phases" id="phases"></div>
+  </div>
+</section>
+
+<section id="risks">
+  <div class="wrap">
+    <h2>6 · Risks and open questions</h2>
+    <div class="grid2">
+      <div class="box"><h3>Risks</h3><div id="riskList"></div></div>
+      <div class="box"><h3>Open questions for you</h3><ul id="questions"></ul></div>
+    </div>
+  </div>
+</section>
+
+<section id="review">
+  <div class="wrap">
+    <h2>7 · Review notes</h2>
+    <p class="sub" id="reviewLede">Loading…</p>
+    <div class="grid2" id="reviewBoxes"></div>
+  </div>
+</section>
+
+<footer><div class="wrap">Conduit (Proving Ground, Dave Stasiuk) is referenced for comparison only. Mock data is invented. Conduit+ is a working name.</div></footer>
+
+<script>
+/* =====================================================================
+   DATA (invented sample massing)  — 1 model unit = 2 m
+   ===================================================================== */
+const USES = {
+  Office:      { color: getCss('--use-office') },
+  Residential: { color: getCss('--use-res') },
+  Retail:      { color: getCss('--use-retail') },
+  Civic:       { color: getCss('--use-civic') },
+};
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const SITE_M2 = 15360;
+const blocks = [
+  { id:'A', name:'Tower A',  use:'Office',      x:-24, y:-20, w:14, d:12, floors:34 },
+  { id:'B', name:'Tower B',  use:'Residential', x:  0, y:-22, w:10, d:16, floors:22 },
+  { id:'C', name:'Block C',  use:'Residential', x: 18, y:-18, w:10, d:10, floors:16 },
+  { id:'D', name:'Podium D', use:'Retail',      x:-26, y:  2, w:20, d:12, floors:3 },
+  { id:'E', name:'Block E',  use:'Office',      x:  0, y:  2, w:12, d:12, floors:18 },
+  { id:'F', name:'Library F',use:'Civic',       x: 18, y:  2, w:12, d:14, floors:5 },
+  { id:'G', name:'Block G',  use:'Residential', x:-22, y: 22, w:10, d:10, floors:12 },
+  { id:'H', name:'Block H',  use:'Residential', x: -2, y: 22, w:16, d: 8, floors:9 },
+  { id:'I', name:'Market I', use:'Retail',      x: 18, y: 24, w:12, d: 8, floors:2 },
+];
+const FLOOR_H = 3.6;
+const fp = b => b.w * b.d * 4;                    // m²
+const gfa = b => fp(b) * b.floors;
+const totalGFA = () => blocks.reduce((s,b)=>s+gfa(b),0);
+const coverage = () => blocks.reduce((s,b)=>s+fp(b),0) / SITE_M2;
+const byUse = () => { const o={}; for (const u in USES) o[u]=0; blocks.forEach(b=>o[b.use]+=gfa(b)); return o; };
+
+let solve = 41;
+const hist = { gfa: [], far: [], cov: [] };
+(function seed(){
+  const g = totalGFA();
+  const base = [0.86,0.88,0.87,0.9,0.93,0.92,0.95,0.94,0.97,0.99,0.98];
+  base.forEach(k=>{ hist.gfa.push(g*k); hist.far.push(g*k/SITE_M2); hist.cov.push(coverage()*(0.96 + (k-0.86)*0.3)); });
+  hist.gfa.push(g); hist.far.push(g/SITE_M2); hist.cov.push(coverage());
+})();
+
+const state = { hoverUse:null, hoverBlock:null, selected:null, pins:'tall', theme:'paper', editing:false, cards:4, solveMode:'fast', pending:false, failed:false };
+
+/* =====================================================================
+   BRIDGE LOG (dev view)
+   ===================================================================== */
+const bridgeEl = document.getElementById('bridge');
+let t0 = performance.now();
+function log(kind, msg){
+  const d = document.createElement('div');
+  const t = ((performance.now()-t0)/1000).toFixed(2).padStart(6,' ');
+  const arrow = kind==='to' ? '→ gh ' : kind==='from' ? '← gh ' : '· ui ';
+  d.innerHTML = `<span class="t">${t}s</span><span class="${kind}">${arrow}</span> ${msg}`;
+  bridgeEl.prepend(d);
+  while (bridgeEl.children.length > 12) bridgeEl.lastChild.remove();
+}
+log('from', 'overlay.mount { view:"Perspective", cards:4, theme:"paper" }');
+log('from', `solve #${solve} · 38 ms · patch 4 cards (2.1 kB)`);
+
+/* =====================================================================
+   3D VIEWPORT (tiny painter's-algorithm renderer)
+   ===================================================================== */
+const vp = document.getElementById('vp'), cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const cam = { th: -0.8, ph: 0.62, R: 215, tgt:[0,0,16] };
+let W=0,H=0,DPR=1, faces=[], camBasis=null;
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(...a);return [a[0]/l,a[1]/l,a[2]/l];};
+function basis(){
+  const {th,ph,R,tgt}=cam;
+  const eye=[tgt[0]+R*Math.cos(ph)*Math.cos(th), tgt[1]+R*Math.cos(ph)*Math.sin(th), tgt[2]+R*Math.sin(ph)];
+  const f=norm(sub(tgt,eye)), r=norm(cross(f,[0,0,1])), u=cross(r,f);
+  return {eye,f,r,u,F:Math.min(W,H*1.35)*1.05};
+}
+function proj(p){
+  const {eye,f,r,u,F}=camBasis; const d=sub(p,eye);
+  const z=dot(d,f); return [W/2 + F*dot(d,r)/z, H*0.54 - F*dot(d,u)/z, z];
+}
+function hexToRgb(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+const L = norm([-0.45,-0.7,0.85]);
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = vp.clientWidth; H = vp.clientHeight;
+  cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  queue();
+}
+function draw(){
+  camBasis = basis();
+  ctx.clearRect(0,0,W,H);
+  // grid
+  ctx.lineWidth = 1;
+  for (let i=-60;i<=60;i+=5){
+    const major = i%20===0;
+    ctx.strokeStyle = major ? 'rgba(70,78,90,.32)' : 'rgba(70,78,90,.14)';
+    line([i,-60,0],[i,60,0]); line([-60,i,0],[60,i,0]);
+  }
+  ctx.lineWidth = 1.5; ctx.strokeStyle='rgba(190,40,40,.75)'; line([0,0,0],[60,0,0]);
+  ctx.strokeStyle='rgba(30,140,50,.75)'; line([0,0,0],[0,60,0]);
+  // faces
+  faces = [];
+  const anyHi = state.hoverUse || state.hoverBlock || state.selected;
+  for (const b of blocks){
+    const h = b.floors*FLOOR_H/2, x0=b.x,y0=b.y,x1=b.x+b.w,y1=b.y+b.d;
+    const P=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0],[x0,y0,h],[x1,y0,h],[x1,y1,h],[x0,y1,h]];
+    const F=[ {i:[4,5,6,7],n:[0,0,1]}, {i:[0,1,5,4],n:[0,-1,0]}, {i:[1,2,6,5],n:[1,0,0]}, {i:[2,3,7,6],n:[0,1,0]}, {i:[3,0,4,7],n:[-1,0,0]} ];
+    for (const f of F){
+      const pts=f.i.map(k=>P[k]);
+      const c=[0,1,2].map(a=>pts.reduce((s,p)=>s+p[a],0)/4);
+      if (dot(f.n, sub(camBasis.eye,c))<=0) continue;
+      faces.push({b, n:f.n, pts, depth:Math.hypot(...sub(c,camBasis.eye))});
+    }
+  }
+  faces.sort((a,b)=>b.depth-a.depth);
+  for (const f of faces){
+    const hi = isHi(f.b);
+    const base = hexToRgb(USES[f.b.use].color);
+    const k = 0.62 + 0.38*Math.max(0,dot(f.n,L));
+    let rgb = base.map(v=>Math.round(v*k));
+    let a = 1;
+    if (anyHi && !hi){ rgb = rgb.map(v=>Math.round(v*0.35+190*0.65)); a = 0.55; }
+    const sp = f.pts.map(proj); f.sp = sp;
+    ctx.beginPath(); sp.forEach((p,i)=> i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath();
+    ctx.fillStyle=`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`; ctx.fill();
+    ctx.lineWidth = (hi && anyHi) ? 1.6 : 0.8;
+    ctx.strokeStyle = (hi && anyHi) ? 'rgba(10,12,20,.9)' : 'rgba(20,24,32,.45)'; ctx.stroke();
+  }
+  // selection: Rhino-ish yellow edges
+  if (state.selected){
+    ctx.lineWidth=2; ctx.strokeStyle='#ffd400';
+    faces.filter(f=>f.b.id===state.selected).forEach(f=>{ ctx.beginPath(); f.sp.forEach((p,i)=> i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); ctx.stroke(); });
+  }
+  placePins();
+}
+function line(a,b){ const p=proj(a),q=proj(b); if(p[2]<=1||q[2]<=1) return; ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke(); }
+function isHi(b){ return (state.hoverUse && b.use===state.hoverUse) || state.hoverBlock===b.id || state.selected===b.id; }
+let raf=0; function queue(){ if(!raf) raf=requestAnimationFrame(()=>{raf=0; draw();}); }
+
+/* pinned labels (world → screen every frame, like CSS2DRenderer) */
+const pinsEl = document.getElementById('pins');
+const pinEls = {};
+blocks.forEach(b=>{
+  const el=document.createElement('div'); el.className='pin'; el.tabIndex=0; el.setAttribute('role','button'); el.setAttribute('aria-label', b.name); el.dataset.block=b.id;
+  el.innerHTML=`<div class="tag"><i style="background:${USES[b.use].color}"></i>${b.id}<em>${b.floors}F</em></div><div class="stem"></div><div class="dot"></div>`;
+  el.addEventListener('mouseenter',()=>{ state.hoverBlock=b.id; refreshHi(); });
+  el.addEventListener('mouseleave',()=>{ state.hoverBlock=null; refreshHi(); });
+  el.addEventListener('click',()=>select(b.id));
+  pinsEl.appendChild(el); pinEls[b.id]=el;
+});
+function placePins(){
+  for (const b of blocks){
+    const el=pinEls[b.id];
+    const show = state.pins==='all' || (state.pins==='tall' && b.floors>=15) || state.selected===b.id || state.hoverBlock===b.id;
+    if (!show || state.pins==='off' && state.selected!==b.id){ el.style.display='none'; continue; }
+    const p=proj([b.x+b.w/2, b.y+b.d/2, b.floors*FLOOR_H/2]);
+    el.style.display='flex'; el.style.left=p[0]+'px'; el.style.top=p[1]+'px';
+    el.querySelector('em').textContent = b.floors+'F';
+    el.classList.toggle('on', isHi(b));
+  }
+}
+
+/* orbit + hover hit-testing */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,th:cam.th,ph:cam.ph,moved:false}; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); });
+cv.addEventListener('pointermove',e=>{
+  if (drag){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    if (Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
+    cam.th = drag.th - dx*0.008; cam.ph = Math.max(0.12, Math.min(1.35, drag.ph + dy*0.006));
+    hideTip(); queue(); return;
+  }
+  const r=cv.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  const hit=hitTest(x,y);
+  if ((hit&&hit.id)!==state.hoverBlock){ state.hoverBlock=hit?hit.id:null; refreshHi(); }
+  if (hit) showTip(hit, x, y); else hideTip();
+});
+cv.addEventListener('pointerup',e=>{
+  cv.classList.remove('dragging');
+  if (drag && !drag.moved){ const r=cv.getBoundingClientRect(); const hit=hitTest(e.clientX-r.left,e.clientY-r.top); select(hit?hit.id:null); }
+  else if (drag) log('ui', `view.changed · camera orbit · ${Object.values(pinEls).filter(p=>p.style.display!=='none').length} anchors re-projected`);
+  drag=null;
+});
+cv.addEventListener('pointerleave',()=>{ if(!drag){ state.hoverBlock=null; refreshHi(); hideTip(); }});
+function hitTest(x,y){
+  for (let i=faces.length-1;i>=0;i--){ const f=faces[i]; if (f.sp && inPoly(x,y,f.sp)) return f.b; }
+  return null;
+}
+function inPoly(x,y,p){ let c=false; for(let i=0,j=p.length-1;i<p.length;j=i++){ if(((p[i][1]>y)!==(p[j][1]>y)) && (x<(p[j][0]-p[i][0])*(y-p[i][1])/(p[j][1]-p[i][1])+p[i][0])) c=!c; } return c; }
+const tip=document.getElementById('tip');
+function showTip(b,x,y){
+  tip.innerHTML=`<b>${b.name}</b><span>Use <em>${b.use}</em></span><span>Floors <em>${b.floors}</em></span><span>GFA <em>${fmt(gfa(b))} m²</em></span><span>Height <em>${(b.floors*FLOOR_H).toFixed(1)} m</em></span>`;
+  tip.style.display='block';
+  const tw=tip.offsetWidth, th=tip.offsetHeight;
+  tip.style.left=Math.min(x+14, W-tw-8)+'px'; tip.style.top=Math.max(8, y-th-10)+'px';
+}
+function hideTip(){ tip.style.display='none'; }
+function select(id){
+  if (state.selected===id) return;
+  state.selected=id; refreshHi();
+  log('to', id ? `selection { ids:["${id}"], source:"viewport" } → Overlay.Selection` : 'selection { ids:[] }');
+}
+window.addEventListener('resize', resize);
+
+/* =====================================================================
+   CARDS
+   ===================================================================== */
+const fmt = n => Math.round(n).toLocaleString('en-US');
+function sparkSVG(arr){
+  const w=212,h=22, min=Math.min(...arr), max=Math.max(...arr), rng=(max-min)||1;
+  const pts=arr.map((v,i)=>[i*(w-4)/(arr.length-1)+2, h-3-(v-min)/rng*(h-7)]);
+  const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const last=pts[pts.length-1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d} L ${last[0]} ${h} L 2 ${h} Z" fill="var(--c-accent)" opacity=".16"/>
+    <path d="${d}" fill="none" stroke="var(--c-accent)" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="2.6" fill="var(--c-accent)"/></svg>`;
+}
+function delta(arr){
+  const a=arr[arr.length-2], b=arr[arr.length-1]; const pct=(b-a)/a*100;
+  if (Math.abs(pct)<0.05) return `<span class="chip flat">±0.0%</span>`;
+  return `<span class="chip ${pct>0?'up':'down'}">${pct>0?'+':''}${pct.toFixed(1)}%</span>`;
+}
+const GFA_CAP = 75000;
+const status = () => state.pending ? `<span class="pend">solving…</span>` : `solve #${solve}`;
+const cards = {
+  summary: { slot:'tl', render(){
+    return `<h4>Massing summary <span class="meta">${status()}</span></h4>
+      ${state.failed ? `<div class="err">Solve failed (simulated). Showing last good result, #${solve}.</div>` : ''}
+      <div class="metric"><span class="lbl">Gross floor area</span><span class="val">${fmt(totalGFA())}<small>m²</small></span>${delta(hist.gfa)}${sparkSVG(hist.gfa)}</div>
+      <div class="metric"><span class="lbl">Floor area ratio</span><span class="val">${(totalGFA()/SITE_M2).toFixed(2)}</span>${delta(hist.far)}</div>
+      <div class="metric"><span class="lbl">Site coverage</span><span class="val">${(coverage()*100).toFixed(0)}<small>%</small></span>${delta(hist.cov)}</div>
+      <div class="foot">sparkline = last ${hist.gfa.length} solves</div>`; } },
+  uses: { slot:'tr', render(){
+    const u=byUse(), tot=totalGFA(), max=Math.max(...Object.values(u));
+    return `<h4>Area by use <span class="meta">% of GFA</span></h4><div class="bars">${
+      Object.entries(u).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="bar ${state.hoverUse&&state.hoverUse!==k?'dim':''} ${state.hoverUse===k?'on':''}" data-use="${k}" tabindex="0" role="button" aria-label="${k}: ${fmt(v)} m², ${(v/tot*100).toFixed(0)}% of GFA" title="${fmt(v)} m²">
+        <span>${k}</span><span class="t"><i style="width:${(v/max*100).toFixed(1)}%;background:${USES[k].color}"></i></span><span class="n">${(v/tot*100).toFixed(0)}%</span></div>`).join('')
+    }</div><div class="foot">hover = highlight in view</div>`; } },
+  floors: { slot:'br', render(){
+    const max=Math.max(...blocks.map(b=>b.floors));
+    const sorted=[...blocks].sort((a,b)=>b.floors-a.floors);
+    return `<h4>Floors per block <span class="meta">max ${max}</span></h4>
+      <div class="cols">${sorted.map(b=>`<div class="c ${(state.hoverUse&&b.use!==state.hoverUse)||(state.hoverBlock&&state.hoverBlock!==b.id)?'dim':''}" data-block="${b.id}" tabindex="0" role="button" aria-label="${b.name}: ${b.floors} floors" title="${b.name}: ${b.floors} floors" style="height:${(b.floors/max*100).toFixed(1)}%;background:${USES[b.use].color}"></div>`).join('')}</div>
+      <div class="cols-x">${sorted.map(b=>`<span>${b.id}</span>`).join('')}</div>`; } },
+  inputs: { slot:'bl', render(){
+    const a=blocks[0], b=blocks[1];
+    return `<h4>Inputs <span class="meta">two-way</span></h4>
+      <div class="ctl"><label for="sA">Tower A floors <b id="sAv">${a.floors}</b></label><input id="sA" type="range" min="10" max="50" value="${a.floors}"><span class="to">bound to Number Slider "Tower A floors" (picked)</span></div>
+      <div class="ctl"><label for="sB">Tower B floors <b id="sBv">${b.floors}</b></label><input id="sB" type="range" min="8" max="40" value="${b.floors}"><span class="to">bound to Number Slider "Tower B floors" (picked)</span></div>`; } },
+};
+const extraCards = {
+  budget: { slot:'tl', render(){
+    const g=totalGFA(), pct=g/GFA_CAP*100, over=g>GFA_CAP;
+    return `<div class="budget ${over?'over':''}"><h4>GFA budget <span class="meta">cap ${fmt(GFA_CAP)} m²</span></h4>
+      <div class="track"><i style="width:${Math.min(100,pct).toFixed(1)}%"></i></div>
+      <div class="row"><span>${pct.toFixed(0)}% used</span><span>${over?'over by '+fmt(g-GFA_CAP):fmt(GFA_CAP-g)+' left'} m²</span></div>
+      ${over?`<button type="button" data-act="breach">Select biggest contributor</button>`:''}</div>`; } },
+  quality: { slot:'tr', render(){
+    return `<h4>Data quality <span class="meta">3 checks</span></h4>
+      <div class="qrow"><span class="ic ok">✓</span><span>Keys: 9 of 9 blocks linked to geometry</span></div>
+      <div class="qrow"><span class="ic warn">!</span><span>Daylight values: 1 null (Block H), drawn as a gap, not 0</span></div>
+      <div class="qrow"><span class="ic ok">✓</span><span>Units consistent: m², m</span></div>`; } },
+  residents: { slot:'br', render(){
+    const r=byUse().Residential/32;
+    return `<h4>Residents (est.) <span class="meta">32 m² / person</span></h4>
+      <div class="metric"><span class="val">${fmt(r)}</span><span class="chip flat">model rule</span></div>`; } },
+  note: { slot:'tr', render(){
+    return `<div class="textcard"><h4>Note <span class="meta">Text card</span></h4>
+      <p><b>Option 3:</b> Tower A shifted north to keep the plaza in sun after 2 pm.</p></div>`; } },
+};
+const cardEls = {};
+for (const [id,c] of Object.entries(cards)){
+  const el=document.createElement('div'); el.className='card'; el.dataset.card=id;
+  cardEls[id]=el; document.querySelector(`.slot[data-slot="${c.slot}"]`).appendChild(el);
+}
+function allCards(){ return Object.assign({}, cards, state.cards===8 ? extraCards : {}); }
+function renderCards(which){
+  const all=allCards();
+  (which||Object.keys(all)).forEach(id=>{
+    if (!all[id] || !cardEls[id]) return;
+    cardEls[id].classList.toggle('stale', state.pending && id!=='inputs');
+    if (id==='inputs' && cardEls.inputs.innerHTML) return; // keep slider focus; values updated in place
+    cardEls[id].innerHTML=all[id].render();
+  });
+  applyOverflow();
+}
+cardEls.summary.classList.add('locked');
+/* overflow policy: a slot shows 2 cards; the rest collapse behind a "+n more" chip */
+function applyOverflow(){
+  document.querySelectorAll('.slot').forEach(slot=>{
+    const list=[...slot.querySelectorAll(':scope > .card')];
+    let chip=slot.querySelector(':scope > .more');
+    const open = state.editing || slot.dataset.open==='1';
+    list.forEach((c,i)=> c.style.display = (open || i<2) ? '' : 'none');
+    if (list.length>2 && !state.editing){
+      if (!chip){ chip=document.createElement('button'); chip.type='button'; chip.className='more'; slot.appendChild(chip); }
+      slot.appendChild(chip);
+      chip.textContent = open ? 'Show fewer' : `+${list.length-2} more`;
+    } else if (chip) chip.remove();
+  });
+}
+renderCards();
+
+function refreshHi(){
+  const f=document.activeElement;
+  const key = f && f.dataset && (f.dataset.use ? '.bar[data-use="'+f.dataset.use+'"]' : (f.classList.contains('c') ? '.c[data-block="'+f.dataset.block+'"]' : null));
+  quietFocus=true;
+  try { renderCards(['uses','floors']); queue();
+    if (key){ const n=document.querySelector('#ov '+key); if (n && n!==f) n.focus({preventScroll:true}); }
+  } finally { quietFocus=false; }
+}
+let quietFocus=false;
+
+/* brushing from cards */
+document.getElementById('ov').addEventListener('pointerover', e=>{
+  if (state.editing) return;
+  const bar=e.target.closest('.bar'); const col=e.target.closest('.c');
+  if (bar && bar.dataset.use!==state.hoverUse){ state.hoverUse=bar.dataset.use; refreshHi(); log('ui',`brush use="${bar.dataset.use}" → highlight ${blocks.filter(b=>b.use===bar.dataset.use).length} objects (view only, no re-solve)`); }
+  if (col && col.dataset.block!==state.hoverBlock){ state.hoverBlock=col.dataset.block; refreshHi(); }
+});
+document.getElementById('ov').addEventListener('pointerout', e=>{
+  const bar=e.target.closest('.bar'), col=e.target.closest('.c');
+  if (bar && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.bars'))){ state.hoverUse=null; refreshHi(); }
+  if (col && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cols'))){ state.hoverBlock=null; refreshHi(); }
+});
+document.getElementById('ov').addEventListener('click', e=>{
+  if (state.editing) return;
+  const col=e.target.closest('.c'); if (col) select(col.dataset.block);
+  const bar=e.target.closest('.bar');
+  if (bar) log('to', `event { card:"Area by use", type:"click", key:"${bar.dataset.use}" } → Overlay.Events`);
+});
+
+/* keyboard: focus = hover, Enter/Space = click */
+document.getElementById('ov').addEventListener('focusin', e=>{ if (quietFocus) return;
+  const bar=e.target.closest('.bar'), col=e.target.closest('.c'), pin=e.target.closest('.pin');
+  if (bar && state.hoverUse!==bar.dataset.use){ state.hoverUse=bar.dataset.use; refreshHi(); }
+  if (col && state.hoverBlock!==col.dataset.block){ state.hoverBlock=col.dataset.block; refreshHi(); }
+  if (pin && state.hoverBlock!==pin.dataset.block){ state.hoverBlock=pin.dataset.block; refreshHi(); }
+});
+document.getElementById('ov').addEventListener('focusout', e=>{ if (quietFocus) return;
+  const to=e.relatedTarget;
+  if (e.target.closest('.bar') && !(to && to.closest && to.closest('.bar'))){ state.hoverUse=null; refreshHi(); }
+  if (e.target.closest('.c, .pin') && !(to && to.closest && to.closest('.c, .pin'))){ state.hoverBlock=null; refreshHi(); }
+});
+document.getElementById('ov').addEventListener('keydown', e=>{
+  if (e.key!=='Enter' && e.key!==' ') return;
+  const t=e.target.closest('.bar, .c, .pin'); if (!t) return;
+  e.preventDefault(); t.click();
+});
+
+/* extra-card actions */
+document.getElementById('ov').addEventListener('click', e=>{
+  const chip=e.target.closest('.more');
+  if (chip){ const slot=chip.parentElement; slot.dataset.open = slot.dataset.open==='1' ? '0' : '1'; applyOverflow(); return; }
+  const act=e.target.closest('[data-act="breach"]');
+  if (act){ const top=[...blocks].sort((a,b)=>gfa(b)-gfa(a))[0]; select(top.id); log('ui', `budget breach → select largest contributor ${top.id} (${fmt(gfa(top))} m²)`); }
+});
+function setCardCount(n){
+  state.cards=n;
+  for (const [id,c] of Object.entries(extraCards)){
+    if (n===8 && !cardEls[id]){ const el=document.createElement('div'); el.className='card'; el.dataset.card=id; cardEls[id]=el; document.querySelector(`.slot[data-slot="${c.slot}"]`).appendChild(el); }
+    if (n===4 && cardEls[id]){ cardEls[id].remove(); delete cardEls[id]; }
+  }
+  renderCards();
+  log('ui', n===8 ? 'stress: 8 cards → each slot shows 2, extras collapse to "+n more"' : 'cards: 4');
+}
+
+/* two-way sliders: drag = pending preview, release = commit → GH solve */
+document.getElementById('ov').addEventListener('input', e=>{
+  const sl=e.target; if (sl.type!=='range') return;
+  const b = sl.id==='sA' ? blocks[0] : blocks[1];
+  document.getElementById(sl.id+'v').textContent = (+sl.value===b.floors) ? sl.value : `${b.floors} → ${sl.value}`;
+});
+document.getElementById('ov').addEventListener('change', e=>{
+  const sl=e.target; if (sl.type!=='range') return;
+  const b = sl.id==='sA' ? blocks[0] : blocks[1];
+  const target = +sl.value; if (target===b.floors) return;
+  state.pending=true; state.failed=false; renderCards();
+  log('to', `input.commit { binding:"${b.name} floors", value:${target}, undo:1 step } → ScheduleSolution`);
+  const ms = state.solveMode==='slow' ? 1800 : state.solveMode==='fail' ? 900 : 90;
+  document.getElementById('cmdline').textContent = 'Command: _Grasshopper · solving… (cards show last committed values)';
+  setTimeout(()=>{
+    state.pending=false;
+    if (state.solveMode==='fail'){
+      state.failed=true; sl.value=b.floors; document.getElementById(sl.id+'v').textContent=b.floors;
+      renderCards(); queue();
+      log('from', `solve error · 1 runtime error upstream · cards stay at revision #${solve}`);
+      document.getElementById('cmdline').textContent = `Command: _Grasshopper · solution failed · overlay frozen at #${solve}`;
+      return;
+    }
+    b.floors=target; document.getElementById(sl.id+'v').textContent=target;
+    solve++; const g=totalGFA();
+    hist.gfa.push(g); hist.far.push(g/SITE_M2); hist.cov.push(coverage());
+    for (const k in hist) if (hist[k].length>16) hist[k].shift();
+    renderCards(); queue();
+    log('from', `solve #${solve} · ${ms} ms (simulated) · geometry and cards update together`);
+    document.getElementById('cmdline').textContent = `Command: _Grasshopper · solution #${solve} · Conduit+ updated`;
+  }, ms);
+});
+
+/* toolbar: theme, pins, edit layout */
+const ov=document.getElementById('ov');
+function segBind(id, fn){
+  const seg=document.getElementById(id);
+  seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+    seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', x===b?'true':'false')); fn(b.dataset.v); });
+}
+segBind('themeSeg', v=>{ ov.className='overlay'+(v==='paper'?'':' theme-'+v)+(state.editing?' editing':''); state.theme=v; log('ui',`theme "${v}" (Theme component, or Overlay right-click → Theme)`); });
+segBind('pinSeg', v=>{ state.pins=v; queue(); });
+segBind('cardSeg', v=>setCardCount(+v));
+segBind('solveSeg', v=>{ state.solveMode=v; log('ui', `solve mode: ${v} (simulation only)`); });
+
+const editBtn=document.getElementById('editBtn'), hint=document.getElementById('modeHint');
+editBtn.addEventListener('click',()=>{
+  state.editing=!state.editing; editBtn.setAttribute('aria-pressed', state.editing);
+  ov.classList.toggle('editing', state.editing);
+  document.getElementById('toolbar').classList.toggle('is-editing', state.editing);
+  applyOverflow();
+  hint.textContent = state.editing ? 'Drag a card onto any dashed slot. Layout is saved into the .gh file.' : 'Drag the viewport to orbit';
+  log('ui', state.editing ? 'layout.edit ON (Overlay right-click → Edit layout, or Ctrl+Shift+L in view)' : 'layout.edit OFF → layout persisted to component');
+});
+
+/* drag-to-slot */
+let dragCard=null, ghost=null, lastSlot=null; const moves=[];
+document.getElementById('undoBtn').addEventListener('click',()=>{
+  const m=moves.pop(); if(!m){ log('ui','nothing to undo'); return; }
+  m.from.appendChild(m.card); applyOverflow(); log('ui',`undo: card "${m.card.dataset.card}" back to "${m.from.dataset.slot}"`);
+});
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  const all=allCards();
+  for (const [id,el] of Object.entries(cardEls)) document.querySelector(`.slot[data-slot="${all[id].slot}"]`).appendChild(el);
+  moves.length=0; applyOverflow(); log('ui','reset to automatic: manual slots cleared (wired Slot inputs still win)');
+});
+ov.addEventListener('pointerdown', e=>{
+  if (!state.editing) return;
+  const card=e.target.closest('.card'); if(!card) return;
+  e.preventDefault();
+  if (card.classList.contains('locked')){ log('ui','"Massing summary" is locked: its Slot input is wired in GH. Unwire it, or right-click → Reset to automatic.'); return; }
+  dragCard=card; ghost=card.cloneNode(true); ghost.classList.add('ghost');
+  const r=card.getBoundingClientRect(); ghost.style.width=r.width+'px';
+  ghost._dx=e.clientX-r.left; ghost._dy=e.clientY-r.top;
+  document.body.appendChild(ghost); moveGhost(e); card.style.opacity='.3';
+});
+window.addEventListener('pointermove', e=>{ if(ghost) moveGhost(e); });
+window.addEventListener('pointerup', e=>{
+  if (!ghost) return;
+  const slot = nearestSlot(e.clientX, e.clientY);
+  if (slot && slot!==dragCard.parentElement){
+    moves.push({card:dragCard, from:dragCard.parentElement});
+    slot.insertBefore(dragCard, slot.querySelector(':scope > .more'));
+    applyOverflow();
+    log('ui', `layout card:"${dragCard.dataset.card}" → slot:"${slot.dataset.slot}" (would be stored on this Overlay · 1 undo step · no re-solve)`);
+  }
+  dragCard.style.opacity=''; ghost.remove(); ghost=null; dragCard=null;
+  document.querySelectorAll('.slot').forEach(s=>s.classList.remove('drop-target'));
+});
+function moveGhost(e){
+  ghost.style.left=(e.clientX-ghost._dx)+'px'; ghost.style.top=(e.clientY-ghost._dy)+'px';
+  const s=nearestSlot(e.clientX,e.clientY);
+  if (s!==lastSlot){ document.querySelectorAll('.slot').forEach(x=>x.classList.toggle('drop-target', x===s)); lastSlot=s; }
+}
+function nearestSlot(x,y){
+  const vr=vp.getBoundingClientRect();
+  if (x<vr.left-40||x>vr.right+40||y<vr.top-40||y>vr.bottom+40) return null;
+  let best=null, bd=1e9;
+  document.querySelectorAll('.slot').forEach(s=>{
+    if (getComputedStyle(s).display==='none') return;
+    const r=s.getBoundingClientRect(); const cx=Math.max(r.left,Math.min(x,r.right)), cy=Math.max(r.top,Math.min(y,r.bottom));
+    const d=Math.hypot(x-cx,y-cy); if(d<bd){bd=d;best=s;}
+  });
+  return best;
+}
+
+resize();
+
+/* =====================================================================
+   GRASSHOPPER CANVAS DIAGRAMS
+   ===================================================================== */
+function ghDiagram(svgId, nodes, wires){
+  const svg=document.getElementById(svgId); const NS='http://www.w3.org/2000/svg';
+  const css=getComputedStyle(document.documentElement);
+  const ink=css.getPropertyValue('--ink').trim(), surf=css.getPropertyValue('--surface').trim(), muted=css.getPropertyValue('--muted').trim(), line=css.getPropertyValue('--line').trim(), acc=css.getPropertyValue('--accent').trim();
+  const ports={};
+  const ROW=15, HEAD=20;
+  const g=document.createElementNS(NS,'g'), gw=document.createElementNS(NS,'g');
+  svg.appendChild(gw); svg.appendChild(g);
+  for (const n of nodes){
+    const rows=Math.max(n.in.length,n.out.length,1);
+    const h=HEAD+rows*ROW+6; const w=n.w||120;
+    const kind=n.kind||'std';
+    const rect=document.createElementNS(NS,'rect');
+    Object.entries({x:n.x,y:n.y,width:w,height:h,rx:5,fill:kind==='new'?acc:surf,stroke:kind==='new'?acc:muted,'stroke-width':1.2,'fill-opacity':kind==='new'?0.12:1}).forEach(([k,v])=>rect.setAttribute(k,v));
+    if (kind==='param') rect.setAttribute('stroke-dasharray','3 2');
+    g.appendChild(rect);
+    const t=document.createElementNS(NS,'text'); t.setAttribute('x',n.x+w/2); t.setAttribute('y',n.y+14); t.setAttribute('text-anchor','middle');
+    t.setAttribute('fill',ink); t.setAttribute('style','font:600 11px var(--font-body)'); t.textContent=n.name; g.appendChild(t);
+    n.in.forEach((p,i)=>{ const y=n.y+HEAD+i*ROW+8; ports[n.id+'.'+p]=[n.x,y];
+      const c=document.createElementNS(NS,'circle'); c.setAttribute('cx',n.x); c.setAttribute('cy',y); c.setAttribute('r',3); c.setAttribute('fill',surf); c.setAttribute('stroke',muted); g.appendChild(c);
+      const l=document.createElementNS(NS,'text'); l.setAttribute('x',n.x+7); l.setAttribute('y',y+3.5); l.setAttribute('fill',muted); l.setAttribute('style','font:10px var(--font-mono)'); l.textContent=p; g.appendChild(l); });
+    n.out.forEach((p,i)=>{ const y=n.y+HEAD+i*ROW+8; ports[n.id+'.'+p+'>']=[n.x+w,y];
+      const c=document.createElementNS(NS,'circle'); c.setAttribute('cx',n.x+w); c.setAttribute('cy',y); c.setAttribute('r',3); c.setAttribute('fill',surf); c.setAttribute('stroke',muted); g.appendChild(c);
+      const l=document.createElementNS(NS,'text'); l.setAttribute('x',n.x+w-7); l.setAttribute('y',y+3.5); l.setAttribute('text-anchor','end'); l.setAttribute('fill',muted); l.setAttribute('style','font:10px var(--font-mono)'); l.textContent=p; g.appendChild(l); });
+    if (n.note){ const l=document.createElementNS(NS,'text'); l.setAttribute('x',n.x); l.setAttribute('y',n.y+h+13); l.setAttribute('fill',acc); l.setAttribute('style','font:500 10px var(--font-mono)'); l.textContent=n.note; g.appendChild(l); }
+  }
+  for (const [a,b] of wires){
+    const p=ports[a+'>'], q=ports[b]; if(!p||!q) { console.warn('wire',a,b); continue; }
+    const dx=Math.max(30,(q[0]-p[0])*0.5);
+    const path=document.createElementNS(NS,'path');
+    path.setAttribute('d',`M${p[0]} ${p[1]} C${p[0]+dx} ${p[1]} ${q[0]-dx} ${q[1]} ${q[0]} ${q[1]}`);
+    path.setAttribute('fill','none'); path.setAttribute('stroke',ink); path.setAttribute('stroke-opacity','.55'); path.setAttribute('stroke-width','1.3');
+    gw.appendChild(path);
+  }
+  return {n:nodes.length, w:wires.length};
+}
+const oldNodes=[
+  {id:'rect', name:'Rectangle (Rhino)', x:10, y:20, w:118, in:[], out:['Rect'], kind:'param', note:'drawn by hand in XY'},
+  {id:'tog',  name:'Toggle', x:10, y:96, w:80, in:[], out:['Show']},
+  {id:'vals', name:'Area values', x:10, y:150, w:96, in:[], out:['Values'], kind:'param'},
+  {id:'txt',  name:'Panel', x:10, y:214, w:80, in:[], out:['Text'], kind:'param'},
+  {id:'grid', name:'Grid Tiles', x:160, y:20, w:112, in:['Bounds','Col','Row'], out:['Tiles']},
+  {id:'li1',  name:'List Item', x:160, y:120, w:100, in:['List','Index'], out:['Tile']},
+  {id:'li2',  name:'List Item', x:160, y:196, w:100, in:['List','Index'], out:['Tile']},
+  {id:'chart',name:'Draw Chart', x:310, y:40, w:120, in:['Bounds','Values','Title'], out:['Objs']},
+  {id:'dtxt', name:'Draw Text', x:310, y:170, w:120, in:['Bounds','Text'], out:['Objs']},
+  {id:'mrg',  name:'Merge', x:462, y:100, w:70, in:['D1','D2'], out:['R']},
+  {id:'hud',  name:'HUD', x:500, y:200, w:140, in:['Show','DrawObjs','Bounds'], out:[]},
+];
+const oldWires=[
+  ['rect.Rect','grid.Bounds'],['rect.Rect','hud.Bounds'],['tog.Show','hud.Show'],
+  ['grid.Tiles','li1.List'],['grid.Tiles','li2.List'],
+  ['li1.Tile','chart.Bounds'],['vals.Values','chart.Values'],['li2.Tile','dtxt.Bounds'],['txt.Text','dtxt.Text'],
+  ['chart.Objs','mrg.D1'],['dtxt.Objs','mrg.D2'],['mrg.R','hud.DrawObjs'],
+];
+const newNodes=[
+  {id:'vals', name:'Area values', x:14, y:20, w:96, in:[], out:['Values'], kind:'param'},
+  {id:'keys', name:'Use names', x:14, y:72, w:96, in:[], out:['Labels'], kind:'param'},
+  {id:'gfa',  name:'GFA', x:14, y:134, w:80, in:[], out:['Value'], kind:'param'},
+  {id:'geo',  name:'Massing', x:14, y:206, w:96, in:[], out:['Geometry'], kind:'param'},
+  {id:'bk',   name:'Use per block', x:14, y:260, w:96, in:[], out:['Keys'], kind:'param'},
+  {id:'bar',  name:'Bar', x:146, y:20, w:106, in:['Values','Labels','Title'], out:['Card'], kind:'new'},
+  {id:'met',  name:'Metric', x:146, y:116, w:106, in:['Value','Label','Unit'], out:['Card'], kind:'new'},
+  {id:'link', name:'Link', x:146, y:218, w:106, in:['Geometry','Keys'], out:['Link'], kind:'new', note:'key → geometry'},
+  {id:'ovl',  name:'Overlay', x:292, y:100, w:150, in:['Cards','Links'], out:['Selection','Events'], kind:'new', note:'right-click → Edit layout'},
+  {id:'pnl',  name:'Panel', x:330, y:226, w:96, in:['In'], out:[]},
+];
+const newWires=[
+  ['vals.Values','bar.Values'],['keys.Labels','bar.Labels'],['gfa.Value','met.Value'],
+  ['geo.Geometry','link.Geometry'],['bk.Keys','link.Keys'],
+  ['bar.Card','ovl.Cards'],['met.Card','ovl.Cards'],['link.Link','ovl.Links'],['ovl.Selection','pnl.In'],
+];
+const o=ghDiagram('ghOld', oldNodes, oldWires), n2=ghDiagram('ghNew', newNodes, newWires);
+document.getElementById('oldN').textContent=o.n; document.getElementById('oldW').textContent=o.w;
+document.getElementById('newN').textContent=n2.n; document.getElementById('newW').textContent=n2.w;
+</script>
+<script id="content-script">
+/* ===================== PLAN CONTENT ===================== */
+(function(){
+const $ = id => document.getElementById(id);
+
+/* ---------- components ---------- */
+const comps = [
+  ['Overlay','Cards → Selection, Events','Links, Views, Theme, Enabled','One per dashboard. Layout and theme are stored here, so one card can sit differently in two dashboards.','pilot'],
+  ['Metric','Value → Card','Label, Unit, Format, Target, Slot','Remembers recent solves: a sparkline and a delta against the previous solve or a pinned option.','pilot'],
+  ['Bar','Values → Card','Labels (keys), Title, Colors, Sort, Range, Slot','Keeps negative values signed. Range is explicit when wired, so exploring does not silently rescale.','pilot'],
+  ['Text','Text → Card','Title, Size, Slot','A small Markdown subset: bold, lists, units.','pilot'],
+  ['Legend','Gradient or Colors, Range → Card','Title, Steps, Unit','Reads colours straight from a GH Gradient wire.','pilot'],
+  ['Link','Geometry, Keys → Link','Name','Binds keys to geometry for highlighting and picking. Warns on duplicate or missing keys.','pilot'],
+  ['Theme','Preset → Theme','Tokens, CSS','Paper (opaque) is the default because it stays readable over busy geometry.','pilot'],
+  ['Capture','Path, Trigger → File','Scale, Views','Re-renders cards at the target resolution so the image matches one revision.','pilot'],
+  ['Line / Area','Values (tree = series) → Card','X, Series names, Range','','v1'],
+  ['Table · Histogram · Scatter · Pie','Values → Card','Keys, Bins, Labels','','v1'],
+  ['Input','Range or Options → Card, Value','Binding (picked slider)','Owns a Value output, or binds to a slider you pick, not to a nickname. Commits on release as one undo step.','v1'],
+  ['Pin','Point or Geometry, Text → Card','Keys, Leader, Min zoom','Labels anchored in 3D, with culling and collision handling.','v1'],
+  ['Peek','any wire → Card','Kind','Drop it on any wire and the data gets an automatic chart.','v1'],
+  ['Quality','Values or Link → Card','Rules','Flags nulls, out-of-range values, mixed units and broken key links.','v1'],
+  ['Spec','Vega-Lite JSON, Data → Card','','For charts the built-in cards cannot draw.','v1.x'],
+  ['Custom card','Folder, Data → Card','','HTML/TS card SDK with hot reload.','v1.x'],
+];
+$('compTable').innerHTML = comps.map(([n,req,opt,note,ph])=>`<tr>
+  <td><span class="nm">${n}</span></td><td><span class="io">${req}</span></td><td><span class="io">${opt}</span></td>
+  <td>${note}</td><td><span class="tag-pill ${ph==='pilot'?'core':ph==='v1.x'?'later':''}">${ph}</span></td></tr>`).join('');
+
+/* ---------- architecture ---------- */
+$('archLede').innerHTML = `The product is a <b>declarative card spec</b>, not a renderer. Grasshopper produces specs and data. The host decides what is dirty. A renderer turns each dirty card into a bitmap plus hit regions, and Rhino's own display pipeline places those bitmaps every frame. The browser is never a window over the viewport. That keeps ViewCapture, layouts, detail views and stacking order inside Rhino's rules.`;
+const box = (x,y,w,h,title,lines,cls='') => `<g class="${cls}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" class="a-box"/>
+  <text x="${x+12}" y="${y+22}" class="a-t">${title}</text>${lines.map((l,i)=>`<text x="${x+12}" y="${y+42+i*16}" class="a-l">${l}</text>`).join('')}</g>`;
+const arrow = (x1,y1,x2,y2,label,lx,ly,cls='') => `<path d="M${x1} ${y1} L${x2} ${y2}" class="a-ar ${cls}" marker-end="url(#ah)"/>${label?`<text x="${lx}" y="${ly}" class="a-al ${cls}">${label}</text>`:''}`;
+$('archSvg').innerHTML = `
+<style>
+  .a-box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+  .hot .a-box{stroke:var(--accent);stroke-width:1.8}
+  .alt .a-box{stroke-dasharray:5 4}
+  .a-t{font:700 13px var(--font-display);fill:var(--ink)}
+  .a-l{font:12px var(--font-body);fill:var(--muted)}
+  .a-ar{stroke:var(--ink);stroke-opacity:.6;stroke-width:1.4;fill:none}
+  .a-ar.back{stroke:var(--accent);stroke-opacity:.9}
+  .a-al{font:500 11px var(--font-mono);fill:var(--muted)}
+  .a-al.back{fill:var(--accent)}
+  .a-lane{font:600 10.5px var(--font-mono);fill:var(--muted);letter-spacing:.08em}
+</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor" style="color:var(--ink)"/></marker></defs>
+<text x="10" y="18" class="a-lane">GRASSHOPPER</text><text x="250" y="18" class="a-lane">CORE (C#, GH-AGNOSTIC)</text><text x="530" y="18" class="a-lane">RENDERER</text><text x="790" y="18" class="a-lane">RHINO VIEW</text>
+${box(10,50,180,120,'GH1 adapter',['Overlay, cards, Link','Input, Pin, Capture','(GH2 adapter later)'])}
+${box(240,50,230,82,'Card store',['specs + data, revision per card','dirty tracking, host snapshot'],'hot')}
+${box(240,144,230,64,'Bindings',['key ↔ geometry, inputs, undo'])}
+${box(240,220,230,64,'Layout resolver',['wired > manual > automatic'])}
+${box(530,50,210,98,'Web renderer',['WebView2 offscreen (gate)','per-card bitmap + hit regions','+ revision, published atomically'],'hot')}
+${box(530,162,210,64,'Native renderer',['fallback: DisplayPipeline 2D','Metric, Bar, Text, Legend'],'alt')}
+${box(800,50,190,98,'DisplayConduit',['composites cached bitmaps','anchors: WorldToClient','per frame: reposition only'],'hot')}
+${box(800,162,190,64,'MouseCallback',['hit regions → semantic','events (hover, click)'])}
+${box(240,310,500,58,'Inspector panel (docked Eto WebView)',['card list, binding picker, keyboard-accessible controls, diagnostics'])}
+<path d="M190 90 L238 90" class="a-ar" marker-end="url(#ah)"/><text x="214" y="40" text-anchor="middle" class="a-al">per solve</text>
+<path d="M470 90 L528 90" class="a-ar" marker-end="url(#ah)"/><text x="499" y="40" text-anchor="middle" class="a-al">dirty cards</text>
+<path d="M740 90 L798 90" class="a-ar" marker-end="url(#ah)"/><text x="769" y="40" text-anchor="middle" class="a-al">bitmaps</text>
+<path d="M800 210 C 690 272, 560 266, 472 190" class="a-ar back" marker-end="url(#ah)"/><text x="650" y="272" text-anchor="middle" class="a-al back">semantic events</text>
+<path d="M240 176 L192 160" class="a-ar back" marker-end="url(#ah)"/>
+<path d="M240 252 C 140 252, 110 230, 110 172" class="a-ar back" marker-end="url(#ah)"/>
+<text x="10" y="324" class="a-al back">back to Grasshopper:</text>
+<text x="10" y="341" class="a-al back">Selection, Events,</text>
+<text x="10" y="358" class="a-al back">Input commit → ScheduleSolution</text>
+<path d="M355 310 L355 286" class="a-ar" marker-end="url(#ah)"/>
+`;
+const archBoxes = [
+  ['rec','Recommendation',[
+    'Make the card spec the product. Treat renderers as swappable behind it.',
+    'Primary candidate: web content rendered offscreen, one cached bitmap per card, composited by a DisplayConduit.',
+    'Fallback: native DisplayPipeline 2D drawing for the pilot cards if the gate fails.',
+    'Drop the transparent overlay window. Put rich editing and accessible controls in a docked Inspector panel, a pattern with working precedents (Speckle, Synapse).',
+  ]],
+  ['','Three update rates',[
+    '<b>Per solve:</b> data changes, so only the dirty cards re-render.',
+    '<b>Per interaction:</b> hover, tooltip or drag re-renders one card, with no GH solve.',
+    '<b>Per frame:</b> the camera moves, so Rhino only repositions cached bitmaps and anchors.',
+    'Bitmap, hit regions and revision are published together, so a click never lands on stale pixels.',
+  ]],
+  ['','Week 1–2 gate: web renderer passes if…',[
+    'Card change to pixels on screen ≤ 50 ms p95; hover ≤ 33 ms p95 (240×180 card, 150% DPI).',
+    'Correct alpha and crisp text at 100, 150 and 200% scaling.',
+    'Shows in ViewCaptureToFile at 2× and 4× by re-rendering at the target scale.',
+    'Ten cards across four viewports cost ≤ 5% orbit fps; no focus stealing.',
+    'Recovers from a browser-process crash by resyncing from the host snapshot.',
+  ]],
+  ['','Foundation work people forget',[
+    'Threading: WebView2 lives on its UI thread; draw callbacks only read prepared state.',
+    'Lifecycle: Rhino doc ↔ GH doc ↔ view ownership; cleanup on close and delete; copy/paste identity.',
+    'Undo: one transaction per drag or input commit.',
+    'Pending intent kept outside ScheduleSolution, because a scheduled solve can be superseded.',
+    'Data semantics: nulls, negatives, units, tree alignment, explicit ranges.',
+  ]],
+];
+$('archBoxes').innerHTML = archBoxes.map(([c,t,items])=>`<div class="box ${c}"><h3>${t}</h3><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
+
+/* ---------- plan ---------- */
+$('planLede').innerHTML = `Estimates assume one experienced C# + TypeScript developer working full-time. They are planning judgements, not benchmarks. My first draft said 17–24 weeks for the full Windows scope. Astra argued that was optimistic because Phases 2 and 3 hid several separate features, and I agree. The plan below front-loads a short pilot so real users see value in about six weeks.`;
+const phases = [
+  ['Weeks 1–2','Feasibility gate','1–2 wk',['Spike the web-to-bitmap renderer and the native fallback in real Rhino 8.20+ on Windows.','Measure against the gate numbers, then write a one-page decision.']],
+  ['Weeks 3–6','Pilot','4–5 wk',['Overlay, Metric, Bar, Text, Legend, Link, Theme presets.','Deterministic slots with drag-to-slot, layout stored on the Overlay.','Keyed click-selection to the Selection output; PNG capture; Yak package; diagnostics.','One massing example, then 3–5 users test on real models.']],
+  ['Months 2–5','v1 interactive','10–12 wk',['Input card with explicit bindings and undo; linked brushing.','Pins with culling and collision; Edit layout with resize, undo and overflow rules.','Inspector panel; Line, Table, Histogram, Scatter; Peek; Quality; Recipes.','Multiple viewports, layouts and detail views; mixed DPI.']],
+  ['Months 5–8','v1.x reach','8–12 wk',['High-resolution capture parity and presentation snapshots.','Standalone HTML dashboard export; Spec card; Custom card SDK with docs site.','Pinned-option A/B compare; second-screen view.']],
+  ['After v1','macOS, then GH2','9–15 wk',['WKWebView renderer and packaging (6–10 wk, uncertain).','GH2 adapter once its SDK settles (3–5 wk).']],
+];
+$('phases').innerHTML = phases.map(([w,t,e,items])=>`<div class="phase"><div class="when">${w}<small>${t}</small></div><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul><div class="eff">${e}<small>effort</small></div></div>`).join('') +
+  `<div class="box rec" style="margin-top:4px"><b>Totals:</b> pilot in about 6 weeks. Interactive Windows v1 in about 4–5 months. The full Windows scope in about 6–8 months. macOS adds 1.5–2.5 months. AI-assisted development compresses the web runtime and cards most; the Rhino integration work compresses least.</div>`;
+
+/* ---------- risks ---------- */
+const risks = [
+  ['hi','The web renderer may miss the gate on latency, alpha or capture. Mitigation: the native fallback covers every pilot card.'],
+  ['hi','Geometry binding semantics are hard: duplicate keys, tree paths, aggregation membership. Specify them before building interaction.'],
+  ['md','Input → solve feedback loops and re-entrancy. Commit on release, use one undo step, keep pending intent outside the scheduler.'],
+  ['md','WebView2 threading, process crashes and runtime updates. Keep a host snapshot and resync.'],
+  ['md','Anchor coordinates under mixed DPI, detail views and layouts.'],
+  ['md','macOS WKWebView snapshot performance is unmeasured.'],
+  ['lo','Chart library choice. ECharts on canvas is a safe default; add others only for measured needs.'],
+];
+$('riskList').innerHTML = risks.map(([s,t])=>`<div class="risk"><span class="sev ${s}">${s==='hi'?'high':s==='md'?'medium':'low'}</span><span>${t}</span></div>`).join('');
+const qs = [
+  '<b>Is "web-rendered" a hard requirement?</b> If the gate fails, would native drawing for the pilot cards be acceptable, with web kept for the Inspector and later rich cards?',
+  'Is Windows-only acceptable for the pilot and v1?',
+  'Must the HUD appear in ViewCapture and print output during the pilot, or can PNG capture come later?',
+  'Licence: MIT like Conduit, or something else?',
+  'Which first workflow should the pilot optimise: massing metrics, environmental analysis legends or structural results?',
+  'Who are the 3–5 pilot users?',
+];
+$('questions').innerHTML = qs.map(q=>`<li>${q}</li>`).join('');
+
+/* ---------- review ---------- */
+$('reviewLede').innerHTML = `Sol (GPT-6.1 Sol) researched the platform and the original Conduit. Astra (GPT-6 Astra) reviewed the first draft of this plan and the mocks. This page already includes their input; the boxes below say what changed and where we still disagree.`;
+const rev = [
+  ['','Sol: research findings',[
+    'Conduit is MIT-licensed, by Dave Stasiuk at Proving Ground. It was ported to Rhino 8 / .NET 8 in July 2025. About 8.8k lines of C#, 19 live components. It draws with Rhino primitives, not GDI.',
+    'Nobody has shown a transparent, interactive web layer over Rhino\'s GPU viewport. WebView2 supports only a fully transparent background. Web panels in Rhino are proven (Speckle, Synapse).',
+    'Rhino 8.20+ runs on .NET 8 and Rhino 9 targets .NET 10. GH2 ships in the Rhino 9 beta with an SDK reference; GH1 plugins do not load in it.',
+    'Conduit\'s known complaints: negative values made absolute, meshes needing vertex colours, duplication across viewports, thin examples.',
+  ]],
+  ['','Astra: what changed because of the review',[
+    'Added a native renderer as the fallback, with a measurable gate instead of a pre-committed choice.',
+    'Dropped the overlay window; editing and accessibility moved to a docked Inspector panel.',
+    'Added Link (key → geometry) and replaced nickname-based slider writes with picked bindings and undo.',
+    'Re-planned around a 6-week pilot; the full-scope estimate grew from 17–24 to about 26–34 weeks.',
+    'Mocks: honest Conduit comparison, pending/failed solves, overflow, a lock on wired slots, keyboard access, no fake glass blur.',
+  ]],
+  ['','Where we still disagree',[
+    'Astra would ship the pilot with native drawing only. I keep web as the primary candidate because chart quality, theming and the custom-card SDK are the point of the project, and you asked for web tech. The gate settles it with numbers, and either path ships the same card spec.',
+    'Astra\'s estimate is 26–36 weeks; mine is 26–34. The gap is how much Peek and Recipes cost. Both are small if the card spec is solid.',
+  ]],
+  ['','Bolder ideas added',[
+    '<b>Data quality card:</b> nulls, ranges, units and broken links (high value, low effort).',
+    '<b>Recipes:</b> one action inserts a working massing, daylight or structural dashboard.',
+    '<b>Explain this value:</b> click a metric to see its source component, units and contributing geometry.',
+    '<b>Budgets:</b> remaining floor area, carbon or deflection allowance, and a button to select the offenders.',
+    '<b>Presentation snapshots:</b> camera, metrics, parameters and definition version saved as one reproducible state.',
+  ]],
+];
+$('reviewBoxes').innerHTML = rev.map(([c,t,items])=>`<div class="box ${c}"><h3>${t}</h3><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
+})();
+
+</script>
+</body>
+</html>
