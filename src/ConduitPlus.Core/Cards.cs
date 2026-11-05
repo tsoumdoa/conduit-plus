@@ -26,6 +26,10 @@ public sealed record CardSpec
     public double Width { get; init; } = 280;
     public string? HoverKey { get; init; }
     public string[] SelectedKeys { get; init; } = [];
+    /// <summary>Table only: rows shown at once; more rows scroll.</summary>
+    public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
+    /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
+    public int ScrollOffset { get; init; }
 
     public void Validate()
     {
@@ -38,6 +42,36 @@ public sealed record CardSpec
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
         if (keys.Any(string.IsNullOrWhiteSpace) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
+        if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
+    }
+}
+
+/// <summary>Scroll geometry for Table cards, shared by every renderer and by hit testing.</summary>
+public static class TableScroll
+{
+    public const int DefaultVisibleRows = 8;
+    public const double BarWidth = 6;
+    public static int Visible(CardSpec c) => Math.Min(c.Rows.Length, c.MaxRows);
+    public static int MaxOffset(CardSpec c) => Math.Max(0, c.Rows.Length - Visible(c));
+    public static int Offset(CardSpec c) => Math.Clamp(c.ScrollOffset, 0, MaxOffset(c));
+    public static bool CanScroll(CardSpec c) => c.Kind == CardKind.Table && MaxOffset(c) > 0;
+
+    /// <summary>Track and thumb in card-local CSS pixels; null when every row fits.</summary>
+    public static (Rect2 Track, Rect2 Thumb)? Bar(CardSpec c, Theme t)
+    {
+        if (!CanScroll(c)) return null;
+        var track = new Rect2(c.Width - t.Padding / 2 - BarWidth / 2, 36 + t.RowHeight, BarWidth, Visible(c) * t.RowHeight);
+        var thumbHeight = Math.Max(16, track.Height * Visible(c) / c.Rows.Length);
+        var top = track.Y + (track.Height - thumbHeight) * Offset(c) / MaxOffset(c);
+        return (track, new Rect2(track.X, top, BarWidth, thumbHeight));
+    }
+
+    /// <summary>Row offset that puts the thumb's top edge at <paramref name="thumbTop"/> (card-local CSS pixels).</summary>
+    public static int OffsetForThumbTop(CardSpec c, Theme t, double thumbTop)
+    {
+        if (Bar(c, t) is not { } bar) return 0;
+        var travel = bar.Track.Height - bar.Thumb.Height;
+        return travel <= 0 ? 0 : (int)Math.Round(Math.Clamp((thumbTop - bar.Track.Y) / travel, 0, 1) * MaxOffset(c));
     }
 }
 

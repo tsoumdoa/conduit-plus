@@ -23,6 +23,7 @@ public static class OverlayManager
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
+        WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0;
     }
     internal static void Stop()
@@ -30,6 +31,7 @@ public static class OverlayManager
         Mouse.Enabled = false;
         _started = false;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
+        WheelHook.Uninstall();
         foreach (var s in Sessions.Values) s.Dispose(); Sessions.Clear();
     }
     private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match)
@@ -72,10 +74,20 @@ public static class OverlayManager
     private sealed class OverlayMouse : MouseCallback
     {
         private bool _pressed;
+        // Active scrollbar-thumb drag: session, card, and where on the thumb it was grabbed (card-local CSS px).
+        private (OverlaySession Session, string CardId, double Grab)? _drag;
         private static OverlaySession[] InView(RhinoView view) => Sessions.Values.Where(s => s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
             if (Busy) return;
+            if (_drag is { } drag)
+            {
+                e.Cancel = true;
+                var local = drag.Session.Local(drag.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
+                if (local is { } p && drag.Session.Card(drag.CardId) is { } card)
+                    drag.Session.ScrollTo(drag.CardId, TableScroll.OffsetForThumbTop(card, drag.Session.Theme, p.Y - drag.Grab));
+                return;
+            }
             foreach (var s in InView(e.View))
             {
                 var hit = s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y);
@@ -90,6 +102,16 @@ public static class OverlayManager
                 var hit = s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y);
                 if (hit is null) continue;
                 e.Cancel = true; _pressed = true;
+                if (hit.Value.Key == OverlaySession.ScrollbarKey)
+                {
+                    var card = s.Card(hit.Value.CardId); var local = s.Local(hit.Value.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
+                    if (card is not null && local is { } p && TableScroll.Bar(card, s.Theme) is { } bar)
+                    {
+                        if (p.Y >= bar.Thumb.Y && p.Y <= bar.Thumb.Y + bar.Thumb.Height) _drag = (s, card.Id, p.Y - bar.Thumb.Y);
+                        else s.ScrollBy(card.Id, p.Y < bar.Thumb.Y ? -TableScroll.Visible(card) : TableScroll.Visible(card)); // page
+                    }
+                    return;
+                }
                 if (!string.IsNullOrEmpty(hit.Value.Key))
                 {
                     s.Select(hit.Value.CardId, hit.Value.Key);
@@ -99,7 +121,64 @@ public static class OverlayManager
             }
         }
         protected override void OnMouseUp(MouseCallbackEventArgs e)
-        { if (_pressed) { e.Cancel = true; _pressed = false; } }
+        { _drag = null; if (_pressed) { e.Cancel = true; _pressed = false; } }
+    }
+
+    /// <summary>
+    /// RhinoCommon's MouseCallback has no wheel event. A thread-local WH_GETMESSAGE hook on Rhino's UI thread sees
+    /// WM_MOUSEWHEEL before any window does; over a scrollable table it scrolls and swallows the message so Rhino
+    /// doesn't zoom. Everything else passes through untouched.
+    /// </summary>
+    private static class WheelHook
+    {
+        private const int WhGetMessage = 3, PmRemove = 1, WmMouseWheel = 0x020A, WmNull = 0;
+        private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+        private static readonly HookProc Proc = OnMessage; // rooted for the hook's lifetime
+        private static IntPtr _hook;
+        public static void Install()
+        {
+            if (_hook != IntPtr.Zero) return;
+            _hook = SetWindowsHookEx(WhGetMessage, Proc, IntPtr.Zero, GetCurrentThreadId());
+            if (_hook == IntPtr.Zero) RhinoApp.WriteLine("Conduit+: mouse-wheel scrolling unavailable (hook failed).");
+        }
+        public static void Uninstall()
+        {
+            if (_hook == IntPtr.Zero) return;
+            UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero;
+        }
+        private static IntPtr OnMessage(int code, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (code >= 0 && wParam == PmRemove && !Busy && Sessions.Count > 0 && Marshal.ReadInt32(lParam, IntPtr.Size) == WmMouseWheel)
+                {
+                    var msgW = Marshal.ReadIntPtr(lParam, IntPtr.Size * 2).ToInt64();
+                    var msgL = Marshal.ReadIntPtr(lParam, IntPtr.Size * 3).ToInt64();
+                    var delta = (short)((msgW >> 16) & 0xFFFF);
+                    var screen = new System.Drawing.Point((short)(msgL & 0xFFFF), (short)((msgL >> 16) & 0xFFFF));
+                    if (TryScroll(screen, delta)) Marshal.WriteInt32(lParam, IntPtr.Size, WmNull); // swallow: no Rhino zoom
+                }
+            }
+            catch (Exception ex) { RhinoApp.WriteLine($"Conduit+ wheel: {ex.Message}"); }
+            return CallNextHookEx(_hook, code, wParam, lParam);
+        }
+        private static bool TryScroll(System.Drawing.Point screen, short delta)
+        {
+            foreach (var s in Sessions.Values.ToArray())
+            {
+                if (!s.View.ScreenRectangle.Contains(screen)) continue;
+                var client = s.View.ScreenToClient(screen);
+                if (s.Hit(client.X, client.Y) is not { } hit || s.Card(hit.CardId) is not { } card || !TableScroll.CanScroll(card)) continue;
+                var notches = Math.Max(1, Math.Abs(delta) / 120);
+                s.ScrollBy(card.Id, -Math.Sign(delta) * 3 * notches);
+                return true;
+            }
+            return false;
+        }
+        [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc proc, IntPtr module, uint threadId);
+        [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
+        [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     }
 }
 
@@ -142,6 +221,9 @@ internal sealed class OverlaySession : IDisposable
     private CardSpec[]? _pending;
     private readonly SemaphoreSlim _updates = new(1);
     private (string? Card, string? Key) _hover;
+    /// <summary>Per-card scroll position. View state, so it is re-applied to every incoming spec (GH solves send 0).</summary>
+    private readonly Dictionary<string, int> _scroll = new(StringComparer.Ordinal);
+    internal const string ScrollbarKey = "\u0001scrollbar";
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
     { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; }
 
@@ -151,6 +233,7 @@ internal sealed class OverlaySession : IDisposable
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            specs = ApplyViewState(specs);
             _store.Update(specs);
             var next = _store.Snapshot;
             if (renderer == RendererKind.Raster)
@@ -173,12 +256,47 @@ internal sealed class OverlaySession : IDisposable
         finally { _updates.Release(); }
     }
 
+    private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
+    {
+        if (c.Kind == CardKind.Table && _scroll.TryGetValue(c.Id, out var offset)) c = c with { ScrollOffset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c)) };
+        // Only override hover while the pointer is over this session; explicit HoverKey specs (benchmarks) pass through otherwise.
+        if (_hover.Card is not null) c = c with { HoverKey = c.Id == _hover.Card ? _hover.Key : null };
+        return c;
+    }).ToArray();
+
+    public CardSpec? Card(string id) => (_pending ?? Cards).FirstOrDefault(c => c.Id == id);
+
+    /// <summary>Viewport client pixels → card-local CSS pixels for the card's current layout.</summary>
+    public Point2? Local(string cardId, double x, double y)
+    {
+        var size = View.ActiveViewport.Size; var dpi = UiContext.Dpi(View);
+        var layout = SlotLayout.Place(Cards, Theme, new(size.Width, size.Height), dpi).FirstOrDefault(l => l.Id == cardId);
+        return layout is null ? null : new Point2((x - layout.X) / dpi, (y - layout.Y) / dpi);
+    }
+
+    public void ScrollBy(string cardId, int rows) { if (Card(cardId) is { } c) ScrollTo(cardId, TableScroll.Offset(c) + rows); }
+    public void ScrollTo(string cardId, int offset)
+    {
+        if (Card(cardId) is not { } c || !TableScroll.CanScroll(c)) return;
+        offset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c));
+        if (_scroll.TryGetValue(cardId, out var old) && old == offset) return;
+        _scroll[cardId] = offset;
+        QueueInteraction(_pending ?? Cards); // re-render just this card: its ScrollOffset changes the revision
+    }
+
     public (string CardId, string Key)? Hit(double x, double y)
     {
         var size = View.ActiveViewport.Size;
         foreach (var layout in SlotLayout.Place(Cards, Theme, new(size.Width, size.Height), UiContext.Dpi(View)).AsEnumerable().Reverse())
         {
             if (!new Rect2(layout.X, layout.Y, layout.W, layout.H).Contains(x, y)) continue;
+            var dpi = UiContext.Dpi(View);
+            if (Cards.FirstOrDefault(c => c.Id == layout.Id) is { } spec && TableScroll.Bar(spec, Theme) is { } bar)
+            {
+                // Generous horizontal target: the bar is 6 px wide but easy to grab within the card's right padding.
+                var lx = (x - layout.X) / dpi; var ly = (y - layout.Y) / dpi;
+                if (lx >= bar.Track.X - 4 && lx <= spec.Width && ly >= bar.Track.Y && ly <= bar.Track.Y + bar.Track.Height) return (layout.Id, ScrollbarKey);
+            }
             var prepared = Renderer == RendererKind.Web ? _web?.Prepared : Renderer == RendererKind.Raster ? _raster?.Prepared : null;
             var hits = prepared is not null && prepared.TryGetValue(layout.Id, out var p) ? p.Capture.Layout.HitRegions : layout.HitRegions;
             var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / UiContext.Dpi(View), (y - layout.Y) / UiContext.Dpi(View)));

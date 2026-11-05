@@ -1,6 +1,6 @@
 import {renderLine} from './line';
 export type Hit = {key:string,x:number,y:number,w:number,h:number};
-export type Card = {id:string,rev:number,kind:'metric'|'bar'|'table'|'line',title:string,value:string|null,unit:string,values:(number|null)[],labels:string[],keys:string[],threshold:number,headers:string[],rows:{key:string,cells:(string|null)[]}[],width:number,hoverKey:string|null,selectedKeys:string[]};
+export type Card = {id:string,rev:number,kind:'metric'|'bar'|'table'|'line',title:string,value:string|null,unit:string,values:(number|null)[],labels:string[],keys:string[],threshold:number,headers:string[],rows:{key:string,cells:(string|null)[]}[],width:number,hoverKey:string|null,selectedKeys:string[],maxRows:number,scrollOffset:number};
 export type Theme = {surface:string,ink:string,muted:string,line:string,track:string,accent:string,bad:string,good:string,area:string,thresholdBand:string,font:string,padding:number,fontSize:number,rowHeight:number,radius:number};
 function render(cardsJson:string,themeJson:string,scale:number) {
   if (!Number.isFinite(scale) || scale <= 0) throw new Error('Invalid scale');
@@ -8,7 +8,8 @@ function render(cardsJson:string,themeJson:string,scale:number) {
   document.body.replaceChildren();
   let atlasY=0;
   return cards.map(c=>{
-    const h=c.kind==='metric'?92:c.kind==='line'?220:48+(c.kind==='bar'?c.values.length:c.rows.length+1)*t.rowHeight;
+    const visible=Math.min(c.rows.length,c.maxRows), maxOffset=Math.max(0,c.rows.length-visible), offset=Math.min(Math.max(c.scrollOffset,0),maxOffset);
+    const h=c.kind==='metric'?92:c.kind==='line'?220:48+(c.kind==='bar'?c.values.length:visible+1)*t.rowHeight;
     const el=document.createElement('div'); el.className='card'; el.dataset.id=c.id;
     Object.assign(el.style,{left:'0px',top:`${atlasY}px`,width:`${c.width}px`,height:`${h}px`,background:t.surface,borderRadius:`${t.radius}px`,fontFamily:t.font});
     document.body.append(el);
@@ -26,7 +27,9 @@ function render(cardsJson:string,themeJson:string,scale:number) {
     } else {
       const w=(c.width-2*t.padding)/c.headers.length;
       c.headers.forEach((s,j)=>text(s,t.padding+j*w+2,38,t.fontSize,t.muted,w-5));
-      c.rows.forEach((r,i)=>{const hit=row(r.key,i+1);box(hit.x,hit.y,hit.w,1,t.line);r.cells.forEach((s,j)=>text(s??'—',t.padding+j*w+2,hit.y+2,t.fontSize,t.ink,w-5));});
+      c.rows.slice(offset,offset+visible).forEach((r,i)=>{const hit=row(r.key,i+1);box(hit.x,hit.y,hit.w,1,t.line);r.cells.forEach((s,j)=>text(s??'—',t.padding+j*w+2,hit.y+2,t.fontSize,t.ink,w-5));});
+      if(maxOffset>0){const bw=6,tx=c.width-t.padding/2-bw/2,ty=36+t.rowHeight,th=visible*t.rowHeight,thumb=Math.max(16,th*visible/c.rows.length),top=ty+(th-thumb)*offset/maxOffset;
+        const bar=(y:number,hh:number,color:string)=>{box(tx,y,bw,hh,color);(el.lastChild as HTMLElement).style.borderRadius=`${bw/2}px`;};bar(ty,th,t.track);bar(top,thumb,t.muted);}
     }
     const layout={id:c.id,rev:c.rev,x:0,y:atlasY,w:c.width,h,hitRegions};atlasY+=h+8;return layout;
   });

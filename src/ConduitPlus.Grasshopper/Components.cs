@@ -86,15 +86,17 @@ public sealed class TableComponent : CardComponent
         p.AddTextParameter("Keys", "K", "Optional stable row keys; default branch paths", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Table title", GH_ParamAccess.item, "Structural results");
         p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var headers = new List<string>(); var keys = new List<string>(); string title = "Structural results";
         if (!da.GetDataList(0, headers) || !da.GetDataTree(1, out GH_Structure<GH_String> tree)) return;
         da.GetDataList(2, keys); da.GetData(3, ref title);
+        var visibleRows = TableScroll.DefaultVisibleRows; da.GetData(5, ref visibleRows);
         if (keys.Count != 0 && keys.Count != tree.PathCount) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Key count must match row count."); return; }
         var rows = tree.Branches.Select((branch, i) => new TableRow(keys.Count == 0 ? tree.Paths[i].ToString() : keys[i], branch.Select(v => v?.Value).ToArray())).ToArray();
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = rows, Width = 380, WiredSlot = ReadSlot(da, 4) }); }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = rows, Width = 380, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }

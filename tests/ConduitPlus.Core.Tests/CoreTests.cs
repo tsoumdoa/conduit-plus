@@ -98,6 +98,34 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void TableScrollClampsShowsVisibleRowsAndMapsThumb()
+    {
+        var table = StructuralDemo.Create().Single(c => c.Kind == CardKind.Table); // 12 rows, 8 visible by default
+        Assert.True(TableScroll.CanScroll(table));
+        Assert.Equal(4, TableScroll.MaxOffset(table));
+        Assert.Equal(48 + 9 * Theme.Paper.RowHeight, CardMeasure.Measure(table, Theme.Paper).Height);
+
+        var scrolled = table with { ScrollOffset = 3 };
+        var hits = CardMeasure.Hits(scrolled, Theme.Paper);
+        Assert.Equal(8, hits.Length);
+        Assert.Equal("M04", hits[0].Key);                                   // first on-screen row is data row 3
+        Assert.Equal(36 + Theme.Paper.RowHeight, hits[0].Y);                // ...drawn in the first row slot
+        Assert.Equal(4, TableScroll.Offset(table with { ScrollOffset = 99 })); // clamped
+        Assert.Equal(0, TableScroll.Offset(table with { ScrollOffset = -5 }));
+
+        var top = TableScroll.Bar(table, Theme.Paper)!.Value;
+        var bottom = TableScroll.Bar(table with { ScrollOffset = 4 }, Theme.Paper)!.Value;
+        Assert.Equal(top.Track.Y, top.Thumb.Y);
+        Assert.Equal(bottom.Track.Y + bottom.Track.Height, bottom.Thumb.Y + bottom.Thumb.Height, 6);
+        Assert.Equal(0, TableScroll.OffsetForThumbTop(table, Theme.Paper, top.Track.Y - 50));
+        Assert.Equal(4, TableScroll.OffsetForThumbTop(table, Theme.Paper, bottom.Thumb.Y + 50));
+
+        Assert.False(TableScroll.CanScroll(table with { MaxRows = 20 }));
+        Assert.Null(TableScroll.Bar(table with { MaxRows = 20 }, Theme.Paper));
+        Assert.Throws<ArgumentException>(() => (table with { MaxRows = 0 }).Validate());
+    }
+
+    [Fact]
     public void LineTicksCoverDomainWithNiceUniformSteps()
     {
         Assert.Equal(new[] { 0d, .5, 1, 1.5 }, ChartTicks.Nice(0, 1.12));

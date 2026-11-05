@@ -33,12 +33,13 @@ public static class CardMeasure
         CardKind.Metric => 92,
         CardKind.Line => 220,
         CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
-        _ => 48 + (c.Rows.Length + 1) * t.RowHeight
+        _ => 48 + (TableScroll.Visible(c) + 1) * t.RowHeight
     });
     public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Bar => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
-        CardKind.Table => c.Rows.Select((row, i) => new HitRegion(row.Key, t.Padding, 36 + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
+        CardKind.Table => c.Rows.Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, 36 + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
         _ => []
     };
@@ -109,11 +110,17 @@ public static class NativeCardPainter
         {
             var width = (c.Width - 2 * t.Padding) / c.Headers.Length;
             for (var col = 0; col < c.Headers.Length; col++) Cell(c.Headers[col], col, 36, t.Muted);
-            for (var row = 0; row < c.Rows.Length; row++)
+            var offset = TableScroll.Offset(c);
+            for (var row = 0; row < hits.Length; row++)
             {
                 var h = hits[row]; Highlight(canvas, c, t, h);
                 canvas.Line(new(h.X, h.Y), new(h.X + h.W, h.Y), t.Line);
-                for (var col = 0; col < c.Headers.Length; col++) Cell(c.Rows[row].Cells[col] ?? "—", col, h.Y, t.Ink);
+                for (var col = 0; col < c.Headers.Length; col++) Cell(c.Rows[offset + row].Cells[col] ?? "—", col, h.Y, t.Ink);
+            }
+            if (TableScroll.Bar(c, t) is { } bar)
+            {
+                canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
+                canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
             }
             void Cell(string text, int col, double y, string color)
             {
