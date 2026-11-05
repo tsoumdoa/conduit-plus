@@ -10,19 +10,21 @@ namespace ConduitPlus.Rhino;
 public sealed class ConduitPlusPdf : Command
 {
     public override string EnglishName => "ConduitPlusPdf";
+    protected override void OnHelp() => RhinoApp.WriteLine("Experimental vector PDF export; output and typography remain unverified.");
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
-        return CommandRunner.Run(() => RunAutomatedAsync(doc, view));
+        return CommandRunner.Run(() => RunAutomated(doc, view));
     }
-    public static async Task RunAutomatedAsync(RhinoDoc doc, RhinoView view)
+    public static void RunAutomated(RhinoDoc doc, RhinoView view)
     {
         UiContext.Ensure();
+        RhinoApp.WriteLine("ConduitPlusPdf is experimental: export and typography remain unverified.");
         var sessions = OverlayManager.InView(doc, view);
         if (sessions.Length == 0)
         {
-            await OverlayManager.SetAsync(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line()], RendererKind.Raster);
+            OverlayManager.Set(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line()]);
             sessions = OverlayManager.InView(doc, view);
         }
         var visible = sessions.Select(s => s.Visible).ToArray();
@@ -53,10 +55,10 @@ public sealed class ConduitPlusPdf : Command
                 {
                     var spec = session.Cards.Single(c => c.Id == layout.Id);
                     using var canvas = new PdfCanvas(pdf, page, layout.X * pointsPerCss, layout.Y * pointsPerCss, pointsPerCss);
-                    NativeCardPainter.Paint(canvas, spec, session.Theme);
+                    CardPainter.Paint(canvas, spec, session.Theme);
                 }
             }
-            var path = Path.Combine(SpikePaths.Captures, "overlay-vector.pdf");
+            var path = Path.Combine(OutputPaths.Captures, "overlay-vector.pdf");
             Console.WriteLine("PDF: writing page.");
             pdf.Write(path);
             RhinoApp.WriteLine($"Saved {path}");

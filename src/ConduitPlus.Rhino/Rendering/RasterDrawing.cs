@@ -18,7 +18,7 @@ public static class RasterDrawing
             graphics.Clear(Color.Transparent);
             graphics.ScaleTransform((float)scale, (float)scale);
             using var canvas = new GdiCanvas(graphics);
-            NativeCardPainter.Paint(canvas, spec, theme);
+            CardPainter.Paint(canvas, spec, theme);
             return bitmap;
         }
         catch { bitmap.Dispose(); throw; }

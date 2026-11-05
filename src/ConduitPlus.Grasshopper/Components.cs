@@ -11,7 +11,7 @@ namespace ConduitPlus.Grasshopper;
 public sealed class AssemblyInfo : GH_AssemblyInfo
 {
     public override string Name => "Conduit+";
-    public override string Description => "Structural HUD renderer feasibility spike";
+    public override string Description => "Viewport cards for structural results";
     public override Guid Id => new("b02874c1-57b6-43d2-871a-3cb89603f101");
     public override string AuthorName => "Tomo S";
     public override string AuthorContact => "";
@@ -105,8 +105,9 @@ public sealed class OverlayComponent : GH_Component
 {
     private readonly HashSet<string> _selection = new(StringComparer.Ordinal);
     private readonly Queue<string> _events = new();
-    private bool _publishing;
-    private (CardSpec[] Cards, RendererKind Renderer)? _pending;
+    private readonly object _publishLock = new();
+    private bool _publishScheduled;
+    private CardSpec[]? _pending;
     private bool _active;
     private Bitmap? _icon;
     public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display") { }
@@ -115,7 +116,6 @@ public sealed class OverlayComponent : GH_Component
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar or Table cards", GH_ParamAccess.list);
-        p.AddTextParameter("Renderer", "R", "Native|Raster|Web", GH_ParamAccess.item, "Native");
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -127,7 +127,7 @@ public sealed class OverlayComponent : GH_Component
         if (context is GH_DocumentContext.Close or GH_DocumentContext.Unloaded) Deactivate();
         else if (context == GH_DocumentContext.Loaded && !_active) { _active = true; OverlayManager.Interaction += OnInteraction; }
     }
-    private void Deactivate() { _active = false; _pending = null; OverlayManager.Interaction -= OnInteraction; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
+    private void Deactivate() { _active = false; lock (_publishLock) _pending = null; OverlayManager.Interaction -= OnInteraction; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
     private void OnInteraction(OverlayInteraction e)
     {
         if (!_active || e.Owner != InstanceGuid) return;
@@ -137,28 +137,40 @@ public sealed class OverlayComponent : GH_Component
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
-        var wrapped = new List<IGH_Goo>(); string renderer = "Native";
-        if (!da.GetDataList(0, wrapped)) { RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); return; }
-        da.GetData(1, ref renderer);
-        if (!Enum.TryParse<RendererKind>(renderer, true, out var kind) || !Enum.IsDefined(kind)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Renderer must be Native, Raster or Web."); return; }
+        var wrapped = new List<IGH_Goo>();
+        if (!da.GetDataList(0, wrapped)) { QueuePublish([]); return; }
         var cards = wrapped.Select(g => g.ScriptVariable()).OfType<CardSpec>().Select(c => c with { SelectedKeys = c.Keys.Concat(c.Rows.Select(r => r.Key)).Where(_selection.Contains).ToArray() }).ToArray();
         if (cards.Length != wrapped.Count) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Cards must come from Conduit+ card components."); return; }
         da.SetDataList(0, _selection.Order()); da.SetDataList(1, _events.ToArray());
-        _pending = (cards, kind);
-        RhinoApp.InvokeOnUiThread((Action)(() => { if (!_publishing && _active) { _publishing = true; OverlayManager.RunOnUi(PublishAsync); } }));
+        QueuePublish(cards);
     }
-    private async Task PublishAsync()
+    private void QueuePublish(CardSpec[] cards)
     {
+        lock (_publishLock)
+        {
+            _pending = cards;
+            if (_publishScheduled) return;
+            _publishScheduled = true;
+        }
+        RhinoApp.InvokeOnUiThread((Action)Publish);
+    }
+    private void Publish()
+    {
+        CardSpec[]? cards;
+        lock (_publishLock)
+        {
+            cards = _pending;
+            _pending = null;
+            _publishScheduled = false;
+        }
+        if (!_active || cards is null) return;
         try
         {
-            while (_pending is { } next && _active)
-            {
-                _pending = null;
-                var doc = RhinoDoc.ActiveDoc; var view = doc?.Views.ActiveView; if (doc is null || view is null) return;
-                await OverlayManager.SetAsync(doc, view, InstanceGuid, next.Cards, next.Renderer);
-            }
+            if (cards.Length == 0) { OverlayManager.Remove(InstanceGuid); return; }
+            var doc = RhinoDoc.ActiveDoc;
+            var view = doc?.Views.ActiveView;
+            if (doc is not null && view is not null) OverlayManager.Set(doc, view, InstanceGuid, cards);
         }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ Overlay: {e.Message}"); }
-        finally { _publishing = false; }
     }
 }

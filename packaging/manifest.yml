@@ -1,0 +1,15 @@
+name: conduit-plus
+version: 0.1.0
+authors:
+  - Tomo S
+license: MIT
+description: >
+  Viewport HUD cards for Rhino 8 and Grasshopper, with metrics, signed bars,
+  scrollable result tables and line charts rendered with GDI+.
+url: https://github.com/tsoumdoa/conduit-plus
+keywords:
+  - grasshopper
+  - viewport
+  - hud
+  - structural
+  - charts

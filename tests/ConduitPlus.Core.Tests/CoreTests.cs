@@ -49,14 +49,34 @@ public sealed class CoreTests
     public void PainterWritesTransparentSnapshotsAtThreeScales()
     {
         var output = Path.Combine(AppContext.BaseDirectory, "artifacts"); Directory.CreateDirectory(output);
-        foreach (var c in StructuralDemo.Create())
+        foreach (var c in StructuralDemo.Create().Append(StructuralDemo.Line()))
         foreach (var scale in new[] { 1d, 1.5, 2d })
         {
             var size = CardMeasure.Measure(c, Theme.Paper);
             using var bitmap = new Bitmap((int)(size.Width * scale), (int)(size.Height * scale), PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bitmap)) { g.Clear(Color.Transparent); g.ScaleTransform((float)scale, (float)scale); using var canvas = new GdiCanvas(g); NativeCardPainter.Paint(canvas, c, Theme.Paper); }
+            using (var g = Graphics.FromImage(bitmap)) { g.Clear(Color.Transparent); g.ScaleTransform((float)scale, (float)scale); using var canvas = new GdiCanvas(g); CardPainter.Paint(canvas, c, Theme.Paper); }
             bitmap.Save(Path.Combine(output, $"{c.Id}-{scale:0.0}x.png"), ImageFormat.Png);
             Assert.Equal(0, bitmap.GetPixel(0, 0).A); Assert.Equal(255, bitmap.GetPixel(bitmap.Width / 2, bitmap.Height - 5).A);
+        }
+    }
+
+    [Theory]
+    [InlineData(1d)]
+    [InlineData(2d)]
+    public void CardPainterRendersEveryCardKindThroughGdiCanvas(double scale)
+    {
+        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
+        Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Order());
+        foreach (var card in cards)
+        {
+            var size = CardMeasure.Measure(card, Theme.Paper);
+            using var bitmap = new Bitmap((int)(size.Width * scale), (int)(size.Height * scale), PixelFormat.Format32bppPArgb);
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.Clear(Color.Transparent);
+            graphics.ScaleTransform((float)scale, (float)scale);
+            using var canvas = new GdiCanvas(graphics);
+            CardPainter.Paint(canvas, card, Theme.Paper);
+            Assert.Equal(255, bitmap.GetPixel(bitmap.Width / 2, bitmap.Height - 5).A);
         }
     }
 

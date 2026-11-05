@@ -1,21 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms>
-    <TargetExt>.rhp</TargetExt><AssemblyName>ConduitPlus.Rhino</AssemblyName>
-    <WebView2LoaderPreference>None</WebView2LoaderPreference>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <TargetExt>.rhp</TargetExt>
+    <AssemblyName>ConduitPlus.Rhino</AssemblyName>
+    <AssemblyTitle>conduit-plus</AssemblyTitle>
+    <Description>Conduit+ viewport cards for Rhino and Grasshopper</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
-    <PackageReference Include="RhinoCommon" Version="8.21.25188.17001" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1938.49" ExcludeAssets="runtime;build;buildTransitive" GeneratePathProperty="true" />
-    <Reference Update="RhinoCommon;Microsoft.Web.WebView2.Core;Microsoft.Web.WebView2.Wpf;Microsoft.Web.WebView2.WinForms"><Private>false</Private></Reference>
-    
-    <EmbeddedResource Include="../ConduitPlus.Web/dist/cards.html" LogicalName="ConduitPlus.cards.html" />
+    <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
+    <Reference Update="RhinoCommon"><Private>false</Private></Reference>
   </ItemGroup>
-  <Target Name="RequireWebBundle" BeforeTargets="BeforeBuild" Condition="!Exists('../ConduitPlus.Web/dist/cards.html')">
-    <Error Text="Build the embedded runtime first: cd src/ConduitPlus.Web &amp;&amp; npm ci &amp;&amp; npm run build" />
-  </Target>
-  <Target Name="NoHostAssemblies" AfterTargets="ResolveReferences">
-    <ItemGroup><ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('Microsoft.Web.WebView2')) Or '%(Filename)' == 'RhinoCommon'" /></ItemGroup>
-  </Target>
 </Project>

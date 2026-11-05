@@ -1,154 +1,147 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+# Conduit+
 
-# conduit-plus
+Conduit+ displays result cards over Rhino viewports from Grasshopper: metrics,
+signed utilisation bars, scrollable tables and line charts. A shared C# painter
+draws each dirty card into a GDI+ bitmap; a DisplayConduit composites the cached
+cards. Clean cards reuse their textures. Updates, hover and scrolling run
+synchronously on Rhino's UI thread.
 
-Created in [T3 Code](https://t3.codes).
+This is the initial plugin skeleton, licensed under MIT. The paper theme and
+deterministic viewport slots are implemented; layout editing, geometry linking,
+persistence, undo and an Inspector are future work.
 
-Windows feasibility spike for a structural-results HUD in Rhino 8 and Grasshopper.
-Native, Raster (GDI+) and Web renderers consume the same card spec, paper theme,
-revision store and slot layout. Raster and Native share the C# card painter.
-See [the plan](docs/PLAN.md) and [measured results](docs/spike/results.md).
+## Requirements
 
-## Building & running the spike
+- Windows and Rhino **8.20+**, running **.NET 8** (use Rhino's `SetDotNetRuntime`
+  command if necessary). Grasshopper ships with Rhino.
+- Development: **.NET SDK 9 or 10** and the .NET 8 Windows Desktop runtime.
+  No JavaScript toolchain is needed.
+- Rhino is needed for interactive use, the RhinoCore benchmark and Yak packaging.
+  Building and unit testing use public RhinoCommon/Grasshopper NuGet packages
+  and do **not** require Rhino to be installed.
 
-Prerequisites: Windows, Rhino 8.20+, .NET 8 Desktop Runtime, .NET SDK 9/10,
-Node 22+, npm, and the installed Edge WebView2 runtime. Rhino 8's bundled
-WebView2 Core assembly must be **1.0.1938.49**. NuGet references RhinoCommon
-and Grasshopper **8.21.25188.17001** without shipping host assemblies.
-All plug-in projects target `net8.0-windows`; Core targets `net8.0`.
+## Build and test
 
-```powershell
-Set-Location src/ConduitPlus.Web
-npm ci
-npm run build
-Set-Location ../..
-dotnet build ConduitPlus.sln
-dotnet test ConduitPlus.sln --no-build
-```
-
-The HTML is embedded in the `.rhp` at build time. Run `npm run build` and
-rebuild the solution after changing TypeScript. No runtime server, CDN,
-downloaded font or network request is needed. The WebView uses only Core APIs,
-an HWND and Rhino's bundled native loader; there is no WebView WinForms/WPF control.
-
-To run directly from the checkout, start Rhino 8 and enter:
-
-```text
-_-RunPythonScript "<path-to-repo>\tools\run-spike.py"
-```
-
-That script loads/registers the Debug `.rhp` and runs the full benchmark. It
-does not exit Rhino unless `CONDUITPLUS_EXIT=1` is set in its launch environment.
-For an isolated automatic run from PowerShell:
+From the repository root in PowerShell:
 
 ```powershell
-$env:CONDUITPLUS_EXIT = '1'
-$env:CONDUITPLUS_LARGE_VIEW = '1' # optional 1900×1800 floating test viewport
-Start-Process 'C:\Program Files\Rhino 8\System\Rhino.exe' -WindowStyle Hidden -ArgumentList '/netcore-8 /nosplash /notemplate /runscript="_-RunPythonScript <path-to-repo>\tools\run-spike.py"'
+dotnet restore ConduitPlus.sln
+dotnet build ConduitPlus.sln -c Release --no-restore
+dotnet test ConduitPlus.sln -c Release --no-build
 ```
 
-`/netcore-8` explicitly selects .NET 8. This machine's Rhino 8.36 defaults to
-.NET 10; the target remains .NET 8. See McNeel's
-[runtime selection documentation](https://developer.rhino3d.com/guides/rhinocommon/moving-to-dotnet-core/).
-Hidden Rhino may suppress viewport redraws: the benchmark detects that and
-uses real ViewCapture draw callbacks for native paint timing, labeling redraw
-overhead as **not measured**. Run in a visible, maximized viewport to measure
-redraw overhead. CPU Redraw + message-pump timings are not orbit/GPU FPS.
+Warnings are errors through `Directory.Build.props`. Windows CI runs these checks
+on pushes to `main` and pull requests, with .NET 8 and 9 SDKs installed.
+The host API version is pinned centrally to Rhino 8.20; NuGet labels that API
+build `8.20.25147.11001-rc`.
 
-For Grasshopper, close Rhino, run `./tools/Install-Dev.ps1`, then load the printed
-`.rhp` path with Rhino's PlugInManager → Install before starting Grasshopper.
-The installer copies only our three assemblies into
-`%APPDATA%/Grasshopper/Libraries/ConduitPlusSpike`. It never copies RhinoCommon,
-Grasshopper or WebView2 assemblies. Remove that folder to uninstall the GH components.
-Under **Conduit+**, connect Metric/Bar/Table outputs to Overlay's Cards list;
-Renderer accepts `Native` (default), `Raster` or `Web`. Bar Keys and Table Keys are unique
-within each card; shared keys across cards refer to the same member. Selection
-outputs clicked keys; Events keeps the last 32 click events as JSON. Table Rows
-uses one branch per row. NaN in Bar Values is treated as a missing value.
+## Install
 
-Commands:
-
-- `ConduitPlusDemo`, choose `Renderer=Native`, `Raster` or `Web`, then Enter:
-  seven demo cards, including a Line chart of utilisation over load cases.
-- `ConduitPlusBench`: 60 updates and 60 single-card hover changes per renderer,
-  120 redraw calls, 10-card variant, direct and prepared captures at 1×/2×/4×.
-- `ConduitPlusCapture 2`: capture the current overlay as transparent PNG. Web
-  pre-renders at target scale; Raster synchronously regenerates textures in the
-  draw callback and restores screen-scale textures on the next screen draw.
-- `ConduitPlusPdf`: experimental vector export of the active view and cards.
-  Compiles, but safe-mode RhinoCore stalled loading Rhino's PDF writer; a normal
-  Rhino export and visual inspection are still required. No sample PDF is claimed.
-
-Results go to `docs/spike` when running from the checkout; installed copies
-default to `Documents/ConduitPlus/spike`. Set `CONDUITPLUS_RESULTS` to an absolute
-directory to override. PNGs are in `captures/`, raw timing samples are JSON,
-and the command's report is `results-rhino.md`.
-
-The Rhino-free WebView2 probe runs with:
+Build a local Yak package with an installed Rhino 8:
 
 ```powershell
-dotnet run --project tools/ConduitPlus.WebProbe -- docs/spike
+./tools/Pack-Yak.ps1
 ```
 
-It exercises off-screen, hidden and minimized HWNDs, 1×/1.5×/2×/4× device scales,
-50 measured full-batch updates and 50 single compact-bar hover changes, alpha
-readback, and browser kill/reinitialization/resync. It uses Rhino's exact Core
-assembly but never loads RhinoCommon. Its latency excludes DisplayBitmap/GPU upload.
-Tests write GDI snapshot PNGs under the test output's `artifacts/` folder and
-check Raster alpha at 1×/2×/4×, clipping and pure Line tick generation.
+This stages the three plugin assemblies, manifest, licence and available PNG
+icon in `artifacts/yak/`, then runs Yak's Windows package build. It never
+publishes a package. Install the resulting `.yak` by dropping it onto Rhino,
+then restart Rhino and open Grasshopper. When a release is published, it can
+also be installed through Rhino's `PackageManager` using `conduit-plus`.
 
-An additional real-Rhino in-process harness can reproduce timing measurements:
+For a developer installation, **close Rhino**, build, then run:
 
 ```powershell
-dotnet run --project tools/ConduitPlus.RhinoProbe --no-build
+./tools/Install-Dev.ps1 -Configuration Release
 ```
 
-It hosts Rhino 8 under .NET 8 with a hidden 1900×1800 floating view and
-`/safemode` to avoid third-party startup plug-ins. It invokes the same benchmark
-code against Rhino's real DisplayPipeline. This is **not** a normal interactive
-GPU/orbit benchmark. It skips repeated captures because safe-mode ViewCapture
-failed and left subsequent captures blank in this environment. Experimental
-single captures can be attempted in a fresh process with
-`-- --capture Raster 1 direct` (or `Native`/`Web`, scales `2`/`4`, `direct`/`prepared`).
-This pass's large 2×/4× targets did not invoke overlay callbacks. Smaller 2×
-targets and a single compact metric at 4× worked; full-scene high-resolution
-capture still needs normal Rhino verification. Safe-mode RhinoCore shutdown
-can stall after the workload and overlay/view cleanup have completed.
+The script copies `ConduitPlus.Rhino.rhp`, `ConduitPlus.Core.dll` and
+`ConduitPlus.Grasshopper.gha` into
+`%APPDATA%\Grasshopper\Libraries\ConduitPlus`, removes the previous developer
+installation folder if present and reports its removal. It skips installation
+while Rhino is running. Load the `.rhp` through `PlugInManager` → Install once,
+then start Grasshopper. Close Rhino before rebuilding or reinstalling.
 
-For bounded probe processes that handle that shutdown stall and keep this pass's
-evidence separate from the lead's earlier results:
+## Grasshopper components
+
+All components are in the **Conduit+** category. Connect one or more card outputs
+to **Overlay**.
+
+| Component | Inputs and behavior |
+|---|---|
+| Metric | Formatted value, title, unit and optional slot; missing values display an em dash. |
+| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. |
+| Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
+| Overlay | Cards input; Selection and Events outputs. Follows the active Rhino view on each solve. |
+
+Line charts are available through the Core card spec and demo; there is no
+separate Grasshopper Line component yet. Component and plugin GUIDs are stable.
+
+Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
+a stored manual slot, followed by automatic placement. Cards stack within slots;
+small viewports can overflow. Different Overlay components have separate owner
+sessions and do not currently reserve space around one another.
+
+## Commands
+
+| Command | Behavior |
+|---|---|
+| `ConduitPlusDemo` | Shows metrics, bars, a table and a line chart. |
+| `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
+| `ConduitPlusPdf` | **Experimental** vector PDF export; output, typography and export behavior remain unverified. |
+| `ConduitPlusBench` | Measures Raster metric-update and compact-bar hover latency, checks cache lifecycle and runs per-card raster benchmarks. |
+
+Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).
+Set `CONDUITPLUS_RESULTS` to override it. Benchmark results are not written to
+the repository by default.
+
+## Scrolling and interaction
+
+- Hover highlights keyed chart samples or table rows. Click toggles selection;
+  Overlay outputs selected keys and the last 32 click events as JSON.
+- Over a scrollable table, the mouse wheel moves three rows per notch and is
+  consumed before Rhino can zoom. Elsewhere, Rhino receives the wheel normally.
+- Drag the scrollbar thumb or click its track to page. Scroll and hover state
+  survive incoming Grasshopper solves; table offsets clamp as data changes.
+- Each document/view/owner session owns its cache. Following another view,
+  closing a view/document, removing an Overlay or shutting down the plugin
+  releases its conduit and textures.
+- DPI changes and capture scale changes regenerate textures synchronously. A
+  failed capture-scale render retains existing textures; the next screen draw
+  restores screen resolution. Full-scene 2×/4× captures and mixed-monitor
+  behavior still need normal Rhino validation.
+
+## RhinoCore benchmark
 
 ```powershell
-./tools/Run-RhinoProbe.ps1                         # three-way timings + 2x raster micro-benchmark
-./tools/Run-RhinoProbe.ps1 -Mode Line              # dirty-cache checks + Raster/Web Line snapshots
-./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 1
-./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 2 -Small
-./tools/Run-RhinoProbe.ps1 -Mode Capture -Renderer Raster -Scale 4 -Compact
-./tools/Run-RhinoProbe.ps1 -Mode Pdf -TimeoutSeconds 20  # currently stalls loading the PDF writer
-./tools/Measure-LineLoc.ps1
+./tools/bench/Run-Bench.ps1
+./tools/bench/Run-Bench.ps1 -Mode Capture -Scale 2
+./tools/bench/Run-Bench.ps1 -Mode Capture -Scale 4 -Compact
 ```
 
-The wrapper defaults to `docs/spike/raster-pass`; use `-Output` to change it.
-`-Small` uses a 1000×900 floating window (six cards can overflow). `-Compact`
-uses a 500×400 window and one 180×92 metric. These do not change the timing
-fixture. Its raw `--line` / `--pdf` modes are also available via `dotnet run`.
+The wrapper builds Release, launches a hidden RhinoCore safe-mode host and writes
+JSON samples, a text report and logs under `%TEMP%\ConduitPlus\bench-<timestamp>`.
+Use `-Output` to change the destination. Update and hover latency include revision
+work, GDI+ paint and display-texture creation; they exclude redraw, GPU completion
+and physical mouse latency. The per-card benchmark measures allocation and paint
+at 2×. These measurements do not establish interactive orbit performance.
 
-## Spike scope
+The wrapper bounds workload duration. If safe-mode RhinoCore shutdown stalls
+after successful workload and overlay/view cleanup, it stops only its own child
+process and reports that separately. `-Mode Pdf` is available for experimental
+export checks and may time out in this host.
 
-Metric, signed Bar, Table, Line (demo/Core spec), deterministic slots (`wired > manual > auto`), keyed
-hover/click selection, per-view lifecycle and captures are implemented. Slot
-overflow is currently allowed; maximize the viewport or use the large test view.
-No drag editor, Inspector, geometry Link/highlight, persistence, undo, Yak package
-or cross-platform renderer is included. Text uses Segoe UI system fonts. Native
-cell text truncates with an ellipsis; web cell text clips. Raster uses real GDI+
-rounded paths, clipping, antialiasing, ellipsis and polygon fills. Native uses
-horizontal strips for rounded corners and a degraded outline for Line area
-fills. The paper theme is fixed. Raster scale changes regenerate synchronously;
-mixed-monitor Web DPI resync still needs a new card update.
+## Layout
 
-Drawing callbacks never await; Raster can synchronously regenerate at a changed
-capture/DPI scale. WebView2 work is serialized
-on the UI thread, and bitmap/spec/hit-region revisions publish together.
-Document/view closure and plug-in shutdown disable conduits, mouse callbacks
-and close WebView2 controllers. A browser failure requests resync from the host
-snapshot; recovery in Rhino still needs the interactive gate check.
+- `src/ConduitPlus.Core`: card specs, store/revisions, layout, scrolling, ticks,
+  `ICanvas2D` and `CardPainter`.
+- `src/ConduitPlus.Rhino`: plugin, owner sessions, input/wheel hook, GDI canvas,
+  Raster cache, capture/PDF adapters and commands.
+- `src/ConduitPlus.Grasshopper`: card and Overlay components.
+- `tests/ConduitPlus.Core.Tests`: pure Core and Windows GDI alpha/clip/painter tests.
+- `tools/bench`: RhinoCore host and bounded benchmark entry point.
+- `packaging`: Yak manifest; `tools/Pack-Yak.ps1` builds the local package.
+
+The renderer feasibility history remains in `docs/spike/`; removed renderer code
+is recoverable at tag `spike-renderer-feasibility`. `docs/PLAN.md` and
+`docs/IDEAS.md` retain the original planning context.

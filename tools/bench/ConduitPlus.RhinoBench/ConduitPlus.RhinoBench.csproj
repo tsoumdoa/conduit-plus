@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <ItemGroup><PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../src/ConduitPlus.Rhino/ConduitPlus.Rhino.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
+</Project>
