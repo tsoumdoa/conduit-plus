@@ -7,6 +7,11 @@ namespace ConduitPlus.Rendering;
 
 public sealed class GdiCanvas : ICanvas2D, IDisposable
 {
+    public static void RegisterTextMetrics() => TextMetrics.Measurer = MeasureCssText;
+    // Wrapping measures many substrings; keep one measuring canvas (and its font cache) per thread.
+    [ThreadStatic] private static GdiCanvas? _measure;
+    private static Size2 MeasureCssText(string text, double size, string font)
+        => (_measure ??= new GdiCanvas(Graphics.FromImage(new Bitmap(1, 1)))).MeasureText(text, size, font);
     private readonly Graphics graphics;
     private readonly Dictionary<(string Font, double Size), Font> _fonts = [];
     private readonly Dictionary<string, SolidBrush> _brushes = [];
@@ -41,6 +46,12 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     }
     public void Rect(Rect2 r, string fill)
     { graphics.FillRectangle(BrushOf(fill), (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height); }
+    public void Gradient(Rect2 r, IReadOnlyList<string> colors)
+    {
+        using var brush = new LinearGradientBrush(new RectangleF((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height), C(colors[0]), C(colors[^1]), LinearGradientMode.Horizontal);
+        brush.InterpolationColors = new ColorBlend { Colors = colors.Select(C).ToArray(), Positions = Enumerable.Range(0, colors.Count).Select(i => (float)i / (colors.Count - 1)).ToArray() };
+        graphics.FillRectangle(brush, (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height);
+    }
     public void RoundedRect(Rect2 r, double radius, string fill)
     {
         if (radius <= 0) { Rect(r, fill); return; }

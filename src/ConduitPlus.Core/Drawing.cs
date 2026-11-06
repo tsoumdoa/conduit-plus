@@ -16,6 +16,8 @@ public interface ICanvas2D
 {
     Size2 MeasureText(string text, double size, string font);
     void Rect(Rect2 rect, string fill);
+    /// <summary>Horizontal linear gradient with evenly spaced color stops, left to right.</summary>
+    void Gradient(Rect2 rect, IReadOnlyList<string> colors);
     void RoundedRect(Rect2 rect, double radius, string fill);
     void Line(Point2 from, Point2 to, string color, double width = 1);
     void Text(string text, Point2 topLeft, double size, string color, string font);
@@ -32,6 +34,8 @@ public static class CardMeasure
     {
         CardKind.Metric => 92,
         CardKind.Line => 220,
+        CardKind.Text => TextMetrics.Layout(c, t).Height,
+        CardKind.Legend => c.Min.HasValue ? 112 : 48 + c.Colors.Length * t.RowHeight,
         CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
         _ => 48 + (TableScroll.Visible(c) + 1) * t.RowHeight
     });
@@ -42,6 +46,7 @@ public static class CardMeasure
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
         CardKind.Table => c.Rows.Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, 36 + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
+        CardKind.Legend when !c.Min.HasValue => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         _ => []
     };
 }

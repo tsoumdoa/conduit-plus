@@ -26,8 +26,12 @@ public static class LineCardPainter
     public static HitRegion[] Hits(CardSpec c)
     {
         var step = (c.Width - 64) / (c.Values.Length - 1);
-        return c.Keys.Select((key, i) => new HitRegion(key, Math.Max(44, 44 + (i - .5) * step), 44,
-            step * (i == 0 || i == c.Keys.Length - 1 ? .5 : 1), 140)).ToArray();
+        return c.Keys.Select((key, i) =>
+        {
+            var left = i == 0 ? 40 : 44 + (i - .5) * step;
+            var right = i == c.Keys.Length - 1 ? c.Width - 16 : 44 + (i + .5) * step;
+            return new HitRegion(key, left, 40, right - left, 148);
+        }).ToArray();
     }
 
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
@@ -36,7 +40,7 @@ public static class LineCardPainter
         var lo = ticks[0]; var hi = ticks[^1]; var right = c.Width - 20;
         double Y(double v) => 184 - (v - lo) / (hi - lo) * 140;
         double X(int i) => 44 + i * (right - 44) / (c.Values.Length - 1);
-        canvas.Rect(new(44, 44, right - 44, Y(c.Threshold) - 44), t.ThresholdBand);
+        if (c.Threshold > 0) canvas.Rect(new(44, 44, right - 44, Y(c.Threshold) - 44), t.ThresholdBand);
         foreach (var tick in ticks)
         {
             canvas.Line(new(44, Y(tick)), new(right, Y(tick)), t.Line);
@@ -58,7 +62,7 @@ public static class LineCardPainter
             canvas.Polyline(segment, t.Accent, 2);
             foreach (var p in segment) canvas.Rect(new(p.X - 2, p.Y - 2, 4, 4), t.Accent);
         }
-        canvas.Line(new(44, Y(c.Threshold)), new(right, Y(c.Threshold)), t.Bad);
+        if (c.Threshold > 0) canvas.Line(new(44, Y(c.Threshold)), new(right, Y(c.Threshold)), t.Bad);
         for (var i = 0; i < c.Values.Length; i++)
         {
             if (i == 0 || i == c.Values.Length - 1 || i % Math.Max(1, (int)Math.Ceiling(c.Values.Length / 4d)) == 0)

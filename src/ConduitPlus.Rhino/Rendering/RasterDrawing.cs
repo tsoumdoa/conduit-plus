@@ -7,6 +7,7 @@ namespace ConduitPlus.Rendering;
 /// <summary>Rhino-free rasterization. All GDI+ objects are local to the calling thread.</summary>
 public static class RasterDrawing
 {
+    static RasterDrawing() => GdiCanvas.RegisterTextMetrics();
     public static Bitmap Render(CardSpec spec, Theme theme, double scale)
     {
         if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
