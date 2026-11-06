@@ -46,7 +46,7 @@ public sealed record CardSpec
     }
 }
 
-/// <summary>Scroll geometry for Table cards, shared by every renderer and by hit testing.</summary>
+/// <summary>Scroll geometry for Table cards, shared by painting and hit testing.</summary>
 public static class TableScroll
 {
     public const int DefaultVisibleRows = 8;

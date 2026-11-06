@@ -40,6 +40,7 @@ A modern successor to Proving Ground's Conduit (MIT, Dave Stasiuk; ~8.8k LOC C#,
 **Totals:** pilot ~6 wk · interactive Windows v1 ~4–5 months · full Windows scope ~6–8 months · macOS +1.5–2.5 months.
 
 ## Decisions (2026-11-05)
+- **Decision: Raster renderer.**
 - **Renderer:** build both web and native in the spike and pick from measurements.
 - **Platform:** Windows-only for the pilot and v1 (Rhino 8.20+; dev machine has Rhino 8.36).
 - **ViewCapture:** wanted in the pilot if feasible, so it's part of the gate.

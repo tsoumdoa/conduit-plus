@@ -1,3 +1,5 @@
+> **Historical record:** After this decision, the Web and Native renderer code was removed. It remains recoverable at tag `spike-renderer-feasibility`.
+
 # Renderer feasibility spike results
 
 Updated **2026-11-05**, Windows / Rhino 8. Three renderers compared: Native

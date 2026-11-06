@@ -4,7 +4,7 @@ namespace ConduitPlus.Core;
 
 public static class ChartTicks
 {
-    // The same 1/2/5 decade algorithm is used by the offline web runtime.
+    // Use 1/2/5 decade steps for readable, evenly spaced axis ticks.
     public static double[] Nice(double minimum, double maximum, int intervals = 4)
     {
         if (!double.IsFinite(minimum) || !double.IsFinite(maximum) || minimum > maximum || intervals is < 1 or > 20)
