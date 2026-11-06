@@ -1,6 +1,7 @@
 using ConduitPlus.Core;
 using Rhino;
 using Rhino.Display;
+using Rhino.Commands;
 using Rhino.UI;
 using System.Runtime.InteropServices;
 
@@ -11,12 +12,39 @@ public static partial class OverlayManager
     private sealed class OverlayMouse : MouseCallback
     {
         private bool _pressed;
+        public bool Pressed => _pressed;
+        private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 34 };
+        private (RhinoView View, System.Drawing.Point Point)? _pending;
+        private long _lastPick;
         // Active scrollbar-thumb drag: session, card, and where on the thumb it was grabbed (card-local CSS px).
         private (OverlaySession Session, string CardId, double Grab)? _drag;
-        private static OverlaySession[] InView(RhinoView view) => Sessions.Values.Where(s => s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
+        public OverlayMouse() => _hoverTimer.Tick += (_, _) => FlushHover();
+        public void Reset() { _hoverTimer.Stop(); _pending = null; _drag = null; _pressed = false; }
+        public void Forget(OverlaySession session)
+        {
+            _hoverTimer.Stop(); _pending = null;
+            if (_drag is { } drag && drag.Session == session) _drag = null;
+        }
+        private static OverlaySession[] InView(RhinoView view) => Sessions.Values.Where(s => s.Visible &&
+            s.Document.RuntimeSerialNumber == view.Document.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
+        private void FlushHover()
+        {
+            _hoverTimer.Stop();
+            var pending = _pending; _pending = null;
+            if (pending is not { } p) return;
+            _lastPick = System.Diagnostics.Stopwatch.GetTimestamp();
+            var sessions = InView(p.View);
+            var hit = !Busy && !Command.InCommand() && !sessions.Any(s => s.Hit(p.Point.X, p.Point.Y) is not null)
+                ? ModelPicking.Pick(p.View, sessions, p.Point) : null;
+            foreach (var session in Sessions.Values.ToArray())
+            {
+                if (hit is { } picked && session == picked.Session) Hover(session, picked.Hit.Key, true);
+                else ClearHover(session, true);
+            }
+        }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
-            if (Busy) return;
+            if (Busy) { _hoverTimer.Stop(); _pending = null; return; }
             if (_drag is { } drag)
             {
                 e.Cancel = true;
@@ -25,11 +53,23 @@ public static partial class OverlayManager
                     drag.Session.ScrollTo(drag.CardId, TableScroll.OffsetForThumbTop(card, drag.Session.Theme, p.Y - drag.Grab));
                 return;
             }
-            foreach (var s in InView(e.View))
+            var sessions = InView(e.View);
+            var overCard = sessions.Any(s => s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) is not null);
+            foreach (var s in Sessions.Values.ToArray())
             {
-                var hit = s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y);
-                s.SetHover(hit?.CardId, hit?.Key);
+                var hit = sessions.Contains(s) ? s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) : null;
+                if (hit is { } card) s.SetHover(card.CardId, card.Key);
+                else ClearHover(s, false);
             }
+            if (overCard || Command.InCommand())
+            {
+                _hoverTimer.Stop(); _pending = null;
+                foreach (var s in Sessions.Values.ToArray()) ClearHover(s, true);
+                return;
+            }
+            _pending = (e.View, e.ViewportPoint);
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(_lastPick).TotalMilliseconds >= 34) FlushHover();
+            else if (!_hoverTimer.Enabled) _hoverTimer.Start(); // keep the final cursor position even if movement stops
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
@@ -39,6 +79,7 @@ public static partial class OverlayManager
                 var hit = s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y);
                 if (hit is null) continue;
                 e.Cancel = true; _pressed = true;
+                _hoverTimer.Stop(); _pending = null;
                 if (hit.Value.Key == OverlaySession.ScrollbarKey)
                 {
                     var card = s.Card(hit.Value.CardId); var local = s.Local(hit.Value.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
@@ -55,9 +96,21 @@ public static partial class OverlayManager
                 }
                 return;
             }
+            if (Command.InCommand()) return;
+            // Clicks always re-pick; the throttled hover may still describe a previous cursor position.
+            if (ModelPicking.Pick(e.View, InView(e.View), e.ViewportPoint) is not { } picked) return;
+            e.Cancel = true; _pressed = true;
+            _hoverTimer.Stop(); _pending = null;
+            foreach (var s in Sessions.Values.ToArray())
+                if (s == picked.Session) Hover(s, picked.Hit.Key, true); else ClearHover(s, true);
+            picked.Session.Select("model", picked.Hit.Key);
         }
         protected override void OnMouseUp(MouseCallbackEventArgs e)
-        { _drag = null; if (_pressed) { e.Cancel = true; _pressed = false; } }
+        {
+            if (e.Button != System.Windows.Forms.MouseButtons.Left) return;
+            _drag = null; if (_pressed) { e.Cancel = true; _pressed = false; }
+            Enabled = Sessions.Count > 0;
+        }
     }
 
     /// <summary>
@@ -102,6 +155,7 @@ public static partial class OverlayManager
         {
             foreach (var s in Sessions.Values.ToArray())
             {
+                if (!s.Visible) continue;
                 if (!s.View.ScreenRectangle.Contains(screen)) continue;
                 var client = s.View.ScreenToClient(screen);
                 if (s.Hit(client.X, client.Y) is not { } hit || s.Card(hit.CardId) is not { } card || !TableScroll.CanScroll(card)) continue;

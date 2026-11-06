@@ -23,6 +23,7 @@ public sealed class ConduitPlusBench : Command
         Directory.CreateDirectory(OutputPaths.Root);
         RasterCacheChecks.Run(doc, view);
         RasterBenchmark.Run(OutputPaths.Root);
+        var picking = PickBenchmark.Run(doc, view);
         // Use a separate owner so benchmarking never overwrites a live overlay's data or view state.
         var owner = Guid.NewGuid();
         var session = OverlayManager.Get(doc, view, owner);
@@ -69,6 +70,7 @@ public sealed class ConduitPlusBench : Command
             File.WriteAllText(Path.Combine(OutputPaths.Root, "results-rhino.md"),
                 $"# Raster benchmark\n\nMeasured {DateTimeOffset.Now:O}; Rhino {RhinoApp.Version}; .NET {Environment.Version}.\n\n" +
                 $"60 samples after 5 warmups; nearest-rank p50 / p95 milliseconds.\n\nMetric update: {Stats(updates)} ms.\n\nCompact bar hover: {Stats(hovers)} ms.\n\n" +
+                picking + "\n" +
                 "Includes spec/revision work, GDI+ paint and DisplayBitmap creation; excludes redraw, GPU completion and physical input latency.\n" +
                 "Per-card allocation/paint samples (200 after 20 warmups at 2x) are in samples-raster-micro.json. Cache lifecycle checks are in raster-cache-check.json.\n" +
                 "This harness does not measure interactive orbit performance, multi-view overhead, focus, mixed monitors or full-scene high-resolution capture.\n");

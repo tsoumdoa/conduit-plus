@@ -15,6 +15,7 @@ public static partial class OverlayManager
         public uint DocumentSerial { get; } = document;
         public Guid? ViewId { get; set; } = view;
         public BrushState Brush { get; } = new();
+        public bool ModelHover { get; set; }
     }
     private static readonly object StateLock = new();
     private static readonly Dictionary<(uint Doc, Guid Owner), OwnerState> States = [];
@@ -30,10 +31,11 @@ public static partial class OverlayManager
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
         WheelHook.Install();
-        Mouse.Enabled = Sessions.Count > 0;
+        Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
     internal static void Stop()
     {
+        Mouse.Reset();
         Mouse.Enabled = false;
         _started = false;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
@@ -43,8 +45,11 @@ public static partial class OverlayManager
     }
     private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match)
     {
-        foreach (var key in Sessions.Keys.Where(match).ToArray()) { Sessions[key].Dispose(); Sessions.Remove(key); }
-        Mouse.Enabled = Sessions.Count > 0;
+        foreach (var key in Sessions.Keys.Where(match).ToArray())
+        {
+            Mouse.Forget(Sessions[key]); Sessions[key].Dispose(); Sessions.Remove(key);
+        }
+        Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
     private static void CloseDocument(object? sender, DocumentEventArgs e)
     {
@@ -69,7 +74,7 @@ public static partial class OverlayManager
         Start();
         var key = (doc.RuntimeSerialNumber, view.MainViewport.Id, owner ?? Guid.Empty);
         if (!Sessions.TryGetValue(key, out var s)) Sessions.Add(key, s = new OverlaySession(doc, view, key.Item3));
-        Mouse.Enabled = Sessions.Count > 0;
+        Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
     public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null)
@@ -109,7 +114,13 @@ public static partial class OverlayManager
     }
     internal static BrushSnapshot Snapshot(OverlaySession session)
     { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Snapshot : new([], null); }
-    internal static void Hover(OverlaySession session, string? key) => Change(session, b => b.Hover(key));
+    internal static void Hover(OverlaySession session, string? key, bool model = false) => Change(session, b =>
+    {
+        States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover = model;
+        return b.Hover(key);
+    });
+    internal static void ClearHover(OverlaySession session, bool model) => Change(session, b =>
+        States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover == model && b.Hover(null));
     internal static void Select(OverlaySession session, string card, string key)
     {
         var clear = key == CardMeasure.ClearKey;
