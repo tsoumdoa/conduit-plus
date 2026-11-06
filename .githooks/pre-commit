@@ -1,0 +1,31 @@
+#!/bin/sh
+# Conduit+ pre-commit hook: local replacement for cloud CI.
+# Builds the solution and runs the tests when a commit touches code; docs-only commits skip it.
+# Enable once per clone:  git config core.hooksPath .githooks
+# Force a run without code changes:  CONDUITPLUS_HOOK_FORCE=1 git commit ...
+# Note: it builds the working tree, so unstaged edits are included in what gets checked.
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+if [ -z "$CONDUITPLUS_HOOK_FORCE" ] && ! printf '%s\n' "$staged" | grep -qE '\.(cs|csproj|props|targets|sln|resx)$'; then
+  echo "pre-commit: no code changes, skipping build + test."
+  exit 0
+fi
+
+if ! command -v dotnet >/dev/null 2>&1; then
+  echo "pre-commit: dotnet not found on PATH." >&2
+  exit 1
+fi
+
+root=$(git rev-parse --show-toplevel)
+start=$(date +%s)
+echo "pre-commit: dotnet build ..."
+if ! dotnet build "$root/ConduitPlus.sln" -c Debug -v q -nologo; then
+  echo "pre-commit: build failed (warnings are errors). Commit aborted." >&2
+  exit 1
+fi
+echo "pre-commit: dotnet test ..."
+if ! dotnet test "$root/ConduitPlus.sln" -c Debug --no-build -v q -nologo; then
+  echo "pre-commit: tests failed. Commit aborted." >&2
+  exit 1
+fi
+echo "pre-commit: build + tests passed in $(( $(date +%s) - start ))s."
