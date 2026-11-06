@@ -48,7 +48,8 @@ public sealed class ConduitPlusDemo : Command
                 members.Add(($"M{i + 16:00}", new Line(new Point3d(x, 0, 0), new Point3d(x + 5, 0, 5))));
             }
             var link = new Link(members.Select(m => m.Key), members) { ShowBase = true };
-            OverlayManager.Set(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras()], [link]);
+            CardSpec[] cards = [.. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras()];
+            OverlayManager.Set(doc, view, Guid.Empty, cards.Select((c, i) => i == 0 ? c : c with { WiredSlot = null }), [link]);
         });
     }
 }
