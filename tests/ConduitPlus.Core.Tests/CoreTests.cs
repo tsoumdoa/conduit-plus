@@ -161,4 +161,87 @@ public sealed class CoreTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ChartTicks.Nice(double.NaN, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => ChartTicks.Nice(2, 1));
     }
+
+    [Fact]
+    public void BrushingProjectsAcrossCardsAndSnapshotsCannotMutateState()
+    {
+        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).ToArray();
+        var brush = new BrushState(); brush.Prune(cards, ["link-only"]);
+        Assert.True(brush.Toggle("M04")); Assert.True(brush.Hover("M04"));
+        var projected = brush.Project(cards);
+        foreach (var c in projected.Where(c => c.Kind is CardKind.Bar or CardKind.Table))
+        { Assert.Equal(new[] { "M04" }, c.SelectedKeys); Assert.Equal("M04", c.HoverKey); }
+        Assert.Null(projected.Single(c => c.Kind == CardKind.Line).HoverKey);
+        Assert.Empty(projected[0].SelectedKeys);
+        Assert.Empty(cards[4].SelectedKeys); Assert.Null(cards[4].HoverKey);
+        brush.Snapshot.SelectedKeys[0] = "mutated";
+        Assert.Equal(new[] { "M04" }, brush.Snapshot.SelectedKeys);
+        Assert.True(brush.Toggle("M04")); Assert.Empty(brush.Snapshot.SelectedKeys);
+        Assert.False(brush.Toggle("m04")); // ordinal, case-sensitive
+        Assert.False(brush.Hover("M04")); // unchanged hover
+    }
+
+    [Fact]
+    public void PruningUsesUnionOfAllCardAndLinkKeysAndClearIsOwnerWide()
+    {
+        var cards = StructuralDemo.Create(); var brush = new BrushState();
+        brush.Prune(cards, ["link-only", "M01"]);
+        brush.Toggle("M01"); brush.Toggle("M20"); brush.Toggle("link-only"); brush.Hover("M20");
+        var table = cards.Single(c => c.Kind == CardKind.Table);
+        brush.Prune([table], ["link-only", "M01"]);
+        Assert.Equal(new[] { "M01", "link-only" }, brush.Snapshot.SelectedKeys); Assert.Null(brush.Snapshot.HoverKey);
+        brush.Hover("link-only");
+        brush.Prune([], ["link-only"]);
+        Assert.Equal(new[] { "link-only" }, brush.Snapshot.SelectedKeys); Assert.Equal("link-only", brush.Snapshot.HoverKey);
+        brush.Prune([table], []);
+        Assert.Empty(brush.Snapshot.SelectedKeys); Assert.Null(brush.Snapshot.HoverKey);
+        Assert.False(brush.Clear()); brush.Toggle("M01"); Assert.True(brush.Clear());
+        Assert.All(brush.Project(cards), c => Assert.Empty(c.SelectedKeys));
+    }
+
+    [Fact]
+    public void ClearHitsOnlyKeyedCardsWithOwnerSelectionAndAvoidsScrollAndData()
+    {
+        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).ToArray();
+        var brush = new BrushState(); brush.Prune(cards, ["link-only"]);
+        Assert.All(cards, c => Assert.DoesNotContain(CardMeasure.Hits(c, Theme.Paper), h => h.Key == CardMeasure.ClearKey));
+        brush.Toggle("link-only"); // even cards without a locally selected key can clear the owner
+        foreach (var c in brush.Project(cards))
+        {
+            var hits = CardMeasure.Hits(c, Theme.Paper);
+            if (!BrushState.Keys(c).Any()) { Assert.DoesNotContain(hits, h => h.Key == CardMeasure.ClearKey); continue; }
+            var clear = Assert.Single(hits, h => h.Key == CardMeasure.ClearKey);
+            Assert.True(clear.Contains(clear.X + clear.W / 2, clear.Y + clear.H / 2));
+            Assert.True(clear.X >= c.Width / 2); Assert.True(clear.X + clear.W <= c.Width);
+            Assert.All(CardMeasure.DataHits(c, Theme.Paper), h => Assert.True(clear.Y + clear.H <= h.Y));
+            if (TableScroll.Bar(c, Theme.Paper) is { } bar) Assert.True(clear.Y + clear.H <= bar.Track.Y);
+            // A selected table/bar must still paint after adding the extra control hit.
+            using var bitmap = RasterDrawing.Render(c, Theme.Paper, 1);
+            Assert.True(bitmap.Width > 0);
+        }
+        brush.Clear(); Assert.All(brush.Project(cards), c => Assert.Null(CardMeasure.Clear(c, Theme.Paper)));
+    }
+
+    [Fact]
+    public void LinkMappingPrefersBranchesIncludingEmptyBranchesAndRepeatedKeys()
+    {
+        var mapping = LinkKeyMapping.Create([0, 2], ["same", "same"]); // branch count and item count both 2
+        Assert.Empty(mapping[0]); Assert.Equal(new[] { 1, 1 }, mapping[1]);
+        mapping = LinkKeyMapping.Create([2, 0, 1], ["a", "b", "c"]);
+        Assert.Equal(new[] { 0, 0 }, mapping[0]); Assert.Empty(mapping[1]); Assert.Equal(new[] { 2 }, mapping[2]);
+        mapping = LinkKeyMapping.Create([2, 0, 2], ["a", "b", "a", "A"]);
+        Assert.Equal(new[] { 0, 1 }, mapping[0]); Assert.Empty(mapping[1]); Assert.Equal(new[] { 2, 3 }, mapping[2]);
+        Assert.Empty(LinkKeyMapping.Create([], []));
+        Assert.Empty(Assert.Single(LinkKeyMapping.Create([0], ["empty-branch"])));
+    }
+
+    [Fact]
+    public void LinkMappingReportsInvalidKeyIndexAndMismatchedCounts()
+    {
+        var error = Assert.Throws<ArgumentException>(() => LinkKeyMapping.Create([2], ["a", " "]));
+        Assert.Contains("Keys[1]", error.Message);
+        error = Assert.Throws<ArgumentException>(() => LinkKeyMapping.Create([2, 3], ["a"]));
+        Assert.Contains("2 branches", error.Message); Assert.Contains("5 items", error.Message);
+        Assert.Throws<ArgumentException>(() => LinkKeyMapping.Create([-1], ["a"]));
+    }
 }

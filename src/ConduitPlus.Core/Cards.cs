@@ -26,6 +26,7 @@ public sealed record CardSpec
     public double Width { get; init; } = 280;
     public string? HoverKey { get; init; }
     public string[] SelectedKeys { get; init; } = [];
+    public bool OwnerHasSelection { get; init; }
     /// <summary>Table only: rows shown at once; more rows scroll.</summary>
     public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
     /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
@@ -40,7 +41,7 @@ public sealed record CardSpec
         if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
         if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
-        if (keys.Any(string.IsNullOrWhiteSpace) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty and unique within a card.");
+        if (keys.Any(k => string.IsNullOrWhiteSpace(k) || k == CardMeasure.ClearKey) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
         if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }

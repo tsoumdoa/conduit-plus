@@ -9,7 +9,14 @@ public static class CardPainter
         var size = CardMeasure.Measure(c, t);
         using var clip = canvas.Clip(new(0, 0, size.Width, size.Height));
         canvas.RoundedRect(new(0, 0, size.Width, size.Height), t.Radius, t.Surface);
-        canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
+        var clear = CardMeasure.Clear(c, t);
+        using (canvas.Clip(new(t.Padding, 7, (clear?.X ?? (c.Width - t.Padding)) - t.Padding - 4, 24)))
+            canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
+        if (clear is not null)
+        {
+            canvas.RoundedRect(new(clear.X, clear.Y, clear.W, clear.H), 3, t.Track);
+            canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Accent, t.Font);
+        }
         if (c.Kind == CardKind.Line) { LineCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Metric)
         {
@@ -19,7 +26,7 @@ public static class CardPainter
             canvas.Text(c.Unit, new(Math.Min(c.Width - 45, t.Padding + measured.Width + 8), 51), t.FontSize, t.Muted, t.Font);
             return;
         }
-        var hits = CardMeasure.Hits(c, t);
+        var hits = CardMeasure.DataHits(c, t);
         var max = Math.Max(c.Threshold, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max());
         if (c.Kind == CardKind.Bar)
         {
