@@ -29,9 +29,11 @@ internal sealed partial class OverlaySession : IDisposable
     private BrushSnapshot _brush = new([], null);
     /// <summary>Per-card scroll position. View state, so it is re-applied to every incoming spec (GH solves send 0).</summary>
     private readonly Dictionary<string, int> _scroll = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (int? Column, bool Descending)> _sort = new(StringComparer.Ordinal);
+    private (string Card, string Key)? _headerHover;
     internal const string ScrollbarKey = "\u0001scrollbar";
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
-    { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; }
+    { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
 
     public void Update(CardSpec[] specs, bool preserveGesture = false)
     {
@@ -46,15 +48,36 @@ internal sealed partial class OverlaySession : IDisposable
         Cards = next;
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
+        foreach (var id in _sort.Keys.Where(id => !live.Contains(id)).ToArray()) _sort.Remove(id);
+        SyncTooltip();
     }
 
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
     {
         if (c.Kind == CardKind.Table && _scroll.TryGetValue(c.Id, out var offset)) c = c with { ScrollOffset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c)) };
+        if (_sort.TryGetValue(c.Id, out var sort))
+        {
+            if (c.Kind != CardKind.Table || sort.Column is { } col && (col < 0 || col >= c.Headers.Length))
+            { _sort.Remove(c.Id); c = c with { SortColumn = null, SortDescending = false }; }
+            else c = c with { SortColumn = sort.Column, SortDescending = sort.Descending };
+        }
+        if (_headerHover is { } header && header.Card == c.Id)
+        {
+            if (c.Kind == CardKind.Table && TableSort.Column(header.Key) is { } col && col < c.Headers.Length) c = c with { HoverKey = header.Key };
+            else _headerHover = null;
+        }
         return c;
     }).ToArray();
 
     public CardSpec? Card(string id) => Cards.FirstOrDefault(c => c.Id == id);
+    internal void Sort(string id, int column)
+    {
+        if (Card(id) is not { Kind: CardKind.Table } c || column < 0 || column >= c.Headers.Length) return;
+        var next = TableSort.Cycle(c, column);
+        _sort[id] = (next.SortColumn, next.SortDescending);
+        HideTooltip();
+        UpdateInteraction(Cards);
+    }
 
     /// <summary>Viewport client pixels → card-local CSS pixels for the card's current layout.</summary>
     public Point2? Local(string cardId, double x, double y)
@@ -96,7 +119,18 @@ internal sealed partial class OverlaySession : IDisposable
     }
     public void SetHover(string? card, string? key)
     {
-        OverlayManager.Hover(this, key is ScrollbarKey or CardMeasure.ClearKey or "" ? null : key);
+        _cardHover = card is not null && !string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key) ? (card, key) : null;
+        var header = card is not null && key is not null && TableSort.Column(key).HasValue ? (card, key) : ((string, string)?)null;
+        var changed = _headerHover != header; _headerHover = header;
+        OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key);
+        if (changed) UpdateInteraction(Cards);
+        SyncTooltip();
+    }
+    internal void ClearCardHover()
+    {
+        _cardHover = null;
+        if (_headerHover is null) return;
+        _headerHover = null; UpdateInteraction(Cards);
     }
     public void Select(string card, string key) => OverlayManager.Select(this, card, key);
     internal void RefreshInteraction() => UpdateInteraction(Cards);
@@ -115,7 +149,7 @@ internal sealed partial class OverlaySession : IDisposable
         try { Update(cards, true); View.Redraw(); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
-    private void Draw(DrawEventArgs e)
+    internal void Draw(DrawEventArgs e)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
         DrawHighlights(e.Display);
@@ -176,11 +210,12 @@ internal sealed partial class OverlaySession : IDisposable
         if (_disposed) return;
         _disposed = true; _conduit.Enabled = false;
         EndLayoutDrag();
+        HideTooltip(); _tooltipTimer.Dispose();
         _raster.Dispose();
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit
     {
-        protected override void DrawForeground(DrawEventArgs e) => session.Draw(e);
+        protected override void DrawForeground(DrawEventArgs e) => OverlayManager.DrawForeground(session, e);
         protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
         {
             if (!session._disposed && e.RhinoDoc.RuntimeSerialNumber == session.Document.RuntimeSerialNumber && e.Viewport.Id == session.View.MainViewport.Id && session._linkBounds.IsValid)

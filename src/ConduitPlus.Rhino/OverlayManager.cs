@@ -35,6 +35,7 @@ public static partial class OverlayManager
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
+        global::Rhino.Commands.Command.BeginCommand += CommandStarted;
         WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
@@ -44,9 +45,14 @@ public static partial class OverlayManager
         Mouse.Enabled = false;
         _started = false;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
+        global::Rhino.Commands.Command.BeginCommand -= CommandStarted;
         WheelHook.Uninstall();
         foreach (var s in Sessions.Values) s.Dispose(); Sessions.Clear();
         lock (StateLock) { States.Clear(); Bindings.Clear(); }
+    }
+    private static void CommandStarted(object? sender, global::Rhino.Commands.CommandEventArgs e)
+    {
+        foreach (var session in Sessions.Values.ToArray()) session.HideTooltip();
     }
     private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match)
     {
@@ -147,16 +153,27 @@ public static partial class OverlayManager
     }
     internal static BrushSnapshot Snapshot(OverlaySession session)
     { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Snapshot : new([], null); }
-    internal static void Hover(OverlaySession session, string? key, bool model = false) => Change(session, b =>
+    internal static bool ModelHover(OverlaySession session)
+    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) && state.ModelHover; }
+    internal static bool TooltipBlocked => Busy || Mouse.Interacting;
+    internal static void Hover(OverlaySession session, string? key, bool model = false)
     {
-        States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover = model;
-        return b.Hover(key);
-    });
-    internal static void ClearHover(OverlaySession session, bool model) => Change(session, b =>
-        States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover == model && b.Hover(null));
+        Change(session, b =>
+        {
+            States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover = model;
+            return b.Hover(key);
+        });
+        session.SyncTooltip();
+    }
+    internal static void ClearHover(OverlaySession session, bool model)
+    {
+        Change(session, b => States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover == model && b.Hover(null));
+        session.SyncTooltip();
+    }
     internal static void Select(OverlaySession session, string card, string key)
     {
         var clear = key == CardMeasure.ClearKey;
+        if (!clear && CardMeasure.IsReserved(key)) return;
         if (Change(session, b => clear ? b.Clear() : b.Toggle(key)))
             Interaction?.Invoke(new(session.Owner, card, key, clear ? "clear" : "click"));
     }
@@ -169,5 +186,18 @@ public static partial class OverlayManager
         return true;
     }
     internal static OverlaySession[] InView(RhinoDoc doc, RhinoView view) => Sessions.Values.Where(s => s.Document.RuntimeSerialNumber == doc.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
+
+    internal static void DrawForeground(OverlaySession source, DrawEventArgs e)
+    {
+        if (e.RhinoDoc.RuntimeSerialNumber != source.Document.RuntimeSerialNumber || e.Viewport.Id != source.View.MainViewport.Id) return;
+        var sessions = InView(source.Document, source.View).Where(s => s.Visible).ToArray();
+        // One foreground pass per viewport puts tooltips above every owner's cards.
+        // Standalone benchmark sessions are intentionally not registered in Sessions.
+        if (!sessions.Contains(source)) sessions = [source];
+        if (sessions[0] != source) return;
+        foreach (var session in sessions) session.Draw(e);
+        if (!e.Display.IsInViewCapture)
+            foreach (var session in sessions) session.DrawTooltip(e.Display);
+    }
 
 }

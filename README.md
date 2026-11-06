@@ -140,6 +140,13 @@ the repository by default.
   consumed before Rhino can zoom. Elsewhere, Rhino receives the wheel normally.
 - Drag the scrollbar thumb or click its track to page. Scroll and hover state
   survive incoming Grasshopper solves; table offsets clamp as data changes.
+- Click a table column header to cycle ascending, descending and original order.
+  Sorting is stable and numeric-aware; empty cells stay last. The triangle marks
+  the sorted column. Sort and scroll survive solves; selection follows row keys.
+- Hold hover over a keyed bar, line sample, table row, legend swatch or linked
+  geometry for 250 ms to see its details near the cursor. Tooltips follow DPI,
+  stay inside the viewport and reuse one texture while moving. They hide during
+  drags and Rhino commands and are omitted from captures.
 - Each document/view/owner session owns its cache. Following another view,
   closing a view/document, removing an Overlay or shutting down the plugin
   releases its conduit and textures.

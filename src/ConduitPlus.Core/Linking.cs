@@ -13,7 +13,7 @@ public sealed class BrushState
     { CardKind.Table => c.Rows.Select(r => r.Key), CardKind.Bar or CardKind.Line => c.Keys, CardKind.Legend when !c.Min.HasValue => c.Keys, _ => [] };
     public void Prune(IEnumerable<CardSpec> cards, IEnumerable<string> linkKeys)
     {
-        _live = cards.SelectMany(Keys).Concat(linkKeys).ToHashSet(StringComparer.Ordinal);
+        _live = cards.SelectMany(Keys).Concat(linkKeys).Where(k => !CardMeasure.IsReserved(k)).ToHashSet(StringComparer.Ordinal);
         _selected.IntersectWith(_live);
         if (_hover is not null && !_live.Contains(_hover)) _hover = null;
     }
