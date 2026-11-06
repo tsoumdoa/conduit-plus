@@ -30,8 +30,16 @@ dotnet build ConduitPlus.sln -c Release --no-restore
 dotnet test ConduitPlus.sln -c Release --no-build
 ```
 
-Warnings are errors through `Directory.Build.props`. Windows CI runs these checks
-on pushes to `main` and pull requests, with .NET 8 and 9 SDKs installed.
+Warnings are errors through `Directory.Build.props`. There is no cloud CI. A
+pre-commit hook runs the build and tests locally whenever a commit touches code
+(`.cs`, `.csproj`, `.props`, `.targets`, `.sln`); docs-only commits skip it.
+Enable it once per clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+To force a run on a commit with no code changes, set `CONDUITPLUS_HOOK_FORCE=1`.
 The host API version is pinned centrally to Rhino 8.20; NuGet labels that API
 build `8.20.25147.11001-rc`.
 
