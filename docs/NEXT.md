@@ -3,6 +3,23 @@
 The MVP roadmap is done and merged (PRs #5–#10), and the owner tested it in Rhino 8: it works well.
 This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `docs/IDEAS.md` the longer-term ideas.
 
+## Canvas Card PR1 (implemented in this worktree; awaiting review/integration)
+- One measured card per GH canvas component, six existing kinds, custom attributes,
+  bounded raster cache, shared zoom-settle scheduler and synchronous GH image export.
+- Local keyed selection/Clear, table sorting/scrollbar and GH hover tooltips; no
+  interaction solves, wheel interception or implicit sharing with Overlay.
+- Persisted per-component theme menu with undo. Replace the clearly marked
+  `Theme.FromName` integration shim with the parallel themes PR's resolver: until
+  then Smoke/Blueprint render Paper with a warning.
+- Build and Core/source-linked GDI tests cover transforms, actual allocation bounds,
+  budget sharing/LRU, revision/theme invalidation and local state reconciliation.
+- Before merge, reviewing agent installs from the integration checkout and runs the
+  [live verification checklist](verification/canvas-cards.md): GH drag/select
+  precedence, DPI/zoom, disabled/hidden states, undo/reload, export and cache/GDI
+  lifetime. These GUI checks are still pending.
+- Deferred by [approved design](design/canvas-cards.md): boards, resize, wheel
+  interception, cross-host selection scopes and Selection/Events outputs.
+
 ## What's in main now
 | Area | What works |
 |---|---|

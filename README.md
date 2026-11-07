@@ -1,6 +1,6 @@
 # Conduit+
 
-Conduit+ displays result cards over Rhino viewports from Grasshopper: metrics,
+Conduit+ displays result cards over Rhino viewports and on the Grasshopper canvas: metrics,
 signed utilisation bars, scrollable tables, line charts, notes and legends. A shared C# painter
 draws each dirty card into a GDI+ bitmap; a DisplayConduit composites the cached
 cards. Clean cards reuse their textures. Updates, hover and scrolling run
@@ -110,7 +110,7 @@ and ordering. Escape on mouse move or leaving the initiating viewport cancels a 
 ## Grasshopper components
 
 All components are in the **Conduit+** category. Connect one or more card outputs
-to **Overlay**.
+to **Overlay**, or one card output to **Canvas Card**.
 
 | Component | Inputs and behavior |
 |---|---|
@@ -122,9 +122,10 @@ to **Overlay**.
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Themes: Paper (default), Smoke and Blueprint. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
+| Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Right-click → Theme. No outputs. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
-Card components are under **Cards**; Link and Overlay are under **Display**.
+Card components are under **Cards**; Link, Overlay and Canvas Card are under **Display**.
 Choose **Overlay → Theme → Paper / Smoke / Blueprint** in the right-click menu.
 The choice is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
 text input overrides the menu (case-insensitive); unknown names warn and use Paper.
@@ -145,6 +146,49 @@ Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
 a stored manual slot, followed by automatic placement. Cards stack within slots;
 small viewports can overflow. Different Overlay components have separate owner
 sessions and do not currently reserve space around one another.
+
+## Cards on the Grasshopper canvas
+
+Place **Conduit+ → Display → Canvas Card** and connect the Card output from any
+Metric, Bar, Table, Line, Text or Legend. Each display accepts exactly one valid
+card across all branches; empty input shows a placeholder and invalid or multiple
+cards show an error and clear the previous image. Use separate Canvas Cards to
+arrange a dashboard with Grasshopper's normal component layout and groups.
+
+Drag/select the component by its **Canvas Card** title strip, margins or inactive
+body areas. Plain left-click on a keyed row/bar/sample/swatch toggles local
+selection; **Clear** removes it. Table column headers cycle ascending, descending
+and original order. Drag the scrollbar thumb or click the track to page; the
+**mouse wheel always zooms Grasshopper**. Clicks commit on release within four
+screen pixels. Escape or lost capture cancels a scrollbar drag. GH tooltips show
+the hovered item's details. Modified clicks and middle-button navigation retain
+their normal GH behavior.
+
+Each component has independent, transient selection, sort and scroll state. It
+survives data updates (with keys pruned and offsets clamped), resets when the
+source card ID changes, and is not saved in the `.gh`. It is not shared with
+Overlay and never triggers a solve. Card width/visible rows come from the source;
+Slot has no canvas meaning. There is no canvas resize control in this version.
+
+Right-click **Canvas Card → Theme: Paper/Smoke/Blueprint** to save a theme choice
+with Undo/Redo. **Integration note:** this checkout contains the temporary shared
+resolver: Paper works; Smoke/Blueprint currently fall back to Paper with a warning
+until the parallel themes PR is merged. Invalid saved names also fall back to Paper.
+
+Preview off/Hidden do not hide the canvas card. A locked component or disabled
+document keeps its last image with a Disabled title and no card interaction.
+Zoom initially scales cached pixels, then regenerates visible cards after about
+120 ms at the settled target density. The shared UI scheduler paints one card per
+tick. Screen caches are bounded to 64 MiB per document, with at most 16 MiB and
+4096 pixels per dimension per bitmap; dense/large dashboards reduce raster density
+uniformly and evict least-recently-visible frames, so extreme cards can look soft.
+Panning normally reuses pixels.
+
+GH image export synchronously renders disposable bitmaps at the export target's
+scale, preserving committed selection/sort/scroll and omitting hover. It does not
+replace the screen cache or provide vector text. `ConduitPlusCapture` and
+`ConduitPlusPdf` remain viewport commands. Pinned API checks and the pending live
+Rhino checklist are in [Canvas Card verification](docs/verification/canvas-cards.md).
 
 ## Commands
 
