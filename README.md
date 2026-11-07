@@ -217,3 +217,5 @@ export checks and may time out in this host.
 The renderer feasibility history remains in `docs/spike/`; removed renderer code
 is recoverable at tag `spike-renderer-feasibility`. `docs/PLAN.md` and
 `docs/IDEAS.md` retain the original planning context.
+See [how charts are drawn](docs/design/rendering.md) for diagrams of the current
+raster pipeline, the former HTML/JS path and maintainability options.

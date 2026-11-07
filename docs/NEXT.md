@@ -43,6 +43,7 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 
 ## How rendering works (for whoever picks this up)
 - **Core.** `ConduitPlus.Core` describes each card as a `CardSpec` record and paints it through `ICanvas2D` (`CardPainter`). Core has no Rhino dependency.
+- **Diagrams and history.** [How charts are drawn](design/rendering.md) explains the current raster path, the former HTML/JS path and maintainability options.
 - **Raster.** On Rhino, `GdiCanvas` paints each card into its own transparent, premultiplied-alpha GDI+ bitmap at the screen's DPI scale. The bitmap becomes a `DisplayBitmap`.
 - **Caching.** `CardStore` gives a card a new revision only when its spec changes (data, hover, selection, scroll or sort). Only those cards are re-painted; the rest reuse their bitmaps.
 - **Drawing.** Each Overlay has a `DisplayConduit`. In `DrawForeground` it:
