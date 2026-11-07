@@ -88,7 +88,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null, Theme? theme = null)
     {
         UiContext.Ensure();
         var specs = cards.ToArray(); var linked = links?.ToArray() ?? [];
@@ -106,8 +106,17 @@ public static partial class OverlayManager
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
         session.SetLinks(linked);
-        session.Update(LayoutEditing.Apply(specs, LayoutSnapshot(session)));
+        session.Update(LayoutEditing.Apply(specs, LayoutSnapshot(session)), theme: theme ?? Theme.Paper);
         view.Redraw();
+    }
+    public static void ReplaceTheme(Guid owner, Theme theme)
+    {
+        UiContext.Ensure();
+        foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
+        {
+            session.Update(session.Cards, theme: theme);
+            session.View.Redraw();
+        }
     }
     public static void Remove(Guid owner)
     {

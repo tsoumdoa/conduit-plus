@@ -6,9 +6,9 @@ draws each dirty card into a GDI+ bitmap; a DisplayConduit composites the cached
 cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
 
-This is the initial plugin skeleton, licensed under MIT. The paper theme and
-deterministic viewport slots and keyed geometry highlighting are implemented; layout editing,
-persistence, undo and an Inspector are future work.
+Licensed under MIT. Features include Paper, Smoke and Blueprint overlay themes,
+deterministic viewport slots, keyed geometry highlighting, saved layout editing
+and undo. A docked Inspector is future work.
 
 ## Requirements
 
@@ -115,10 +115,17 @@ to **Overlay**.
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
-| Overlay | Cards and optional Links inputs; Selection and Events outputs. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
+| Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Themes: Paper (default), Smoke and Blueprint. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link and Overlay are under **Display**.
+Choose **Overlay → Theme → Paper / Smoke / Blueprint** in the right-click menu.
+The choice is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
+text input overrides the menu (case-insensitive); unknown names warn and use Paper.
+PNG captures and vector PDF exports use each Overlay's active theme. Smoke has a
+translucent dark surface and soft shadow; Blueprint has a translucent navy surface,
+square corners and a thin blue border. Paper keeps its existing opaque appearance.
+
 Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
 strings; Grasshopper color inputs are converted automatically (alpha is ignored).
 

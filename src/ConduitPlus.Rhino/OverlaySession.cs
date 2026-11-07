@@ -14,7 +14,7 @@ internal sealed partial class OverlaySession : IDisposable
     public RhinoDoc Document { get; }
     public RhinoView View { get; }
     public CardSpec[] Cards { get; private set; } = [];
-    public Theme Theme { get; } = Theme.Paper;
+    public Theme Theme { get; private set; } = Theme.Paper;
     public double CaptureMultiplier { get; set; } = 1;
     public long FrameCount { get; private set; }
     public bool Visible { get => _conduit.Enabled; set => _conduit.Enabled = value; }
@@ -35,13 +35,19 @@ internal sealed partial class OverlaySession : IDisposable
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
     { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
 
-    public void Update(CardSpec[] specs, bool preserveGesture = false)
+    public void Update(CardSpec[] specs, bool preserveGesture = false, Theme? theme = null)
     {
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (theme is not null && Theme != theme)
+        {
+            OverlayManager.CancelGesture(this);
+            HideTooltip();
+            Theme = theme;
+        }
         specs = ApplyViewState(OverlayManager.Project(this, specs));
         _brush = OverlayManager.Snapshot(this);
-        var dirty = _store.Update(specs);
+        var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
         _raster.Prepare(next, Theme, UiContext.Dpi(View));
@@ -177,7 +183,7 @@ internal sealed partial class OverlaySession : IDisposable
         {
             if (!e.Display.IsInViewCapture && _layoutDrag?.CardId == layout.Id) continue;
             if (_raster.Prepared.TryGetValue(layout.Id, out var p))
-                e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X), (int)Math.Round(layout.Y));
+                e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X) - p.Capture.Margin, (int)Math.Round(layout.Y) - p.Capture.Margin);
         }
         if (!e.Display.IsInViewCapture) DrawLayoutEditing(e.Display, layouts, scale);
         FrameCount++;
@@ -185,11 +191,11 @@ internal sealed partial class OverlaySession : IDisposable
     private void DrawHighlights(DisplayPipeline display)
     {
         if (_links.Length == 0) return;
-        var muted = ColorTranslator.FromHtml(Theme.Muted);
+        var muted = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Muted);
         foreach (var link in _links.Where(l => l.ShowBase))
             foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 1, false);
         if (_brush.HoverKey is null && _brush.SelectedKeys.Length == 0) return;
-        var color = ColorTranslator.FromHtml(Theme.Accent);
+        var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
         display.PushDepthTesting(false);
         try
         {

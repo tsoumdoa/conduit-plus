@@ -7,6 +7,7 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 | Area | What works |
 |---|---|
 | Cards | Metric, Bar, Table (scroll, sortable columns), Line, Text, Legend (categorical or gradient) |
+| Themes | Paper (unchanged default), Smoke and Blueprint; optional Overlay Theme input or saved, undoable right-click choice; capture/PDF follow the active theme |
 | Linking | Link component; hover/click a card ↔ the member lights up in the model (both directions); selection shared across cards; Clear |
 | Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events |
@@ -44,7 +45,8 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 ## How rendering works (for whoever picks this up)
 - **Core.** `ConduitPlus.Core` describes each card as a `CardSpec` record and paints it through `ICanvas2D` (`CardPainter`). Core has no Rhino dependency.
 - **Raster.** On Rhino, `GdiCanvas` paints each card into its own transparent, premultiplied-alpha GDI+ bitmap at the screen's DPI scale. The bitmap becomes a `DisplayBitmap`.
-- **Caching.** `CardStore` gives a card a new revision only when its spec changes (data, hover, selection, scroll or sort). Only those cards are re-painted; the rest reuse their bitmaps.
+- **Caching.** `CardStore` gives a card a new revision when its spec or active theme changes (data, hover, selection, scroll or sort). The raster cache also compares the complete theme record and scale. Only dirty cards are re-painted.
+- **Theme typography.** The concept uses IBM Plex Sans (Segoe UI fallback), 12px body / 11px headings, Archivo 20px metric values and IBM Plex Mono 10–11px annotations. These do not vary by overlay theme. Keep the installed Segoe UI and existing sizes (12px body / 28px metric) for stable measurements and Paper compatibility; no web fonts are bundled. Legacy Paper has no painted shadow and retains that output; Smoke adds a soft exterior shadow, Blueprint a 1px border.
 - **Drawing.** Each Overlay has a `DisplayConduit`. In `DrawForeground` it:
   1. draws highlighted linked geometry as 3D wires, with depth testing off;
   2. places card bitmaps by `SlotLayout` and draws them as 2D screen bitmaps;

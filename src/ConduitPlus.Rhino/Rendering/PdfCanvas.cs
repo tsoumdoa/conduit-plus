@@ -9,9 +9,9 @@ namespace ConduitPlus.Rendering;
 internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double dotsPerCssPixel) : ICanvas2D, IDisposable
 {
     private readonly Bitmap _measureBitmap = new(1, 1);
-    private Rect2 _clip = new(0, 0, 100000, 100000);
+    private Rect2 _clip = new(-100000, -100000, 200000, 200000);
     private PointF P(Point2 p) => new((float)(x + p.X * dotsPerCssPixel), (float)(y + p.Y * dotsPerCssPixel));
-    private static Color C(string color) => ColorTranslator.FromHtml(color);
+    private static Color C(string color) => GdiCanvas.ParseColor(color);
     public Size2 MeasureText(string text, double size, string font)
     {
         using var graphics = Graphics.FromImage(_measureBitmap);
@@ -27,12 +27,13 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
             var stop = (i + .5) / bands * (colors.Count - 1); var index = Math.Min(colors.Count - 2, (int)stop); var fraction = stop - index;
             var a = C(colors[index]); var b = C(colors[index + 1]);
             int Mix(int from, int to) => (int)Math.Round(from + (to - from) * fraction);
-            var color = Color.FromArgb(Mix(a.R, b.R), Mix(a.G, b.G), Mix(a.B, b.B));
-            Rect(new(r.X + i * r.Width / bands, r.Y, r.Width / bands, r.Height), $"#{color.R:X2}{color.G:X2}{color.B:X2}");
+            var color = new ColorRgba((byte)Mix(a.R, b.R), (byte)Mix(a.G, b.G), (byte)Mix(a.B, b.B), (byte)Mix(a.A, b.A));
+            Rect(new(r.X + i * r.Width / bands, r.Y, r.Width / bands, r.Height), color.ToHex());
         }
     }
     public void RoundedRect(Rect2 r, double radius, string fill)
     {
+        if (radius <= 0) { Rect(r, fill); return; }
         // FilePdf exposes polylines, not Bezier paths: approximate each quarter circle by 12 segments.
         var rad = Math.Min(radius, Math.Min(r.Width, r.Height) / 2);
         var points = new List<Point2>();

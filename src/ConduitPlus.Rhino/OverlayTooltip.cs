@@ -77,7 +77,9 @@ internal sealed partial class OverlaySession
     {
         if (!TooltipAllowed) { HideTooltip(); return; }
         if (!_tooltipReady || _tooltipDisplay is null || _tooltipBitmap is null) return;
-        var point = TooltipPainter.Position(_cursor, new(_tooltipBitmap.Width, _tooltipBitmap.Height), ViewSize, UiContext.Dpi(View));
-        display.DrawBitmap(_tooltipDisplay, (int)Math.Round(point.X), (int)Math.Round(point.Y));
+        // The bitmap includes the theme's shadow margin on every side; position the tooltip body, not the margin.
+        var margin = RasterDrawing.Margin(Theme, _tooltipTarget?.Dpi ?? UiContext.Dpi(View));
+        var point = TooltipPainter.Position(_cursor, new(_tooltipBitmap.Width - 2 * margin, _tooltipBitmap.Height - 2 * margin), ViewSize, UiContext.Dpi(View));
+        display.DrawBitmap(_tooltipDisplay, (int)Math.Round(point.X) - margin, (int)Math.Round(point.Y) - margin);
     }
 }
