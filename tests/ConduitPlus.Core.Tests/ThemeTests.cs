@@ -77,7 +77,7 @@ public sealed class ThemeTests
             Track = "#05050530", Accent = "#060606", Good = "#070707", Bad = "#080808",
             Area = "#09090920", ThresholdBand = "#10101020", Highlight = "#11111140",
             TooltipSurface = "#121212CC", TooltipInk = "#131313", Border = "#14141480",
-            BorderWidth = 1, ShadowColor = "#15151508"
+            BorderWidth = 1, Shadow = true, ShadowColor = "#15151508"
         };
         foreach (var theme in Theme.Presets.Append(sentinel))
         {

@@ -136,8 +136,8 @@ public sealed record Theme
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
         Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#8FB0FF", Radius = 10,
         Good = "#2FAE74", Bad = "#E0546F", Area = "#8FB0FF26", ThresholdBand = "#E0546F26",
-        Highlight = "#8FB0FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6,
-        Shadow = true, ShadowColor = "#00000030"
+        Highlight = "#8FB0FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
+        // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
     };
     public static Theme Blueprint { get; } = new()
     {
