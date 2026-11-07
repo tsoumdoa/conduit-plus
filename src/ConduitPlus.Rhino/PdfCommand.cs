@@ -10,7 +10,7 @@ namespace ConduitPlus.Rhino;
 public sealed class ConduitPlusPdf : Command
 {
     public override string EnglishName => "ConduitPlusPdf";
-    protected override void OnHelp() => RhinoApp.WriteLine("Experimental vector PDF export; output and typography remain unverified.");
+    protected override void OnHelp() => RhinoApp.WriteLine("Experimental vector PDF export; see docs/verification/capture-pdf.md for host checks and limitations.");
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
         var view = doc.Views.ActiveView;
@@ -20,7 +20,7 @@ public sealed class ConduitPlusPdf : Command
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
     {
         UiContext.Ensure();
-        RhinoApp.WriteLine("ConduitPlusPdf is experimental: export and typography remain unverified.");
+        RhinoApp.WriteLine("ConduitPlusPdf is experimental.");
         var sessions = OverlayManager.InView(doc, view);
         if (sessions.Length == 0)
         {
@@ -32,7 +32,6 @@ public sealed class ConduitPlusPdf : Command
         var dpi = UiContext.Dpi(view);
         // A screen physical pixel is 1/(96*dpi) inches; a PDF point is 1/72 inches.
         // Use the same physical page size and slot positions as the viewport.
-        const double pointsPerCss = 72d / 96;
         var resolution = 96 * dpi;
         Console.WriteLine("PDF: creating FilePdf writer.");
         var pdf = FilePdf.Create() ?? throw new InvalidOperationException("Rhino's PDF writer is unavailable.");
@@ -54,7 +53,7 @@ public sealed class ConduitPlusPdf : Command
                 foreach (var layout in SlotLayout.Place(session.Cards, session.Theme, new(size.Width / dpi, size.Height / dpi)))
                 {
                     var spec = session.Cards.Single(c => c.Id == layout.Id);
-                    using var canvas = new PdfCanvas(pdf, page, layout.X * pointsPerCss, layout.Y * pointsPerCss, pointsPerCss);
+                    using var canvas = new PdfCanvas(pdf, page, layout.X * dpi, layout.Y * dpi, dpi);
                     CardPainter.Paint(canvas, spec, session.Theme);
                 }
             }

@@ -70,6 +70,28 @@ installation folder if present and reports its removal. It skips installation
 while Rhino is running. Load the `.rhp` through `PlugInManager` → Install once,
 then start Grasshopper. Close Rhino before rebuilding or reinstalling.
 
+## Example
+
+Open [examples/structural-dashboard.gh](examples/structural-dashboard.gh) in
+Grasshopper with Conduit+ loaded. Change the **Span** and **Load** sliders, click
+a utilisation bar or a truss member, sort/scroll the member table, and drag cards
+by their titles. Use a large perspective viewport; the saved manual layout keeps
+all cards draggable. The example uses four bays to fit its nine cards at 200% DPI.
+
+**Demo Truss** (Examples) defaults to eight bays and generates deterministic,
+illustrative results with fictitious capacities, stiffness and member areas.
+These numbers are **not structural analysis or design verification**.
+
+Regenerate and reopen/solve the definition without installing the plugin:
+
+```powershell
+./tools/examples/Build-Examples.ps1
+```
+
+Rhino 8 is required. The tool loads this checkout's assemblies directly and does
+not install or update any Grasshopper libraries. Export checks, commands and
+recorded limitations: [capture/PDF verification](docs/verification/capture-pdf.md).
+
 ## Edit layout
 
 Drag a card title (or the small edge grip shown when hovering an untitled card)
@@ -94,6 +116,7 @@ to **Overlay**.
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Overlay | Cards and optional Links inputs; Selection and Events outputs. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
+| Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link and Overlay are under **Display**.
 Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
@@ -116,7 +139,7 @@ sessions and do not currently reserve space around one another.
 |---|---|
 | `ConduitPlusDemo` | Shows metrics, bars, a table, a line chart, legends and a design note, with linked frame members M01–M20 visible on hover/selection. |
 | `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
-| `ConduitPlusPdf` | **Experimental** vector PDF export; output, typography and export behavior remain unverified. |
+| `ConduitPlusPdf` | **Experimental** vector PDF export; searchable card text, page size and coordinate alignment checked in RhinoCore 8.36. See [verification and limitations](docs/verification/capture-pdf.md). |
 | `ConduitPlusBench` | Measures Raster metric-update, compact-bar hover and model-pick latency, checks cache lifecycle and runs per-card raster benchmarks. |
 
 Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).

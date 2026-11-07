@@ -5,12 +5,12 @@ using Rhino.FileIO;
 
 namespace ConduitPlus.Rendering;
 
-/// <summary>Maps CSS coordinates to top-left PDF points (72/in); physical alignment still needs host verification.</summary>
-internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double pointsPerCssPixel) : ICanvas2D, IDisposable
+/// <summary>FilePdf takes positions/strokes in page dots, but font heights in points (72/in).</summary>
+internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double dotsPerCssPixel) : ICanvas2D, IDisposable
 {
     private readonly Bitmap _measureBitmap = new(1, 1);
     private Rect2 _clip = new(0, 0, 100000, 100000);
-    private PointF P(Point2 p) => new((float)(x + p.X * pointsPerCssPixel), (float)(y + p.Y * pointsPerCssPixel));
+    private PointF P(Point2 p) => new((float)(x + p.X * dotsPerCssPixel), (float)(y + p.Y * dotsPerCssPixel));
     private static Color C(string color) => ColorTranslator.FromHtml(color);
     public Size2 MeasureText(string text, double size, string font)
     {
@@ -74,11 +74,11 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
     }
     public void Line(Point2 a, Point2 b, string color, double width = 1)
     {
-        // Liang-Barsky clipping in CSS coordinates, before conversion to PDF points.
+        // Liang-Barsky clipping in CSS coordinates, before conversion to page dots.
         var dx = b.X - a.X; var dy = b.Y - a.Y; double low = 0, high = 1;
         if (!Edge(-dx, a.X - _clip.X) || !Edge(dx, _clip.X + _clip.Width - a.X) ||
             !Edge(-dy, a.Y - _clip.Y) || !Edge(dy, _clip.Y + _clip.Height - a.Y)) return;
-        pdf.DrawLine(page, P(new(a.X + low * dx, a.Y + low * dy)), P(new(a.X + high * dx, a.Y + high * dy)), C(color), (float)(width * pointsPerCssPixel));
+        pdf.DrawLine(page, P(new(a.X + low * dx, a.Y + low * dy)), P(new(a.X + high * dx, a.Y + high * dy)), C(color), (float)(width * dotsPerCssPixel));
         bool Edge(double p, double q)
         {
             if (p == 0) return q >= 0;
@@ -100,12 +100,12 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
         }
         if (text.Length == 0) return;
         var p = P(topLeft);
-        pdf.DrawText(page, text, p.X, p.Y, (float)(size * pointsPerCssPixel), new global::Rhino.DocObjects.Font(font), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
+        pdf.DrawText(page, text, p.X, p.Y, (float)(size * 72 / 96), new global::Rhino.DocObjects.Font(font), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     }
     public void DrawBitmap(Bitmap bitmap, Rect2 r)
     {
         var p = P(new(r.X, r.Y));
-        pdf.DrawBitmap(page, bitmap, p.X, p.Y, (float)(r.Width * pointsPerCssPixel), (float)(r.Height * pointsPerCssPixel), 0);
+        pdf.DrawBitmap(page, bitmap, p.X, p.Y, (float)(r.Width * dotsPerCssPixel), (float)(r.Height * dotsPerCssPixel), 0);
     }
     public IDisposable Clip(Rect2 r)
     {
