@@ -15,14 +15,15 @@ internal static class ExportChecks
     private static object? Call(object obj, string name, params object?[] args) => obj.GetType().GetMethod(name, Instance)!.Invoke(obj, args);
     private static void Field(object obj, string name, object value) => obj.GetType().GetField(name, Instance)!.SetValue(obj, value);
     private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-    internal static void Run(RhinoDoc doc, RhinoView fullView, object fullSession, CardSpec[] fullCards, string output, bool safe, int scale)
+    internal static void Run(RhinoDoc doc, RhinoView fullView, object fullSession, CardSpec[] fullCards, string output, bool safe, int scale, GeometryBase[]? geometry = null)
     {
         var full = new[] { Capture(doc, fullView, fullSession, fullCards, scale, output) };
         File.WriteAllText(Path.Combine(output, "full-capture-checks.json"), CardJson.Serialize(full));
         if (!safe)
         {
             // Vector viewport export reads document geometry, whereas the headless demo uses conduit base wires.
-            var ids = DemoTruss.Create(bays: 4).Members.Select(m => doc.Objects.AddLine(new Point3d(m.Start.X, 0, m.Start.Y), new Point3d(m.End.X, 0, m.End.Y))).ToArray();
+            var ids = geometry is not null ? geometry.Select(g => doc.Objects.Add(g)).ToArray()
+                : DemoTruss.Create(bays: 4).Members.Select(m => doc.Objects.AddLine(new Point3d(m.Start.X, 0, m.Start.Y), new Point3d(m.End.X, 0, m.End.Y))).ToArray();
             try { ConduitPlusPdf.RunAutomated(doc, fullView); }
             finally { foreach (var id in ids) doc.Objects.Delete(id, true); }
         }
@@ -76,6 +77,12 @@ internal static class ExportChecks
         var size = view.ActiveViewport.Size;
         Require(image.Width == size.Width * scale && image.Height == size.Height * scale, "PNG dimensions mismatch.");
         var layouts = SlotLayout.Place(cards, Theme.Paper, new(image.Width, image.Height), Dpi(view) * scale);
+        for (var i = 0; i < layouts.Length; i++)
+        for (var j = i + 1; j < layouts.Length; j++)
+        {
+            var a = layouts[i]; var b = layouts[j];
+            Require(a.X + a.W <= b.X || b.X + b.W <= a.X || a.Y + a.H <= b.Y || b.Y + b.H <= a.Y, "Capture cards overlap.");
+        }
         var regions = layouts.Select(l =>
         {
             Require(l.X >= 0 && l.Y >= 0 && l.X + l.W <= image.Width && l.Y + l.H <= image.Height, "Card outside capture.");

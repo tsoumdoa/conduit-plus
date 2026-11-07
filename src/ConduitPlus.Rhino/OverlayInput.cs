@@ -249,6 +249,9 @@ public static partial class OverlayManager
                 if (s.Hit(client.X, client.Y) is not { } hit || s.Card(hit.CardId) is not { } card || !TableScroll.CanScroll(card)) continue;
                 var notches = Math.Max(1, Math.Abs(delta) / 120);
                 s.ScrollBy(card.Id, -Math.Sign(delta) * 3 * notches);
+                // Wheel scrolling changes the row under a stationary pointer.
+                s.Cursor(new(client.X, client.Y), true);
+                if (s.Hit(client.X, client.Y) is { } updated) s.SetHover(updated.CardId, updated.Key);
                 return true;
             }
             return false;

@@ -37,19 +37,22 @@ public static class CardPainter
             return;
         }
         var hits = CardMeasure.DataHits(c, t);
-        var max = Math.Max(c.Threshold, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max());
+        var max = Math.Max(1e-9, Math.Max(c.Threshold, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max()));
         if (c.Kind == CardKind.Bar)
         {
+            var labelWidth = Math.Min((c.Width - 2 * t.Padding - 55) * .55,
+                Math.Max(55, c.Labels.Select(label => canvas.MeasureText(label, t.FontSize, t.Font).Width + 8).DefaultIfEmpty(55).Max()));
             for (var i = 0; i < hits.Length; i++)
             {
                 var h = hits[i]; Highlight(canvas, c, t, h);
-                canvas.Text(c.Labels[i], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
-                var x = h.X + 55; var w = h.W - 110; var y = h.Y + 7;
+                using (canvas.Clip(new(h.X, h.Y, labelWidth - 4, h.H)))
+                    canvas.Text(c.Labels[i], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
+                var x = h.X + labelWidth; var w = h.W - labelWidth - 55; var y = h.Y + 7;
                 canvas.Rect(new(x, y, w, 8), t.Track);
                 var value = c.Values[i];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var signed = c.Values.Any(v => v < 0); var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
-                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), value > c.Threshold ? t.Bad : t.Good);
+                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > i ? c.Colors[i] : value > c.Threshold ? t.Bad : t.Good);
                 canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
                 canvas.Text(value?.ToString("0.00", CultureInfo.InvariantCulture) ?? "—", new(h.X + h.W - 43, h.Y + 2), t.FontSize, t.Ink, t.Font);
             }

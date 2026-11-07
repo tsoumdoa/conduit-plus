@@ -76,7 +76,7 @@ installation folder if present and reports its removal. It skips installation
 while Rhino is running. Load the `.rhp` through `PlugInManager` → Install once,
 then start Grasshopper. Close Rhino before rebuilding or reinstalling.
 
-## Example
+## Examples
 
 Open [examples/structural-dashboard.gh](examples/structural-dashboard.gh) in
 Grasshopper with Conduit+ loaded. Change the **Span** and **Load** sliders, click
@@ -88,13 +88,47 @@ all cards draggable. The example uses four bays to fit its nine cards at 200% DP
 illustrative results with fictitious capacities, stiffness and member areas.
 These numbers are **not structural analysis or design verification**.
 
-Regenerate and reopen/solve the definition without installing the plugin:
+Two architectural definitions use metre-based schematic geometry and deliberately
+include failures. Their limits are fictitious, not regulatory checks:
+
+- [Room area check](examples/room-areas.gh): **Demo Rooms** generates 16 rooms and
+  a circulation hall, colored by type. At scale 1: schematic GIA **320 m²**,
+  net/gross **87.5%**, circulation **12.5%**, **8 failures**. GIA includes the hall
+  and omits wall thickness; net excludes the hall. Change **Plan scale**: geometry
+  scales in XY while type minima remain fixed. The signed bar shows area minus
+  minimum in m², with deficits in Bad red. The table includes actual and required
+  areas, delta and status; the legend identifies types.
+- [Massing / zoning](examples/massing.gh): **Demo Massing** generates six blocks
+  colored by Residential, Office and Retail use, plus a 100 × 80 m site boundary.
+  Default whole-floorplate GFA is **14,976 m²** against **16,000 m²** allowed,
+  FAR **1.872** against **2.0**, and two blocks exceed the **30 m** height limit.
+  Change **Extra floors**; the height bar shows height/limit ratios (1.0 is the
+  limit), with raw heights, limits, floor counts and GFA in the sortable table.
+  A second bar totals GFA by use.
+
+Use a metre-unit Rhino document. Open one definition at a time in a large
+viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
+its keyed row/bar selects, and the table reveals an off-screen selected row even
+when sorted. Click a row/bar to highlight the matching geometry with translucent
+faces and x-ray wires; click again or **Clear** to deselect. Wheel-scroll the room
+table and select **Hall / R17** from the model or bar to test reveal. Drag cards
+by their titles to suit your viewport. Type/use legends describe categories;
+they do not select groups of rooms/blocks.
+
+Regenerate and reopen/solve all definitions without installing the plugin:
 
 ```powershell
 ./tools/examples/Build-Examples.ps1
 ```
 
-Rhino 8 is required. The tool loads this checkout's assemblies directly and does
+Use `-Example Rooms`, `-Example Massing` or `-Example Structural` to regenerate
+just one definition; `-VerifyOnly` reopens the existing file. Add `-Exports -Safe`
+for 1× PNG region, layout and architectural selected-face checks (Safe skips
+PDF); `-Exports` also attempts the experimental PDF. Compact fixtures remain
+structural-only. See [UX findings](docs/ux-notes.md) for fixed and open issues.
+
+Rhino 8 is required. Each definition runs in a fresh RhinoCore host. The tool
+loads this checkout's assemblies directly and does
 not install or update any Grasshopper libraries. Export checks, commands and
 recorded limitations: [capture/PDF verification](docs/verification/capture-pdf.md).
 
@@ -114,15 +148,17 @@ to **Overlay**, or one card output to **Canvas Card**.
 
 | Component | Inputs and behavior |
 |---|---|
-| Metric | Formatted value, title, unit and optional slot; missing values display an em dash. |
-| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. |
+| Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. |
+| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. Appended optional Colors override per-bar status; zero threshold supports deltas. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title, optional threshold and slot. A positive wired threshold shows a band. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
-| Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
+| Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Themes: Paper (default), Smoke and Blueprint. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 | Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Right-click → Theme. No outputs. |
+| Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
+| Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link, Overlay and Canvas Card are under **Display**.
@@ -130,7 +166,7 @@ Choose **Overlay → Theme → Paper / Smoke / Blueprint** in the right-click me
 The choice is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
 text input overrides the menu (case-insensitive); unknown names warn and use Paper.
 PNG captures and vector PDF exports use each Overlay's active theme. Smoke has a
-translucent dark surface and soft shadow; Blueprint has a translucent navy surface,
+translucent dark surface and rounded corners; Blueprint has a translucent navy surface,
 square corners and a thin blue border. Paper keeps its existing opaque appearance.
 
 Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
@@ -140,7 +176,7 @@ Connect **Link** to **Overlay → Links**, and give the cards and linked geometr
 the same explicit keys. Bar keys default to labels; Table keys default to branch
 paths, so they do **not** auto-match. Keys are case-sensitive. Link supports points,
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
-geometry and caches its wires and pick proxies when solved.
+geometry and caches its wires and shared pick/highlight meshes when solved.
 
 Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
 a stored manual slot, followed by automatic placement. Cards stack within slots;
@@ -207,7 +243,8 @@ the repository by default.
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
   same key and draw linked geometry in a thin
-  accent wire. Click toggles selection, drawing thicker x-ray wires and point
+  accent wire with translucent faces for surface geometry. Click toggles selection,
+  drawing stronger translucent faces, thicker x-ray wires and point
   markers, also in captures. **Clear** in a keyed card's header clears that
   owner's selection. Linked model clicks emit a `click` event with card id `model`.
   Cards take priority; other model clicks pass through to Rhino. Model picking
@@ -221,6 +258,7 @@ the repository by default.
 - Drag the scrollbar thumb or click its track to page. Scroll and hover state
   survive incoming Grasshopper solves; table offsets clamp as data changes.
 - Click a table column header to cycle ascending, descending and original order.
+  Newly selected rows are revealed in the current display order.
   Sorting is stable and numeric-aware; empty cells stay last. The triangle marks
   the sorted column. Sort and scroll survive solves; selection follows row keys.
 - Hold hover over a keyed bar, line sample, table row, legend swatch or linked

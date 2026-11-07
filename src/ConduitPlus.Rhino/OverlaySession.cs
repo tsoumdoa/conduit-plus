@@ -72,6 +72,13 @@ internal sealed partial class OverlaySession : IDisposable
             if (c.Kind == CardKind.Table && TableSort.Column(header.Key) is { } col && col < c.Headers.Length) c = c with { HoverKey = header.Key };
             else _headerHover = null;
         }
+        // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
+        if (c.Kind == CardKind.Table && c.SelectedKeys.FirstOrDefault(k => !_brush.SelectedKeys.Contains(k, StringComparer.Ordinal)) is { } added)
+        {
+            var revealed = TableScroll.Reveal(c, added);
+            _scroll[c.Id] = revealed;
+            c = c with { ScrollOffset = revealed };
+        }
         return c;
     }).ToArray();
 
@@ -193,7 +200,7 @@ internal sealed partial class OverlaySession : IDisposable
         if (_links.Length == 0) return;
         var muted = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Muted);
         foreach (var link in _links.Where(l => l.ShowBase))
-            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 1, false);
+            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 1, false, false);
         if (_brush.HoverKey is null && _brush.SelectedKeys.Length == 0) return;
         var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
         display.PushDepthTesting(false);

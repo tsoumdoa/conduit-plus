@@ -43,9 +43,18 @@ public sealed class CoreTests
     {
         var c = StructuralDemo.Create()[4];
         Assert.Throws<ArgumentException>(() => (c with { Keys = Enumerable.Repeat("same", 20).ToArray() }).Validate());
-        Assert.Throws<ArgumentException>(() => (c with { Threshold = 0 }).Validate());
+        Assert.Throws<ArgumentException>(() => (c with { Threshold = -1 }).Validate());
         Assert.Throws<ArgumentException>(() => (c with { Values = [double.NaN] }).Validate());
         Assert.Throws<ArgumentException>(() => new CardStore().Update([c, c]));
+    }
+    [Fact]
+    public void DeltaBarsPaintExplicitFailureColorAndFiniteZeroGeometry()
+    {
+        var c = new CardSpec { Id = "areas", Kind = CardKind.Bar, Values = [-4, 0], Labels = ["Residential", "Exact"], Keys = ["R1", "R2"], Threshold = 0, Colors = [Theme.Paper.Bad, Theme.Paper.Good] };
+        var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, Theme.Paper);
+        Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Bad && r.Rect.Width > 0);
+        var zero = new RecordingCanvas(); CardPainter.Paint(zero, c with { Values = [0, 0] }, Theme.Paper);
+        Assert.All(zero.Rects, r => Assert.True(double.IsFinite(r.Rect.X) && double.IsFinite(r.Rect.Width)));
     }
     [Fact]
     public void PainterWritesTransparentSnapshotsAtThreeScales()
