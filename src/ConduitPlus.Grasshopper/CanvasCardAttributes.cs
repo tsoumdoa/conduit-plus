@@ -31,7 +31,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private int _pageOffset;
     internal bool HasGesture => _pressed is not null || _dragScroll;
     private bool Disabled => Component.Locked || Component.OnPingDocument()?.Enabled == false;
-    private bool Interactive => !Disabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Spec.Id == Component.State.Spec?.Id);
+    private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Spec.Id == Component.State.Spec?.Id);
     internal bool Visible
     {
         get
@@ -49,6 +49,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         _body = new(Pivot.X + 4, Pivot.Y + 26, (float)size.Width, (float)size.Height);
         m_innerBounds = _strip;
         LayoutInputParams(Component, _strip);
+        LayoutOutputParams(Component, _strip);
         Bounds = LayoutBounds(Component, new RectangleF(_strip.X, _strip.Y, _strip.Width, _strip.Height + _body.Height + 4));
     }
     internal void RequestDisplay()
@@ -133,7 +134,8 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             var paintBounds = export ? LayoutBounds(Component, new RectangleF(_strip.X, _strip.Y, (float)exportSize.Width + 8, (float)exportSize.Height + 30)) : Bounds;
             using (var capsule = GH_Capsule.CreateCapsule(paintBounds, palette))
             {
-                capsule.AddInputGrip(Component.Params.Input[0].Attributes.InputGrip.Y);
+                foreach (var input in Component.Params.Input) capsule.AddInputGrip(input.Attributes.InputGrip.Y);
+                foreach (var output in Component.Params.Output) capsule.AddOutputGrip(output.Attributes.OutputGrip.Y);
                 capsule.Render(graphics, style);
             }
             RenderComponentParameters(canvas, graphics, Component, style);
@@ -261,7 +263,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     {
         if ((_pressed is not null || _dragScroll) && (!Interactive || _canvas?.ActiveObject != Component || _canvas.Capture != true)) CancelGesture();
     }
-    internal void CancelGesture() => FinishGesture(true);
+    internal void CancelGesture() { Component.State.CancelHover(); FinishGesture(true); }
     private void FinishGesture(bool cancel)
     {
         var active = _pressed is not null || _dragScroll;

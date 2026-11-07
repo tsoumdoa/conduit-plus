@@ -74,47 +74,76 @@ public sealed class CanvasCardState
     private int _offset;
     private int? _column;
     private bool _descending;
-    private readonly BrushOrigin _origin = new("canvas", "card", 0);
+    private IBrushBinding? _binding;
+    private Guid _owner;
+    private bool _enabled = true;
+    private long _gesture;
+    private IReadOnlySet<string> _selectedMembers = new HashSet<string>(StringComparer.Ordinal);
+    private BrushOrigin Origin => new(_binding?.ParticipantId ?? "canvas", "canvas", _gesture);
+    public BrushDomainSnapshot Current => _binding?.Current ?? _brush.Current;
+    public event Action<InteractionChange>? Changed;
+    public void Bind(IBrushBinding? binding, Guid owner, bool enabled = true)
+    {
+        if (!ReferenceEquals(_binding, binding)) { CancelHover(); _brush = new(); }
+        _binding = binding; _owner = owner; _enabled = enabled; Reconcile();
+    }
+    public void Refresh() => Reconcile();
+    public void CancelHover() { Hover(null); _gesture++; }
+    public bool CanInteract => _enabled && (_binding?.IsActive ?? true);
     public CardSpec? Spec { get; private set; }
-    public MembershipIndex Membership => _brush.Current.Membership;
+    public MembershipIndex Membership => Current.Membership;
     public string[]? TooltipFor(string key) => Spec is null ? null : Tooltip.For(Spec, key, Membership);
     public void Replace(CardSpec? source)
     {
         source?.Validate();
+        var previous = Current.SelectionRevision;
         if (_source?.Id != source?.Id)
-        { _brush = new(); _offset = 0; _column = null; _descending = false; }
+        { if (_binding is null) _brush.Prune([], []); _offset = 0; _column = null; _descending = false; }
         // Own the input, including its arrays; incoming revisions and host view state are not authoritative.
         _source = source is null ? null : CardJson.Deserialize<CardSpec>(CardJson.Serialize(source with { Rev = 0 }));
         Reconcile();
+        if (_binding is null && previous != Current.SelectionRevision) Changed?.Invoke(new(Current, InteractionChangeKind.Reconciliation));
     }
     private void Reconcile()
     {
-        if (_source is null) { Spec = null; _store.Update([]); return; }
+        if (_source is null) { if (_binding is null) _brush.Prune([], []); Spec = null; _store.Update([]); return; }
         if (_source.Kind != CardKind.Table || _column < 0 || _column >= _source.Headers.Length)
         { _column = null; _descending = false; }
         _offset = _source.Kind == CardKind.Table ? Math.Clamp(_offset, 0, TableScroll.MaxOffset(_source)) : 0;
-        _brush.Prune([_source], []);
-        var spec = _brush.Project([_source])[0] with
+        if (_binding is null) _brush.Prune([_source], []);
+        var spec = Current.Project([_source])[0] with
         {
             ScrollOffset = _offset, SortColumn = _column, SortDescending = _descending,
             WiredSlot = null, ManualSlot = null, OrderSlot = null, ManualOrder = null
         };
+        if (spec.Kind == CardKind.Table && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
+        { _offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = _offset }; }
+        _selectedMembers = Current.SelectedMemberKeys;
         _store.Update([spec]); Spec = _store.Snapshot[0];
     }
     public void Hover(string? key)
     {
-        var changed = string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? _brush.ClearHover(_origin) :
-            _brush.Hover(_origin, key, _source is null ? null : BrushPresentation.TargetKind(_source, key));
+        var origin = Origin;
+        var clear = string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key);
+        if (!clear && !CanInteract) return;
+        var kind = _source is null || key is null ? (BrushTargetKind?)null : BrushPresentation.TargetKind(_source, key);
+        var changed = _binding is { } binding
+            ? clear ? binding.ClearHover(origin) : binding.Hover(origin, key, kind)
+            : clear ? _brush.ClearHover(origin) : _brush.Hover(origin, key, kind);
         if (changed) Reconcile();
     }
     public void Activate(string key)
     {
-        if (Spec is null) return;
-        if (key == CardMeasure.ClearKey) _brush.Clear();
+        if (Spec is null || !CanInteract) return;
+        var previous = Current.SelectionRevision;
+        var source = new BrushActionSource(_owner, Spec.Id, "canvas");
+        if (key == CardMeasure.ClearKey) { if (_binding is { } binding) binding.Clear(source); else _brush.Clear(source); }
         else if (TableSort.Column(key) is { } column && Spec.Kind == CardKind.Table && column >= 0 && column < Spec.Headers.Length)
         { var sorted = TableSort.Cycle(Spec, column); _column = sorted.SortColumn; _descending = sorted.SortDescending; }
-        else _brush.Toggle(key, BrushPresentation.TargetKind(Spec, key), new(Guid.Empty, Spec.Id, "canvas"));
+        else if (_binding is { } binding) binding.Toggle(key, BrushPresentation.TargetKind(Spec, key), source);
+        else _brush.Toggle(key, BrushPresentation.TargetKind(Spec, key), source);
         Reconcile();
+        if (_binding is null && previous != Current.SelectionRevision) Changed?.Invoke(new(Current, InteractionChangeKind.Selection));
     }
     public void Scroll(int offset) { _offset = offset; Reconcile(); }
 }

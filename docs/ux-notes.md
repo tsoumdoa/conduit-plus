@@ -3,6 +3,46 @@
 Scope: `room-areas.gh` and `massing.gh`, generated from this checkout without
 installing it. Findings are ranked by impact on an architectural review.
 
+## Shared selection Scope B2 verification (2026-11-07)
+
+The room example now includes a Canvas room table and one Scope wired to both
+Canvas Card and Overlay. Select Bed 01/R01 in either table or the model: the same
+member highlights in all three places. Clear affects the whole scope. Canvas and
+viewport tables keep independent sort/scroll, and tooltips remain local.
+
+- Debug build: zero warnings/errors; **255 tests passed**, including seven new
+  adapter tests. Original unscoped fixtures still use independent authorities.
+- RhinoCore 8.36 / .NET 8.0.33 checks exercise Canvas-to-Overlay/model and model-to-
+  Canvas projection, whole-domain Selection, shared Canvas/Overlay event history,
+  two Overlays, isolated owners, token-tree validation, scope changes, local tooltip
+  targets and coalesced output solves. The production model picker remains unchanged.
+- Host lifecycle checks cover Unloaded/Loaded without a solve, participant and
+  Scope delete/undo, component lock/unlock, global solver pause/resume, GH close/
+  reopen and pending callback invalidation, owned Rhino view close and an owned
+  headless Rhino document disposal. Closed Rhino contributions are removed;
+  interaction solves cannot redirect/rebind them. A normal data solve can rebind.
+- Feedback fixture physically connects Canvas Selection back into its card filter.
+  Grasshopper rejects a direct recursive evaluation dependency, so a harness-only
+  snapshot parameter reads the authoritative Selection without recursively solving
+  its source. It schedules nothing. The broker allows the action solution plus one
+  reconciliation refresh, then warns on a second prune with no successor schedule.
+  This is a verification adaptation, not a new general-purpose GH feedback component.
+- 1× GH export and viewport captures are under
+  `artifacts/screenshots-scope/verified/room-areas/` (`scope-canvas-1x.png`,
+  `scope-viewport-1x.png`), visually inspected. Both tables show Bed 01 selected and
+  the same room face is blue. Card/geometry layout is clear; Canvas Auto resolved
+  to Night in this host, matching the viewport. Hover is omitted by existing export
+  paths. A later final capture is recorded in the linked verification record.
+- Physical mouse release/capture, native UI tab gestures, live Rhino 8.20 (this host
+  is 8.36), mixed DPI and repeated interactive resource-plateau testing remain for
+  normal Rhino. Core tests additionally cover stale leases/publications/generations,
+  atomic union handoff, source replacement and bounded refresh decisions.
+
+No commit, push or developer installation by this implementation sub-agent.
+Reviewer should install the integrated checkout, open `room-areas.gh`, toggle
+Bed 01 from Canvas and the model, try Bedroom/Clear, then change Plan scale.
+Detailed files, commands and limitations: [scope verification](verification/selection-scope.md).
+
 ## Fixed
 
 | Rank | Finding | Change and evidence |

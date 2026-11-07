@@ -164,9 +164,9 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
-| Scope | Optional Name is a display label only; outputs a typed selection-scope token for this GH document. Infrastructure only: it does nothing until B2 wires Canvas Card and Overlay to the broker. |
-| Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Auto theme by default for new components. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
-| Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Right-click → Theme. No outputs. |
+| Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
+| Overlay | Cards, optional Links, Theme and appended Scope inputs; Selection and Events outputs. Auto theme by default for new components. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
+| Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Appended optional Scope input and Selection output. Right-click → Theme. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
@@ -214,10 +214,11 @@ screen pixels. Escape or lost capture cancels a scrollbar drag. GH tooltips show
 the hovered item's details. Modified clicks and middle-button navigation retain
 their normal GH behavior.
 
-Each component has independent, transient selection, sort and scroll state. It
-survives data updates (with keys pruned and offsets clamped), resets when the
-source card ID changes, and is not saved in the `.gh`. It is not shared with
-Overlay and never triggers a solve. Card width/visible rows come from the source;
+Unwired Canvas Cards have private, transient selection, sort and scroll state.
+State survives data updates (with keys pruned and offsets clamped), resets when
+the source card ID changes, and is not saved in the `.gh`. Committed selection
+updates the appended Selection output through one coalesced solution; hover,
+sorting and scrolling only repaint. Card width/visible rows come from the source;
 Slot has no canvas meaning. There is no canvas resize control in this version.
 
 Right-click **Canvas Card → Theme: Auto/Paper/Night/Smoke/Blueprint** to save a theme
@@ -238,6 +239,40 @@ scale, preserving committed selection/sort/scroll and omitting hover. It does no
 replace the screen cache or provide vector text. `ConduitPlusCapture` and
 `ConduitPlusPdf` remain viewport commands. Pinned API checks and the pending live
 Rhino checklist are in [Canvas Card verification](docs/verification/canvas-cards.md).
+
+## Shared selection Scope
+
+Wire the same **Scope** output into **Canvas Card → Scope** and **Overlay → Scope**.
+The room-area example includes a canvas room table sharing selection with its
+viewport dashboard. Click a canvas row, a viewport row/bar/group or a model face:
+all participants immediately project the same member selection. Each display keeps
+its own theme, layout, sorting, scrolling and geometry Links. Tooltips stay with
+the pointer's host. Unwired displays remain independent, even with identical cards,
+keys or Scope names.
+
+Each Scope input requires exactly one live token across its whole tree, from the
+same GH document. Invalid, empty wired, multiple or foreign tokens show an error
+and disable brush interaction until corrected. **Selection** is the sorted unique
+member set for the whole domain, including keys absent from that display. Scoped
+Overlay **Events** mirror the same last 32 actions, including Canvas actions with
+`sourceSurface: "canvas"` (viewport cards use `"card"`, geometry uses `"model"`).
+
+Selection is transient: tab switching retains it without a solve; closing the GH
+document, deleting Scope or removing its last participant releases it. Locked
+displays cannot originate actions and reproject the latest state on unlock. A
+closed Rhino document suspends its Overlay contribution; only a later normal data
+solve can bind that Overlay again. Other scope participants survive.
+
+User selection/Clear schedules one coalesced output solution. Data reconciliation
+can request one output refresh; a further feedback prune warns and awaits an
+external solve. Direct recursive GH wires are rejected by Grasshopper; the host
+verification uses a harness-only snapshot parameter to break evaluation recursion
+and exercise this refresh bound. See [scope verification](docs/verification/selection-scope.md)
+for lifecycle evidence, feedback details and 1× PNGs.
+
+```powershell
+./tools/examples/Build-Examples.ps1 -Example Rooms -VerifyOnly -Safe -Exports -State Scope -Output artifacts/screenshots-scope
+```
 
 ## Commands
 
@@ -274,8 +309,8 @@ dash; full groups and selected members keep the strong treatment. Hover outlines
 effective members and related groups; only the direct target gets a light fill.
 Category colors stay visible. Member tooltips list containing labels (five plus
 a remainder); group tooltips report selected/hovered member counts. PNG, GH image
-and PDF card exports omit hover and retain selection. Each display remains
-independent; Scope/shared selection is separate follow-up work.
+and PDF card exports omit hover and retain selection. Displays stay independent
+unless explicitly connected to the same Scope.
 
 ## Scrolling and interaction
 
@@ -284,14 +319,14 @@ independent; Scope/shared selection is separate follow-up work.
   accent wire with translucent faces for surface geometry. Click toggles selection,
   drawing stronger translucent faces, thicker x-ray wires and point
   markers, also in captures. **Clear** in a keyed card's header clears that
-  owner's selection. Linked model clicks emit a `click` event with card id `model`.
+  owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.
   Cards take priority; other model clicks pass through to Rhino. Model picking
   pauses during Rhino commands and uses a six-pixel tolerance with hover near 30 Hz.
 - Overlay outputs selected member keys and the last 32 click/clear events as JSON.
   Events retain owner/cardId/key/kind and add targetKind, affectedKeys, selectedKeys
   and sourceSurface. One group action emits one event.
-  Selection and hover belong to the document/owner and survive following another
-  view; removed keys are pruned against individual card/Link keys and valid group
+  Unwired selection and hover belong to the document/owner; scoped brush state
+  belongs to the explicit GH-document Scope. Both survive following another view; removed keys are pruned against individual card/Link keys and valid group
   members. Selection is
   transient (no undo or `.gh` persistence). Hover never triggers a GH solve.
 - Over a scrollable table, the mouse wheel moves three rows per notch and is

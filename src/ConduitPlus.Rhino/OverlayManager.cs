@@ -15,9 +15,15 @@ public static partial class OverlayManager
         public uint DocumentSerial { get; } = document;
         public Guid? ViewId { get; set; } = view;
         public BrushState Brush { get; } = new();
+        public IBrushBinding? Domain { get; set; }
+        public bool Enabled { get; set; } = true;
+        public long Gesture { get; set; } = Interlocked.Increment(ref _gestureGeneration);
+        public BrushDomainSnapshot Current => Domain?.Current ?? Brush.Current;
         public Dictionary<string, LayoutOverride> Layout { get; set; } = new(StringComparer.Ordinal);
         public CardSpec[] Originals { get; set; } = [];
     }
+    private static long _gestureGeneration;
+    public static event Action<Guid>? BoundDocumentClosed;
     private static readonly object StateLock = new();
     private static readonly Dictionary<(uint Doc, Guid Owner), OwnerState> States = [];
     private static readonly Dictionary<Guid, OwnerState> Bindings = [];
@@ -52,7 +58,7 @@ public static partial class OverlayManager
     }
     private static void CommandStarted(object? sender, global::Rhino.Commands.CommandEventArgs e)
     {
-        foreach (var session in Sessions.Values.ToArray()) session.HideTooltip();
+        foreach (var session in Sessions.Values.ToArray()) { session.HideTooltip(); CancelBrushHover(session); }
     }
     private static void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
     {
@@ -63,7 +69,7 @@ public static partial class OverlayManager
     {
         foreach (var key in Sessions.Keys.Where(match).ToArray())
         {
-            Mouse.Forget(Sessions[key]); Sessions[key].Dispose(); Sessions.Remove(key);
+            CancelBrushHover(Sessions[key]); Mouse.Forget(Sessions[key]); Sessions[key].Dispose(); Sessions.Remove(key);
         }
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
@@ -74,7 +80,8 @@ public static partial class OverlayManager
         lock (StateLock)
         {
             foreach (var key in States.Keys.Where(k => k.Doc == serial).ToArray()) States.Remove(key);
-            foreach (var owner in Bindings.Where(p => p.Value.DocumentSerial == serial).Select(p => p.Key).ToArray()) Bindings.Remove(owner);
+            foreach (var owner in Bindings.Where(p => p.Value.DocumentSerial == serial).Select(p => p.Key).ToArray())
+            { Bindings.Remove(owner); BoundDocumentClosed?.Invoke(owner); }
         }
     }
     private static void ViewDestroyed(object? sender, ViewEventArgs e)
@@ -93,7 +100,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null, Theme? theme = null)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true)
     {
         UiContext.Ensure();
         var specs = cards.ToArray(); var linked = links?.ToArray() ?? [];
@@ -104,8 +111,9 @@ public static partial class OverlayManager
             if (!States.TryGetValue(key, out var state)) States.Add(key, state = new(doc.RuntimeSerialNumber, view.MainViewport.Id));
             state.ViewId = view.MainViewport.Id; Bindings[owner] = state;
             state.Originals = specs;
+            state.Domain = domain; state.Enabled = brushEnabled;
             if (layout is not null) state.Layout = new(layout, StringComparer.Ordinal);
-            state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
+            if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
         }
         // Following the active view removes this owner's previous conduit.
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
@@ -159,52 +167,84 @@ public static partial class OverlayManager
         ReplaceLayout(session.Owner, next, session.Document.RuntimeSerialNumber);
     }
     internal static void CancelGesture(OverlaySession session) => Mouse.Forget(session);
+    private static void CancelBrushHover(OverlaySession session)
+    {
+        lock (StateLock)
+            if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var current) || current.Domain is null) return;
+        ClearHover(session, false); ClearHover(session, true);
+        lock (StateLock)
+            if (States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state))
+                state.Gesture = Interlocked.Increment(ref _gestureGeneration);
+    }
+    private static BrushSnapshot Snapshot(OwnerState state) => new(state.Current.SelectedKeys.ToArray(), state.Current.HoverKey)
+    { HoveredKeys = state.Current.HoveredKeys.ToArray(), HoverOrigin = state.Current.HoverOrigin, HoverTargetKind = state.Current.HoverTargetKind };
     public static BrushSnapshot Snapshot(Guid owner)
-    { lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? state.Brush.Snapshot : new([], null); }
+    { lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? Snapshot(state) : new([], null); }
+    public static void SetInteractionEnabled(Guid owner, bool enabled)
+    {
+        UiContext.Ensure();
+        lock (StateLock)
+            if (Bindings.TryGetValue(owner, out var state)) state.Enabled = enabled;
+        if (!enabled)
+            foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
+            { ClearHover(session, false); ClearHover(session, true); }
+    }
+    public static void RefreshDomain(Guid owner)
+    {
+        UiContext.Ensure();
+        foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray()) session.RefreshInteraction();
+    }
     internal static CardSpec[] Project(OverlaySession session, CardSpec[] cards)
     {
-        lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Project(cards) : cards;
+        lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Current.Project(cards) : cards;
     }
     internal static BrushSnapshot Snapshot(OverlaySession session)
-    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Snapshot : new([], null); }
+    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? Snapshot(state) : new([], null); }
     internal static BrushDomainSnapshot? DomainSnapshot(OverlaySession session)
-    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Current : null; }
-    internal static bool ModelHover(OverlaySession session) => DomainSnapshot(session)?.HoverOrigin?.Surface == "model";
-    private static BrushOrigin Origin(OverlaySession session, bool model) => new(session.Owner.ToString("N"), model ? "model" : "card", 0);
+    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Current : null; }
+    internal static bool LocalHover(OverlaySession session) => DomainSnapshot(session)?.HoverOrigin is { } origin && origin.ParticipantId == session.Owner.ToString("N") && origin.Surface is "model" or "card";
+    internal static bool ModelHover(OverlaySession session) => LocalHover(session) && DomainSnapshot(session)?.HoverOrigin?.Surface == "model";
+    private static BrushOrigin Origin(OverlaySession session, bool model)
+    {
+        lock (StateLock) return new(session.Owner.ToString("N"), model ? "model" : "card",
+            States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Gesture : 0);
+    }
     internal static bool TooltipBlocked => Busy || Mouse.Interacting;
     internal static void Hover(OverlaySession session, string? key, bool model = false, string? card = null)
     {
         var origin = Origin(session, model);
         var spec = card is null ? null : session.Card(card);
-        Change(session, b => key is null ? b.ClearHover(origin) : b.Hover(origin, key,
-            spec is null ? BrushTargetKind.Member : BrushPresentation.TargetKind(spec, key)));
+        var kind = spec is null || key is null ? BrushTargetKind.Member : BrushPresentation.TargetKind(spec, key);
+        Change(session, b => key is null ? b.ClearHover(origin) : b.Hover(origin, key, kind),
+            b => key is null ? b.ClearHover(origin) : b.Hover(origin, key, kind));
         session.SyncTooltip();
     }
     internal static void ClearHover(OverlaySession session, bool model)
     {
-        Change(session, b => b.ClearHover(Origin(session, model)));
+        Change(session, b => b.ClearHover(Origin(session, model)), b => b.ClearHover(Origin(session, model)), clearing: true);
         session.SyncTooltip();
     }
     internal static void Select(OverlaySession session, string card, string key)
     {
         var clear = key == CardMeasure.ClearKey;
         if (!clear && CardMeasure.IsReserved(key)) return;
-        BrushEvent? action = null;
-        if (Change(session, b =>
+        var source = new BrushActionSource(session.Owner, card, card == "model" ? "model" : "card");
+        var kind = session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
+        if (Change(session, b => clear ? b.Clear(source) : b.Toggle(key, kind, source),
+            b => clear ? b.Clear(source) : b.Toggle(key, kind, source)))
         {
-            var source = new BrushActionSource(session.Owner, card, card == "model" ? "model" : "card");
-            var kind = session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
-            var changed = clear ? b.Clear(source) : b.Toggle(key, kind, source);
-            if (changed) action = b.Current.Events[^1];
-            return changed;
-        })) Interaction?.Invoke(OverlayInteraction.From(action!));
+            if (DomainSnapshot(session)?.Events.LastOrDefault() is { } action) Interaction?.Invoke(OverlayInteraction.From(action));
+        }
     }
-    private static bool Change(OverlaySession session, Func<BrushState, bool> change)
+    private static bool Change(OverlaySession session, Func<BrushState, bool> change, Func<IBrushBinding, bool> shared, bool clearing = false)
     {
         lock (StateLock)
-            if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) || !change(state.Brush)) return false;
-        foreach (var s in Sessions.Values.Where(s => s.Document.RuntimeSerialNumber == session.Document.RuntimeSerialNumber && s.Owner == session.Owner).ToArray())
-            s.RefreshInteraction();
+        {
+            if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state)) return false;
+            if (!clearing && !state.Enabled) return false;
+            if (!(state.Domain is { } domain ? shared(domain) : change(state.Brush))) return false;
+        }
+        RefreshDomain(session.Owner);
         return true;
     }
     internal static OverlaySession[] InView(RhinoDoc doc, RhinoView view) => Sessions.Values.Where(s => s.Document.RuntimeSerialNumber == doc.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
