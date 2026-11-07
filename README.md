@@ -70,6 +70,15 @@ installation folder if present and reports its removal. It skips installation
 while Rhino is running. Load the `.rhp` through `PlugInManager` → Install once,
 then start Grasshopper. Close Rhino before rebuilding or reinstalling.
 
+## Edit layout
+
+Drag a card title (or the small edge grip shown when hovering an untitled card)
+to one of the six viewport slots. The highlighted zone and insertion line show
+where it will land. Wired slots show a lock; change those in Grasshopper.
+Layout is saved with the Overlay component in the `.gh` file and supports Undo/Redo
+without a solve. Right-click Overlay → **Reset layout** to clear all saved positions
+and ordering. Escape on mouse move or leaving the initiating viewport cancels a drag.
+
 ## Grasshopper components
 
 All components are in the **Conduit+** category. Connect one or more card outputs

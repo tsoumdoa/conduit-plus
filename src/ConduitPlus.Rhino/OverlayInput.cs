@@ -16,14 +16,41 @@ public static partial class OverlayManager
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 34 };
         private (RhinoView View, System.Drawing.Point Point)? _pending;
         private long _lastPick;
-        // Active scrollbar-thumb drag: session, card, and where on the thumb it was grabbed (card-local CSS px).
-        private (OverlaySession Session, string CardId, double Grab)? _drag;
+        private abstract record Gesture(OverlaySession Session);
+        private sealed record PendingTitle(OverlaySession Session, string CardId, Point2 Press, Size2 Size, double Dpi, bool Draggable) : Gesture(Session);
+        private sealed record CardDrag(OverlaySession Session) : Gesture(Session);
+        private sealed record ScrollDrag(OverlaySession Session, string CardId, double Grab) : Gesture(Session);
+        private Gesture? _gesture; // null = idle; swallowed-up bookkeeping is independent of cancellation
+        internal bool BlockWheel(System.Drawing.Point screen)
+        {
+            var block = _gesture is CardDrag;
+            if (_gesture is { } gesture && (!gesture.Session.View.ScreenRectangle.Contains(screen) || !gesture.Session.LayoutEnvironmentValid() ||
+                Command.InCommand() || (GetAsyncKeyState(0x01) & 0x8000) == 0 || (GetAsyncKeyState(0x1B) & 0x8000) != 0)) Cancel();
+            return block;
+        }
         public OverlayMouse() => _hoverTimer.Tick += (_, _) => FlushHover();
-        public void Reset() { _hoverTimer.Stop(); _pending = null; _drag = null; _pressed = false; }
+        public void Reset() { _hoverTimer.Stop(); _pending = null; Cancel(); _pressed = false; }
+        private void Cancel()
+        {
+            var previous = _gesture; _gesture = null;
+            previous?.Session.EndLayoutDrag();
+        }
         public void Forget(OverlaySession session)
         {
             _hoverTimer.Stop(); _pending = null;
-            if (_drag is { } drag && drag.Session == session) _drag = null;
+            if (_gesture?.Session == session) Cancel();
+            session.TitleHover(null);
+        }
+        private bool Valid(MouseCallbackEventArgs e)
+        {
+            if (_gesture is not { } gesture) return true;
+            var s = gesture.Session; var size = s.ViewSize;
+            var valid = !Busy && !Command.InCommand() && s.Visible &&
+                s.Document.RuntimeSerialNumber == e.View.Document.RuntimeSerialNumber && s.View.MainViewport.Id == e.View.MainViewport.Id &&
+                new Rect2(0, 0, size.Width, size.Height).Contains(e.ViewportPoint.X, e.ViewportPoint.Y) && s.LayoutEnvironmentValid();
+            if (gesture is PendingTitle p) valid &= p.Size == size && p.Dpi == UiContext.Dpi(s.View);
+            if (!valid) Cancel();
+            return valid;
         }
         private static OverlaySession[] InView(RhinoView view) => Sessions.Values.Where(s => s.Visible &&
             s.Document.RuntimeSerialNumber == view.Document.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
@@ -31,7 +58,7 @@ public static partial class OverlayManager
         {
             _hoverTimer.Stop();
             var pending = _pending; _pending = null;
-            if (pending is not { } p) return;
+            if (_gesture is not null || _pressed || pending is not { } p) return;
             _lastPick = System.Diagnostics.Stopwatch.GetTimestamp();
             var sessions = InView(p.View);
             var hit = !Busy && !Command.InCommand() && !sessions.Any(s => s.Hit(p.Point.X, p.Point.Y) is not null)
@@ -44,8 +71,30 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
+            if (_gesture is not null)
+            {
+                e.Cancel = true;
+                if (!Valid(e)) return;
+                // MouseCallback has no capture/key event. Observe release outside or Escape on the next move.
+                if ((GetAsyncKeyState(0x01) & 0x8000) == 0 || (GetAsyncKeyState(0x1B) & 0x8000) != 0) { Cancel(); return; }
+            }
             if (Busy) { _hoverTimer.Stop(); _pending = null; return; }
-            if (_drag is { } drag)
+            if (_gesture is PendingTitle title)
+            {
+                var point = new Point2(e.ViewportPoint.X, e.ViewportPoint.Y);
+                if (title.Draggable && Math.Sqrt(Math.Pow(point.X - title.Press.X, 2) + Math.Pow(point.Y - title.Press.Y, 2)) > 4 * title.Dpi)
+                {
+                    try
+                    {
+                        if (title.Session.BeginLayoutDrag(title.CardId, title.Press))
+                        { _gesture = new CardDrag(title.Session); title.Session.MoveLayoutDrag(point); }
+                    }
+                    catch (Exception ex) { Cancel(); RhinoApp.WriteLine($"Conduit+ drag: {ex.Message}"); }
+                }
+                return;
+            }
+            if (_gesture is CardDrag cardDrag) { cardDrag.Session.MoveLayoutDrag(new(e.ViewportPoint.X, e.ViewportPoint.Y)); return; }
+            if (_gesture is ScrollDrag drag)
             {
                 e.Cancel = true;
                 var local = drag.Session.Local(drag.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
@@ -58,6 +107,7 @@ public static partial class OverlayManager
             foreach (var s in Sessions.Values.ToArray())
             {
                 var hit = sessions.Contains(s) ? s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) : null;
+                s.TitleHover(hit?.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
                 if (hit is { } card) s.SetHover(card.CardId, card.Key);
                 else ClearHover(s, false);
             }
@@ -73,8 +123,11 @@ public static partial class OverlayManager
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
+            if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
             if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left) return;
-            foreach (var s in InView(e.View))
+            var sessions = InView(e.View);
+            var hits = sessions.Select(s => (Session: s, Hit: s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y))).Where(h => h.Hit.HasValue).ToArray();
+            foreach (var s in sessions)
             {
                 var hit = s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y);
                 if (hit is null) continue;
@@ -85,9 +138,17 @@ public static partial class OverlayManager
                     var card = s.Card(hit.Value.CardId); var local = s.Local(hit.Value.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
                     if (card is not null && local is { } p && TableScroll.Bar(card, s.Theme) is { } bar)
                     {
-                        if (p.Y >= bar.Thumb.Y && p.Y <= bar.Thumb.Y + bar.Thumb.Height) _drag = (s, card.Id, p.Y - bar.Thumb.Y);
+                        if (p.Y >= bar.Thumb.Y && p.Y <= bar.Thumb.Y + bar.Thumb.Height) _gesture = new ScrollDrag(s, card.Id, p.Y - bar.Thumb.Y);
                         else s.ScrollBy(card.Id, p.Y < bar.Thumb.Y ? -TableScroll.Visible(card) : TableScroll.Visible(card)); // page
                     }
+                    return;
+                }
+                if (System.Windows.Forms.Control.ModifierKeys == System.Windows.Forms.Keys.None && !Command.InCommand() && s.TitleAt(hit.Value.CardId, e.ViewportPoint.X, e.ViewportPoint.Y))
+                {
+                    var locked = s.Card(hit.Value.CardId)!.WiredSlot.HasValue;
+                    _gesture = new PendingTitle(s, hit.Value.CardId, new(e.ViewportPoint.X, e.ViewportPoint.Y), s.ViewSize, UiContext.Dpi(s.View), !locked && hits.Length == 1);
+                    if (hits.Length > 1) return; // ambiguous owner; retain existing data/scroll behavior outside title gestures
+                    if (locked) RhinoApp.WriteLine("Conduit+: slot is set in Grasshopper");
                     return;
                 }
                 if (!string.IsNullOrEmpty(hit.Value.Key))
@@ -108,9 +169,19 @@ public static partial class OverlayManager
         protected override void OnMouseUp(MouseCallbackEventArgs e)
         {
             if (e.Button != System.Windows.Forms.MouseButtons.Left) return;
-            _drag = null; if (_pressed) { e.Cancel = true; _pressed = false; }
+            try
+            {
+                if (Valid(e) && _gesture is CardDrag drag)
+                {
+                    drag.Session.MoveLayoutDrag(new(e.ViewportPoint.X, e.ViewportPoint.Y));
+                    drag.Session.DropLayoutDrag();
+                }
+            }
+            catch (Exception ex) { RhinoApp.WriteLine($"Conduit+ drop: {ex.Message}"); }
+            finally { Cancel(); if (_pressed) { e.Cancel = true; _pressed = false; } }
             Enabled = Sessions.Count > 0;
         }
+        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int virtualKey);
     }
 
     /// <summary>
@@ -153,6 +224,7 @@ public static partial class OverlayManager
         }
         private static bool TryScroll(System.Drawing.Point screen, short delta)
         {
+            if (Mouse.BlockWheel(screen)) return true;
             foreach (var s in Sessions.Values.ToArray())
             {
                 if (!s.Visible) continue;

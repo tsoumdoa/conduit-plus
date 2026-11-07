@@ -1,9 +1,13 @@
 using System.Drawing;
+using System.Collections.Immutable;
+using System.Windows.Forms;
+using GH_IO.Serialization;
 using ConduitPlus.Core;
 using ConduitPlus.Rhino;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
+using Grasshopper.Kernel.Undo;
 using Rhino;
 using Rhino.Geometry;
 
@@ -32,7 +36,7 @@ public abstract class CardComponent(string name, string nickname, string descrip
     protected string CardId => InstanceGuid.ToString("N");
     protected override void RegisterOutputParams(GH_OutputParamManager p) => p.AddGenericParameter("Card", "C", "Connect to Overlay", GH_ParamAccess.item);
     protected static Slot? ReadSlot(IGH_DataAccess da, int index)
-    { string slot = ""; return da.GetData(index, ref slot) && Enum.TryParse<Slot>(slot, true, out var value) ? value : null; }
+    { string slot = ""; return da.GetData(index, ref slot) && Enum.TryParse<Slot>(slot, true, out var value) && Enum.IsDefined(value) ? value : null; }
 }
 
 public sealed class MetricComponent : CardComponent
@@ -242,6 +246,81 @@ public sealed class OverlayComponent : GH_Component
     private bool _active;
     private Bitmap? _icon;
     public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display") { }
+    private Dictionary<string, LayoutOverride> _layout = new(StringComparer.Ordinal);
+    private CardSpec[] _originals = [];
+    private bool _layoutWarning;
+    public override bool Write(GH_IWriter writer)
+    {
+        lock (_publishLock) writer.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(_layout));
+        return base.Write(writer);
+    }
+    public override bool Read(GH_IReader reader)
+    {
+        var result = base.Read(reader);
+        var json = ""; var found = reader.TryGetString("ConduitPlus.Layout", ref json);
+        lock (_publishLock) _layout = LayoutEditing.Read(json, out _layoutWarning);
+        _layoutWarning |= !found && reader.ItemExists("ConduitPlus.Layout");
+        if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
+        return result;
+    }
+    protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
+    {
+        base.AppendAdditionalComponentMenuItems(menu);
+        Menu_AppendItem(menu, "Reset layout", (_, _) => ChangeLayout(new Dictionary<string, LayoutOverride>(StringComparer.Ordinal)), true, false);
+    }
+    private void OnLayoutProposal(LayoutProposal proposal)
+    {
+        if (!_active || proposal.Owner != InstanceGuid) return;
+        Dictionary<string, LayoutOverride> next;
+        lock (_publishLock) next = new(_layout, StringComparer.Ordinal);
+        foreach (var entry in proposal.Changes) next[entry.Key] = entry.Value;
+        ChangeLayout(next);
+    }
+    private void ChangeLayout(Dictionary<string, LayoutOverride> next)
+    {
+        if (OnPingDocument() is null) return;
+        lock (_publishLock)
+        {
+            if (_layout.Count == next.Count && _layout.All(p => next.TryGetValue(p.Key, out var value) && p.Value == value)) return;
+            RecordUndoEvent("Edit layout", new LayoutUndoAction(InstanceGuid, _layout, next));
+        }
+        ApplyLayout(next);
+    }
+    private void ApplyLayout(IReadOnlyDictionary<string, LayoutOverride> layout)
+    {
+        lock (_publishLock) _layout = new(layout, StringComparer.Ordinal);
+        // The manager rebuilds its currently bound original specs; no publish, solve or active-view lookup.
+        OverlayManager.ReplaceLayout(InstanceGuid, layout);
+        OnPingDocument()?.Modified();
+    }
+    public sealed class LayoutUndoAction : GH_ObjectUndoAction
+    {
+        private Guid _owner;
+        private ImmutableDictionary<string, LayoutOverride> _before = ImmutableDictionary<string, LayoutOverride>.Empty;
+        private ImmutableDictionary<string, LayoutOverride> _after = ImmutableDictionary<string, LayoutOverride>.Empty;
+        public LayoutUndoAction() : base(Guid.Empty) { }
+        public LayoutUndoAction(Guid owner, IReadOnlyDictionary<string, LayoutOverride> before, IReadOnlyDictionary<string, LayoutOverride> after) : base(owner)
+        { _owner = owner; _before = before.ToImmutableDictionary(StringComparer.Ordinal); _after = after.ToImmutableDictionary(StringComparer.Ordinal); }
+        public override bool ExpiresSolution => false;
+        public override bool ExpiresDisplay => true;
+        protected override void Object_Undo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyLayout(_before); }
+        protected override void Object_Redo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyLayout(_after); }
+        // GH_ObjectUndoAction does not serialize its private target id. Resolve our serialized id after Read as well.
+        protected override void Internal_Undo(GH_Document doc) => Object_Undo(doc, doc.FindObject(_owner, false));
+        protected override void Internal_Redo(GH_Document doc) => Object_Redo(doc, doc.FindObject(_owner, false));
+        public override bool Write(GH_IWriter writer)
+        {
+            writer.SetGuid("Owner", _owner); writer.SetString("Before", LayoutEditing.Serialize(_before)); writer.SetString("After", LayoutEditing.Serialize(_after));
+            return base.Write(writer);
+        }
+        public override bool Read(GH_IReader reader)
+        {
+            _owner = reader.GetGuid("Owner");
+            _before = LayoutEditing.Read(reader.GetString("Before"), out _).ToImmutableDictionary(StringComparer.Ordinal);
+            _after = LayoutEditing.Read(reader.GetString("After"), out _).ToImmutableDictionary(StringComparer.Ordinal);
+            return base.Read(reader);
+        }
+    }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae204");
     protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("+");
     protected override void RegisterInputParams(GH_InputParamManager p)
@@ -251,15 +330,16 @@ public sealed class OverlayComponent : GH_Component
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
-    public override void AddedToDocument(GH_Document document) { base.AddedToDocument(document); _active = true; OverlayManager.Interaction += OnInteraction; }
+    public override void AddedToDocument(GH_Document document) { base.AddedToDocument(document); Activate(); }
+    private void Activate() { if (_active) return; _active = true; OverlayManager.Interaction += OnInteraction; OverlayManager.LayoutProposed += OnLayoutProposal; }
     public override void RemovedFromDocument(GH_Document document) { Deactivate(); base.RemovedFromDocument(document); }
     public override void DocumentContextChanged(GH_Document document, GH_DocumentContext context)
     {
         base.DocumentContextChanged(document, context);
         if (context is GH_DocumentContext.Close or GH_DocumentContext.Unloaded) Deactivate();
-        else if (context == GH_DocumentContext.Loaded && !_active) { _active = true; OverlayManager.Interaction += OnInteraction; }
+        else if (context == GH_DocumentContext.Loaded && !_active) Activate();
     }
-    private void Deactivate() { _active = false; lock (_publishLock) { _pending = null; _solveScheduled = false; _interactionSolve = false; } OverlayManager.Interaction -= OnInteraction; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
+    private void Deactivate() { _active = false; lock (_publishLock) { _pending = null; _solveScheduled = false; _interactionSolve = false; } OverlayManager.Interaction -= OnInteraction; OverlayManager.LayoutProposed -= OnLayoutProposal; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
     private void OnInteraction(OverlayInteraction e)
     {
         if (!_active || e.Owner != InstanceGuid) return;
@@ -283,6 +363,7 @@ public sealed class OverlayComponent : GH_Component
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
+        if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         lock (_publishLock) _solveScheduled = false;
         var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
         da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
@@ -327,7 +408,14 @@ public sealed class OverlayComponent : GH_Component
             if (pending.Interaction && pending.DocumentSerial is null) return;
             var doc = pending.DocumentSerial is { } serial ? RhinoDoc.FromRuntimeSerialNumber(serial) : RhinoDoc.ActiveDoc;
             var view = pending.Interaction && pending.ViewId is { } id ? doc?.Views.Find(id) ?? doc?.Views.ActiveView : doc?.Views.ActiveView;
-            if (doc is not null && view is not null) OverlayManager.Set(doc, view, InstanceGuid, pending.Cards, pending.Links);
+            if (doc is not null && view is not null)
+            {
+                lock (_publishLock)
+                {
+                    _originals = pending.Cards;
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout);
+                }
+            }
         }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ Overlay: {e.Message}"); }
     }

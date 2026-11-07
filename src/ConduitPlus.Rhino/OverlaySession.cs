@@ -8,7 +8,7 @@ using System.Drawing;
 namespace ConduitPlus.Rhino;
 
 
-internal sealed class OverlaySession : IDisposable
+internal sealed partial class OverlaySession : IDisposable
 {
     public Guid Owner { get; }
     public RhinoDoc Document { get; }
@@ -33,14 +33,15 @@ internal sealed class OverlaySession : IDisposable
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
     { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; }
 
-    public void Update(CardSpec[] specs)
+    public void Update(CardSpec[] specs, bool preserveGesture = false)
     {
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
         specs = ApplyViewState(OverlayManager.Project(this, specs));
         _brush = OverlayManager.Snapshot(this);
-        _store.Update(specs);
+        var dirty = _store.Update(specs);
         var next = _store.Snapshot;
+        if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
         _raster.Prepare(next, Theme, UiContext.Dpi(View));
         Cards = next;
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
@@ -111,7 +112,7 @@ internal sealed class OverlaySession : IDisposable
     private void UpdateInteraction(CardSpec[] cards)
     {
         if (_disposed) return;
-        try { Update(cards); View.Redraw(); }
+        try { Update(cards, true); View.Redraw(); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
     private void Draw(DrawEventArgs e)
@@ -123,6 +124,11 @@ internal sealed class OverlaySession : IDisposable
         // Rhino's viewport Size remains the source view size during ViewCapture.
         var viewport = e.Display.IsInViewCapture ? new Size2(View.ActiveViewport.Size.Width * CaptureMultiplier, View.ActiveViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
         var layouts = SlotLayout.Place(Cards, Theme, viewport, scale);
+        if (!e.Display.IsInViewCapture)
+        {
+            if (!LayoutEnvironmentValid()) OverlayManager.CancelGesture(this);
+            if (_layoutDrag is { } drag) layouts = drag.Frozen;
+        }
         // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
         // including direct captures; the next screen draw lazily restores screen resolution.
         if (_raster.Scale != scale)
@@ -135,9 +141,11 @@ internal sealed class OverlaySession : IDisposable
         }
         foreach (var layout in layouts)
         {
+            if (!e.Display.IsInViewCapture && _layoutDrag?.CardId == layout.Id) continue;
             if (_raster.Prepared.TryGetValue(layout.Id, out var p))
                 e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X), (int)Math.Round(layout.Y));
         }
+        if (!e.Display.IsInViewCapture) DrawLayoutEditing(e.Display, layouts, scale);
         FrameCount++;
     }
     private void DrawHighlights(DisplayPipeline display)
@@ -167,6 +175,7 @@ internal sealed class OverlaySession : IDisposable
     {
         if (_disposed) return;
         _disposed = true; _conduit.Enabled = false;
+        EndLayoutDrag();
         _raster.Dispose();
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit

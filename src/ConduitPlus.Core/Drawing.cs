@@ -30,6 +30,12 @@ public static class CardMeasure
     public const string ClearKey = "\u0001clear";
     public static HitRegion? Clear(CardSpec c, Theme t) => BrushState.Keys(c).Any() && (c.OwnerHasSelection || c.SelectedKeys.Length > 0)
         ? new(ClearKey, c.Width - t.Padding - 40, 7, 40, 22) : null;
+    // Untitled Text starts at (12,12): keep its explicit grip in the unused left edge.
+    public static Rect2 Grip(CardSpec c) => new(1, 5, 10, 24);
+    public static bool IsTitle(CardSpec c, Theme t, double x, double y) =>
+        x >= 0 && x < c.Width && y >= 0 && y < 32 &&
+        !Hits(c, t).Any(h => h.Contains(x, y)) &&
+        (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
     public static Size2 Measure(CardSpec c, Theme t) => new(c.Width, c.Kind switch
     {
         CardKind.Metric => 92,
@@ -58,10 +64,10 @@ public static class SlotLayout
     {
         if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         var result = new List<CardLayout>();
-        var groups = cards.Select((c, i) => (c, slot: Resolve(c, i))).GroupBy(x => x.slot);
+        var groups = cards.Select((c, i) => (c, i, slot: Resolve(c, i))).GroupBy(x => x.slot);
         foreach (var group in groups)
         {
-            var items = group.Select(x => x.c).ToArray();
+            var items = group.OrderBy(x => x.c.OrderSlot != x.slot || !x.c.ManualOrder.HasValue).ThenBy(x => x.c.OrderSlot == x.slot ? x.c.ManualOrder : null).ThenBy(x => x.i).Select(x => x.c).ToArray();
             var total = items.Sum(c => CardMeasure.Measure(c, theme).Height * scale) + (items.Length - 1) * 8 * scale;
             var y = group.Key is Slot.Bl or Slot.Br ? viewport.Height - 12 * scale - total : group.Key is Slot.Lc or Slot.Rc ? (viewport.Height - total) / 2 : 36 * scale;
             foreach (var c in items)
