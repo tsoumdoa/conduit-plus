@@ -25,6 +25,9 @@ public interface ICanvas2D
 }
 public static class CardMeasure
 {
+    public const string ClearKey = "\u0001clear";
+    public static HitRegion? Clear(CardSpec c, Theme t) => BrushState.Keys(c).Any() && (c.OwnerHasSelection || c.SelectedKeys.Length > 0)
+        ? new(ClearKey, c.Width - t.Padding - 40, 7, 40, 22) : null;
     public static Size2 Measure(CardSpec c, Theme t) => new(c.Width, c.Kind switch
     {
         CardKind.Metric => 92,
@@ -32,7 +35,8 @@ public static class CardMeasure
         CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
         _ => 48 + (TableScroll.Visible(c) + 1) * t.RowHeight
     });
-    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind switch
+    public static HitRegion[] Hits(CardSpec c, Theme t) => Clear(c, t) is { } clear ? [.. DataHits(c, t), clear] : DataHits(c, t);
+    public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Bar => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.

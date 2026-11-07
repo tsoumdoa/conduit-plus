@@ -52,7 +52,6 @@ public static partial class OverlayManager
                 if (!string.IsNullOrEmpty(hit.Value.Key))
                 {
                     s.Select(hit.Value.CardId, hit.Value.Key);
-                    Interaction?.Invoke(new(s.Owner, hit.Value.CardId, hit.Value.Key, "click"));
                 }
                 return;
             }

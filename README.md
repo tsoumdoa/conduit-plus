@@ -7,7 +7,7 @@ cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
 
 This is the initial plugin skeleton, licensed under MIT. The paper theme and
-deterministic viewport slots are implemented; layout editing, geometry linking,
+deterministic viewport slots and keyed geometry highlighting are implemented; layout editing,
 persistence, undo and an Inspector are future work.
 
 ## Requirements
@@ -80,10 +80,17 @@ to **Overlay**.
 | Metric | Formatted value, title, unit and optional slot; missing values display an em dash. |
 | Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
-| Overlay | Cards input; Selection and Events outputs. Follows the active Rhino view on each solve. |
+| Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
+| Overlay | Cards and optional Links inputs; Selection and Events outputs. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 
 Line charts are available through the Core card spec and demo; there is no
 separate Grasshopper Line component yet. Component and plugin GUIDs are stable.
+
+Connect **Link** to **Overlay → Links**, and give the cards and linked geometry
+the same explicit keys. Bar keys default to labels; Table keys default to branch
+paths, so they do **not** auto-match. Keys are case-sensitive. Link supports points,
+lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
+geometry and caches its wires when solved.
 
 Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
 a stored manual slot, followed by automatic placement. Cards stack within slots;
@@ -94,7 +101,7 @@ sessions and do not currently reserve space around one another.
 
 | Command | Behavior |
 |---|---|
-| `ConduitPlusDemo` | Shows metrics, bars, a table and a line chart. |
+| `ConduitPlusDemo` | Shows metrics, bars, a table and a line chart, with linked frame members M01–M20 visible on hover/selection. |
 | `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
 | `ConduitPlusPdf` | **Experimental** vector PDF export; output, typography and export behavior remain unverified. |
 | `ConduitPlusBench` | Measures Raster metric-update and compact-bar hover latency, checks cache lifecycle and runs per-card raster benchmarks. |
@@ -105,8 +112,14 @@ the repository by default.
 
 ## Scrolling and interaction
 
-- Hover highlights keyed chart samples or table rows. Click toggles selection;
-  Overlay outputs selected keys and the last 32 click events as JSON.
+- Hover brushes every card with the same key and draws linked geometry in a thin
+  accent wire. Click toggles selection, drawing thicker x-ray wires and point
+  markers, also in captures. **Clear** in a keyed card's header clears that
+  owner's selection. Model clicks outside cards pass through.
+- Overlay outputs selected keys and the last 32 click/clear events as JSON.
+  Selection and hover belong to the document/owner and survive following another
+  view; removed keys are pruned against all card and Link keys. Selection is
+  transient (no undo or `.gh` persistence). Hover never triggers a GH solve.
 - Over a scrollable table, the mouse wheel moves three rows per notch and is
   consumed before Rhino can zoom. Elsewhere, Rhino receives the wheel normally.
 - Drag the scrollbar thumb or click its track to page. Scroll and hover state

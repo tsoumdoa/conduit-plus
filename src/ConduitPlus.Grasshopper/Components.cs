@@ -5,6 +5,7 @@ using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
 using Rhino;
+using Rhino.Geometry;
 
 namespace ConduitPlus.Grasshopper;
 
@@ -101,13 +102,73 @@ public sealed class TableComponent : CardComponent
     }
 }
 
+public sealed class LinkComponent : GH_Component
+{
+    private Bitmap? _icon;
+    public LinkComponent() : base("Link", "Link", "Map geometry branches or items to stable card keys", "Conduit+", "Display") { }
+    public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae205");
+    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("L");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddGenericParameter("Geometry", "G", "Points, lines, polylines, curves, breps, meshes, surfaces or extrusions", GH_ParamAccess.tree);
+        p.AddTextParameter("Keys", "K", "Required keys: one per branch (preferred) or flattened geometry item; repeated keys combine", GH_ParamAccess.list);
+        p[1].DataMapping = GH_DataMapping.Flatten;
+    }
+    protected override void RegisterOutputParams(GH_OutputParamManager p) => p.AddGenericParameter("Link", "L", "Connect to Overlay Links", GH_ParamAccess.item);
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        var keys = new List<string>();
+        if (!da.GetDataTree(0, out GH_Structure<IGH_Goo> tree) || !da.GetDataList(1, keys)) return;
+        try
+        {
+            var mapping = LinkKeyMapping.Create(tree.Branches.Select(b => b.Count).ToArray(), keys);
+            var items = new List<(string Key, object Geometry, string Location)>();
+            for (var branch = 0; branch < tree.PathCount; branch++)
+            for (var index = 0; index < tree.Branches[branch].Count; index++)
+            {
+                try { items.Add((keys[mapping[branch][index]], Normalize(tree.Branches[branch][index]), $"Geometry path {tree.Paths[branch]}, item [{index}]")); }
+                catch (ArgumentException e) { throw new ArgumentException($"Geometry path {tree.Paths[branch]}, item [{index}]: {e.Message}", e); }
+            }
+            da.SetData(0, new GH_ObjectWrapper(new Link(keys, items)));
+        }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+    private static object Normalize(object? value)
+    {
+        if (value is GH_ObjectWrapper wrapped) return Normalize(wrapped.Value);
+        if (value is IGH_GeometricGoo geometric) geometric.LoadGeometry();
+        object? geometry = value switch
+        {
+            GH_Point p => p.Value,
+            GH_Line l => l.Value,
+            GH_Curve c => c.Value,
+            GH_Brep b => b.Value,
+            GH_Mesh m => m.Value,
+            GH_Surface s => s.Value,
+            GH_Extrusion e => e.Value,
+            Point3d or Line or Polyline or Curve or Brep or Mesh or Surface or Extrusion or global::Rhino.Geometry.Point => value,
+            _ => null
+        };
+        var valid = geometry switch
+        {
+            Point3d p => p.IsValid,
+            Line l => l.IsValid,
+            Polyline p => p.IsValid,
+            GeometryBase g => g.IsValid,
+            _ => false
+        };
+        return valid ? geometry! : throw new ArgumentException($"Null, invalid or unsupported geometry ({value?.GetType().Name ?? "null"}).");
+    }
+}
+
 public sealed class OverlayComponent : GH_Component
 {
-    private readonly HashSet<string> _selection = new(StringComparer.Ordinal);
     private readonly Queue<string> _events = new();
     private readonly object _publishLock = new();
     private bool _publishScheduled;
-    private CardSpec[]? _pending;
+    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, bool Interaction, uint? DocumentSerial, Guid? ViewId);
+    private PendingPublish? _pending;
+    private bool _solveScheduled, _interactionSolve;
     private bool _active;
     private Bitmap? _icon;
     public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display") { }
@@ -116,6 +177,7 @@ public sealed class OverlayComponent : GH_Component
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar or Table cards", GH_ParamAccess.list);
+        p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -127,28 +189,52 @@ public sealed class OverlayComponent : GH_Component
         if (context is GH_DocumentContext.Close or GH_DocumentContext.Unloaded) Deactivate();
         else if (context == GH_DocumentContext.Loaded && !_active) { _active = true; OverlayManager.Interaction += OnInteraction; }
     }
-    private void Deactivate() { _active = false; lock (_publishLock) _pending = null; OverlayManager.Interaction -= OnInteraction; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
+    private void Deactivate() { _active = false; lock (_publishLock) { _pending = null; _solveScheduled = false; _interactionSolve = false; } OverlayManager.Interaction -= OnInteraction; RhinoApp.InvokeOnUiThread((Action)(() => OverlayManager.Remove(InstanceGuid))); }
     private void OnInteraction(OverlayInteraction e)
     {
         if (!_active || e.Owner != InstanceGuid) return;
-        if (!_selection.Add(e.Key)) _selection.Remove(e.Key);
-        _events.Enqueue(CardJson.Serialize(e)); while (_events.Count > 32) _events.Dequeue();
-        OnPingDocument()?.ScheduleSolution(1, _ => { if (_active) ExpireSolution(false); });
+        var snapshot = OverlayManager.Snapshot(InstanceGuid);
+        var document = OnPingDocument();
+        if (document is null) return;
+        lock (_publishLock)
+        {
+            _events.Enqueue(CardJson.Serialize(e)); while (_events.Count > 32) _events.Dequeue();
+            _interactionSolve = true;
+            if (_solveScheduled) return;
+            _solveScheduled = true;
+        }
+        // Read the manager snapshot now; SolveInstance reads it again after coalescing clicks.
+        Message = $"{snapshot.SelectedKeys.Length} selected";
+        document.ScheduleSolution(1, _ =>
+        {
+            lock (_publishLock) _solveScheduled = false;
+            if (_active) ExpireSolution(false);
+        });
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
-        var wrapped = new List<IGH_Goo>();
-        if (!da.GetDataList(0, wrapped)) { QueuePublish([]); return; }
-        var cards = wrapped.Select(g => g.ScriptVariable()).OfType<CardSpec>().Select(c => c with { SelectedKeys = c.Keys.Concat(c.Rows.Select(r => r.Key)).Where(_selection.Contains).ToArray() }).ToArray();
-        if (cards.Length != wrapped.Count) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Cards must come from Conduit+ card components."); return; }
-        da.SetDataList(0, _selection.Order()); da.SetDataList(1, _events.ToArray());
-        QueuePublish(cards);
+        lock (_publishLock) _solveScheduled = false;
+        var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
+        da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
+        var cards = wrapped.Select(g => g?.ScriptVariable()).OfType<CardSpec>().ToArray();
+        var links = wrappedLinks.Select(g => g?.ScriptVariable()).OfType<Link>().ToArray();
+        if (cards.Length != wrapped.Count || links.Length != wrappedLinks.Count)
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Cards must come from Conduit+ card components; Links must come from Link."); QueuePublish([], []); return; }
+        var snapshot = OverlayManager.Snapshot(InstanceGuid);
+        var live = cards.SelectMany(BrushState.Keys).Concat(links.SelectMany(l => l.Keys)).ToHashSet(StringComparer.Ordinal);
+        var selection = snapshot.SelectedKeys.Where(live.Contains).ToArray();
+        Message = $"{selection.Length} selected";
+        da.SetDataList(0, selection);
+        lock (_publishLock) da.SetDataList(1, _events.ToArray());
+        QueuePublish(cards, links);
     }
-    private void QueuePublish(CardSpec[] cards)
+    private void QueuePublish(CardSpec[] cards, Link[] links)
     {
+        var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = cards;
+            _pending = new(cards, links, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId);
+            _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;
         }
@@ -156,20 +242,22 @@ public sealed class OverlayComponent : GH_Component
     }
     private void Publish()
     {
-        CardSpec[]? cards;
+        PendingPublish? pending;
         lock (_publishLock)
         {
-            cards = _pending;
+            pending = _pending;
             _pending = null;
             _publishScheduled = false;
         }
-        if (!_active || cards is null) return;
+        if (!_active || pending is null) return;
         try
         {
-            if (cards.Length == 0) { OverlayManager.Remove(InstanceGuid); return; }
-            var doc = RhinoDoc.ActiveDoc;
-            var view = doc?.Views.ActiveView;
-            if (doc is not null && view is not null) OverlayManager.Set(doc, view, InstanceGuid, cards);
+            if (pending.Cards.Length == 0) { OverlayManager.Remove(InstanceGuid); return; }
+            // A closed binding must not redirect a queued interaction to another active document.
+            if (pending.Interaction && pending.DocumentSerial is null) return;
+            var doc = pending.DocumentSerial is { } serial ? RhinoDoc.FromRuntimeSerialNumber(serial) : RhinoDoc.ActiveDoc;
+            var view = pending.Interaction && pending.ViewId is { } id ? doc?.Views.Find(id) ?? doc?.Views.ActiveView : doc?.Views.ActiveView;
+            if (doc is not null && view is not null) OverlayManager.Set(doc, view, InstanceGuid, pending.Cards, pending.Links);
         }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ Overlay: {e.Message}"); }
     }

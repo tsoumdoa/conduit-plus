@@ -1,6 +1,8 @@
 using ConduitPlus.Core;
 using Rhino;
 using Rhino.Display;
+using Rhino.Geometry;
+using System.Drawing;
 
 namespace ConduitPlus.Rhino;
 
@@ -20,7 +22,9 @@ internal sealed class OverlaySession : IDisposable
     private readonly SessionConduit _conduit;
     private readonly RasterCardRenderer _raster = new();
     private bool _disposed;
-    private (string? Card, string? Key) _hover;
+    private Link[] _links = [];
+    private BoundingBox _linkBounds = BoundingBox.Empty;
+    private BrushSnapshot _brush = new([], null);
     /// <summary>Per-card scroll position. View state, so it is re-applied to every incoming spec (GH solves send 0).</summary>
     private readonly Dictionary<string, int> _scroll = new(StringComparer.Ordinal);
     internal const string ScrollbarKey = "\u0001scrollbar";
@@ -31,7 +35,8 @@ internal sealed class OverlaySession : IDisposable
     {
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        specs = ApplyViewState(specs);
+        specs = ApplyViewState(OverlayManager.Project(this, specs));
+        _brush = OverlayManager.Snapshot(this);
         _store.Update(specs);
         var next = _store.Snapshot;
         _raster.Prepare(next, Theme, UiContext.Dpi(View));
@@ -43,8 +48,6 @@ internal sealed class OverlaySession : IDisposable
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
     {
         if (c.Kind == CardKind.Table && _scroll.TryGetValue(c.Id, out var offset)) c = c with { ScrollOffset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c)) };
-        // Only override hover while the pointer is over this session; explicit HoverKey specs (benchmarks) pass through otherwise.
-        if (_hover.Card is not null) c = c with { HoverKey = c.Id == _hover.Card ? _hover.Key : null };
         return c;
     }).ToArray();
 
@@ -90,11 +93,15 @@ internal sealed class OverlaySession : IDisposable
     }
     public void SetHover(string? card, string? key)
     {
-        if (_hover == (card, key)) return;
-        _hover = (card, key);
-        UpdateInteraction(Cards.Select(c => c with { HoverKey = c.Id == card ? key : null }).ToArray());
+        OverlayManager.Hover(this, key is ScrollbarKey or CardMeasure.ClearKey or "" ? null : key);
     }
-    public void Select(string card, string key) => UpdateInteraction(Cards.Select(c => c.Id == card ? c with { SelectedKeys = c.SelectedKeys.Contains(key) ? c.SelectedKeys.Where(k => k != key).ToArray() : [.. c.SelectedKeys, key] } : c).ToArray());
+    public void Select(string card, string key) => OverlayManager.Select(this, card, key);
+    internal void RefreshInteraction() => UpdateInteraction(Cards);
+    internal void SetLinks(Link[] links)
+    {
+        _links = links; _linkBounds = BoundingBox.Empty;
+        foreach (var link in links) _linkBounds.Union(link.Bounds);
+    }
     private void UpdateInteraction(CardSpec[] cards)
     {
         if (_disposed) return;
@@ -104,6 +111,7 @@ internal sealed class OverlaySession : IDisposable
     private void Draw(DrawEventArgs e)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
+        DrawHighlights(e.Display);
         var size = e.Viewport.Size;
         var scale = UiContext.Dpi(View) * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.
@@ -126,6 +134,29 @@ internal sealed class OverlaySession : IDisposable
         }
         FrameCount++;
     }
+    private void DrawHighlights(DisplayPipeline display)
+    {
+        if (_links.Length == 0) return;
+        var muted = ColorTranslator.FromHtml(Theme.Muted);
+        foreach (var link in _links.Where(l => l.ShowBase))
+            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 1, false);
+        if (_brush.HoverKey is null && _brush.SelectedKeys.Length == 0) return;
+        var color = ColorTranslator.FromHtml(Theme.Accent);
+        display.PushDepthTesting(false);
+        try
+        {
+            display.PushDepthWriting(false);
+            try
+            {
+                if (_brush.HoverKey is { } hover && !_brush.SelectedKeys.Contains(hover, StringComparer.Ordinal))
+                    foreach (var link in _links) link.Draw(display, hover, color, 2, false);
+                foreach (var key in _brush.SelectedKeys)
+                    foreach (var link in _links) link.Draw(display, key, color, 4, true);
+            }
+            finally { display.PopDepthWriting(); }
+        }
+        finally { display.PopDepthTesting(); }
+    }
     public void Dispose()
     {
         if (_disposed) return;
@@ -133,5 +164,12 @@ internal sealed class OverlaySession : IDisposable
         _raster.Dispose();
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit
-    { protected override void DrawForeground(DrawEventArgs e) => session.Draw(e); }
+    {
+        protected override void DrawForeground(DrawEventArgs e) => session.Draw(e);
+        protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
+        {
+            if (!session._disposed && e.RhinoDoc.RuntimeSerialNumber == session.Document.RuntimeSerialNumber && e.Viewport.Id == session.View.MainViewport.Id && session._linkBounds.IsValid)
+                e.IncludeBoundingBox(session._linkBounds);
+        }
+    }
 }
