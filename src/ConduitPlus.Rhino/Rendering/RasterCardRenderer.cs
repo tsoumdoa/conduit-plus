@@ -12,7 +12,7 @@ internal sealed class RasterCardRenderer : IDisposable
     public double Scale { get; private set; }
     public IReadOnlyDictionary<string, BitmapCard> Prepared => _prepared;
     public long RenderCount { get; private set; }
-    public void Prepare(CardSpec[] cards, Theme theme, double scale)
+    public void Prepare(CardSpec[] cards, Theme theme, double scale, bool force = false)
     {
         if (_thread != Environment.CurrentManagedThreadId) throw new InvalidOperationException("Raster cache accessed outside its owning draw/UI thread.");
         var next = new Dictionary<string, BitmapCard>(StringComparer.Ordinal);
@@ -21,7 +21,7 @@ internal sealed class RasterCardRenderer : IDisposable
         {
             foreach (var spec in cards)
             {
-                if (_theme == theme && _prepared.TryGetValue(spec.Id, out var old) && old.Capture.Spec.Rev == spec.Rev && old.Capture.Scale == scale)
+                if (!force && _theme == theme && _prepared.TryGetValue(spec.Id, out var old) && old.Capture.Spec.Rev == spec.Rev && old.Capture.Scale == scale)
                 { next.Add(spec.Id, old); continue; }
                 var size = CardMeasure.Measure(spec, theme);
                 var capture = new CapturedCard(spec, new(spec.Id, spec.Rev, 0, 0, size.Width, size.Height, CardMeasure.Hits(spec, theme)), RasterDrawing.Render(spec, theme, scale), scale, RasterDrawing.Margin(theme, scale));

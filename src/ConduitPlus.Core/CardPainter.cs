@@ -30,6 +30,7 @@ public static class CardPainter
         if (c.Kind == CardKind.Legend) { LegendCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Metric)
         {
+            foreach (var hit in CardMeasure.DataHits(c, t)) Highlight(canvas, c, t, hit);
             var value = c.Value ?? "—";
             canvas.Text(value, new(t.Padding, 36), 28, t.Ink, t.Font);
             var measured = canvas.MeasureText(value, 28, t.Font);
@@ -94,7 +95,18 @@ public static class CardPainter
     }
     internal static void Highlight(ICanvas2D canvas, CardSpec c, Theme t, HitRegion h)
     {
-        if (c.SelectedKeys.Contains(h.Key) || c.HoverKey == h.Key) canvas.Rect(new(h.X, h.Y, h.W, h.H), t.Highlight);
-        if (c.SelectedKeys.Contains(h.Key)) canvas.Rect(new(h.X, h.Y, 2, h.H), t.Accent);
+        c.GroupStates.TryGetValue(h.Key, out var group);
+        if (group is { IsEnabled: false }) return;
+        var selected = group?.IsFullySelected ?? c.SelectedKeys.Contains(h.Key);
+        var direct = group?.IsDirectTarget ?? c.HoverKey == h.Key;
+        var hovered = group is not null ? group.HoveredMemberCount > 0 || direct : c.HoveredKeys.Contains(h.Key) || direct;
+        if (selected || direct) canvas.Rect(new(h.X, h.Y, h.W, h.H), selected ? t.Highlight : t.Track);
+        if (selected) canvas.Rect(new(h.X, h.Y, 2, h.H), t.Accent);
+        if (group is { IsPartiallySelected: true })
+            canvas.Line(new(h.X + h.W + 2, h.Y + h.H / 2), new(h.X + h.W + 8, h.Y + h.H / 2), t.Accent, 2);
+        if (hovered) Outline(canvas, h, t.Accent);
     }
+    internal static void Outline(ICanvas2D canvas, HitRegion h, string color) =>
+        canvas.Polyline([new(h.X + .5, h.Y + .5), new(h.X + h.W - .5, h.Y + .5),
+            new(h.X + h.W - .5, h.Y + h.H - .5), new(h.X + .5, h.Y + h.H - .5), new(h.X + .5, h.Y + .5)], color);
 }

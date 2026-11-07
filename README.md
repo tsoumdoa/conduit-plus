@@ -112,8 +112,11 @@ its keyed row/bar selects, and the table reveals an off-screen selected row even
 when sorted. Click a row/bar to highlight the matching geometry with translucent
 faces and x-ray wires; click again or **Clear** to deselect. Wheel-scroll the room
 table and select **Hall / R17** from the model or bar to test reveal. Drag cards
-by their titles to suit your viewport. Type/use legends describe categories;
-they do not select groups of rooms/blocks.
+by their titles to suit your viewport. Select **Bedroom** in the room-type legend
+or **Residential** in the GFA-by-use
+bar/legend to select every member of that category. The **Rooms below minimum**
+and **Blocks above 30 m** Metric bodies select their current failures. Membership
+updates with the geometry; the displayed Metric value remains supplied data.
 
 Regenerate and reopen/solve all definitions without installing the plugin:
 
@@ -124,8 +127,14 @@ Regenerate and reopen/solve all definitions without installing the plugin:
 Use `-Example Rooms`, `-Example Massing` or `-Example Structural` to regenerate
 just one definition; `-VerifyOnly` reopens the existing file. Add `-Exports -Safe`
 for 1× PNG region, layout and architectural selected-face checks (Safe skips
-PDF); `-Exports` also attempts the experimental PDF. Compact fixtures remain
-structural-only. See [UX findings](docs/ux-notes.md) for fixed and open issues.
+PDF); `-Exports` also attempts the experimental PDF. For group-state PNGs, use
+`-Example Rooms -Exports -Safe -State GroupSelected -Scale 1`; substitute
+`Massing`, `GroupPartial` or `GroupHover` as needed.
+Run each state separately: this RhinoCore host can fail natively on a second
+full-scene capture. The checks also exercise real GH empty-branch validation,
+private Canvas group selection, one event per action and dynamic membership.
+Compact fixtures remain structural-only. See [UX findings](docs/ux-notes.md)
+for fixed and open issues.
 
 Rhino 8 is required. Each definition runs in a fresh RhinoCore host. The tool
 loads this checkout's assemblies directly and does
@@ -148,11 +157,11 @@ to **Overlay**, or one card output to **Canvas Card**.
 
 | Component | Inputs and behavior |
 |---|---|
-| Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. |
-| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. Appended optional Colors override per-bar status; zero threshold supports deltas. |
+| Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group. |
+| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. Appended optional Colors override per-bar status; zero threshold supports deltas. Appended Members supplies one branch per entry and requires explicit Keys. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title, optional threshold and slot. A positive wired threshold shows a band. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
-| Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
+| Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; outputs a typed selection-scope token for this GH document. Infrastructure only: it does nothing until B2 wires Canvas Card and Overlay to the broker. |
@@ -197,8 +206,8 @@ cards show an error and clear the previous image. Use separate Canvas Cards to
 arrange a dashboard with Grasshopper's normal component layout and groups.
 
 Drag/select the component by its **Canvas Card** title strip, margins or inactive
-body areas. Plain left-click on a keyed row/bar/sample/swatch toggles local
-selection; **Clear** removes it. Table column headers cycle ascending, descending
+body areas. Plain left-click on a keyed Metric body, row/bar/sample/swatch toggles local
+member/group selection; **Clear** removes it. Table column headers cycle ascending, descending
 and original order. Drag the scrollbar thumb or click the track to page; the
 **mouse wheel always zooms Grasshopper**. Clicks commit on release within four
 screen pixels. Escape or lost capture cancels a scrollbar drag. GH tooltips show
@@ -243,6 +252,31 @@ Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).
 Set `CONDUITPLUS_RESULTS` to override it. Benchmark results are not written to
 the repository by default.
 
+## Group members
+
+Bar and categorical Legend accept an optional **Members** text tree. Branch i,
+in GH path order, contains the member keys for entry i. Supply exactly one branch
+per entry, preserving empty branches, and explicit **Keys**; an unwired Members
+input retains individual selection. A wired empty tree with entries is an error.
+Metric accepts an optional **Key** and **Members** with exactly one branch:
+Key alone selects a member; Key plus Members selects a group. Members without
+Key is an error. Titles and Clear retain priority over Metric body clicks.
+
+Keys are ordinal and case-sensitive. Group keys must not also be individual or
+member keys; nesting is unsupported. Repeated group definitions must have equal
+member sets. Conflicts warn on the display and disable affected group targets.
+An empty group stays inert and reports “0 members.”
+
+Click a partial group to select all its members; click a full group to remove
+all its members. Other selected members remain selected. Selection outputs are
+sorted unique member keys, never group tokens. Partial groups show an accent
+dash; full groups and selected members keep the strong treatment. Hover outlines
+effective members and related groups; only the direct target gets a light fill.
+Category colors stay visible. Member tooltips list containing labels (five plus
+a remainder); group tooltips report selected/hovered member counts. PNG, GH image
+and PDF card exports omit hover and retain selection. Each display remains
+independent; Scope/shared selection is separate follow-up work.
+
 ## Scrolling and interaction
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
@@ -253,16 +287,19 @@ the repository by default.
   owner's selection. Linked model clicks emit a `click` event with card id `model`.
   Cards take priority; other model clicks pass through to Rhino. Model picking
   pauses during Rhino commands and uses a six-pixel tolerance with hover near 30 Hz.
-- Overlay outputs selected keys and the last 32 click/clear events as JSON.
+- Overlay outputs selected member keys and the last 32 click/clear events as JSON.
+  Events retain owner/cardId/key/kind and add targetKind, affectedKeys, selectedKeys
+  and sourceSurface. One group action emits one event.
   Selection and hover belong to the document/owner and survive following another
-  view; removed keys are pruned against all card and Link keys. Selection is
+  view; removed keys are pruned against individual card/Link keys and valid group
+  members. Selection is
   transient (no undo or `.gh` persistence). Hover never triggers a GH solve.
 - Over a scrollable table, the mouse wheel moves three rows per notch and is
   consumed before Rhino can zoom. Elsewhere, Rhino receives the wheel normally.
 - Drag the scrollbar thumb or click its track to page. Scroll and hover state
   survive incoming Grasshopper solves; table offsets clamp as data changes.
 - Click a table column header to cycle ascending, descending and original order.
-  Newly selected rows are revealed in the current display order.
+  A group action reveals only the first newly selected row in current display order.
   Sorting is stable and numeric-aware; empty cells stay last. The triangle marks
   the sorted column. Sort and scroll survive solves; selection follows row keys.
 - Hold hover over a keyed bar, line sample, table row, legend swatch or linked
@@ -273,7 +310,7 @@ the repository by default.
   closing a view/document, removing an Overlay or shutting down the plugin
   releases its conduit and textures.
 - DPI changes and capture scale changes regenerate textures synchronously. A
-  failed capture-scale render retains existing textures; the next screen draw
+  failed screen-scale render retains existing textures; the next screen draw
   restores screen resolution. Full-scene 2×/4× captures and mixed-monitor
   behavior still need normal Rhino validation.
 

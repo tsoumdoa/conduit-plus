@@ -23,6 +23,7 @@ public sealed class CanvasCardComponent : GH_Component
     internal string Placeholder { get; private set; } = "Connect one Conduit+ Card";
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private string? _inputError;
+    private MembershipIndex? _membership;
     public CanvasCardComponent() : base("Canvas Card", "Canvas Card", "Display exactly one Conduit+ card on the Grasshopper canvas", "Conduit+", "Display") => GdiCanvas.RegisterTextMetrics();
     public override Guid ComponentGuid => new("b28d203e-2254-4b6f-94c0-d4db7e251c5a");
     protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("C");
@@ -48,6 +49,9 @@ public sealed class CanvasCardComponent : GH_Component
                     try
                     {
                         spec.Validate();
+                        var membership = _membership = MembershipIndex.Create([new BrushRegistration("canvas", [spec], [])], _membership);
+                        foreach (var diagnostic in membership.Diagnostics)
+                            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Key '{diagnostic.Key}': {diagnostic.Message}");
                         if (!Enum.IsDefined(spec.Kind)) throw new ArgumentException("Unsupported card kind.");
                         spec = CardJson.Deserialize<CardSpec>(CardJson.Serialize(spec));
                     }

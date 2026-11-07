@@ -7,6 +7,7 @@ installing it. Findings are ranked by impact on an architectural review.
 
 | Rank | Finding | Change and evidence |
 |---|---|---|
+| P1 | Category legends/GFA-by-use bars could not select a whole category; failure Metrics were passive. | A2 wires explicit group keys and dynamic Members for room types, building uses and failure Metrics. Shared painting distinguishes partial/full selection and effective hover while retaining category colors. One action expands to sorted member output and one event; table reveal chooses the first newly selected row in display order. |
 | P1 | Selecting a room from the model could leave its table row out of view. | Minimal reveal in the current sorted display order. Only a newly selected key triggers reveal, so manual scrolling, hover, deselection and subsequent solves do not snap back. Pure Core tests cover visibility boundaries, missing keys, short/empty tables, stale offsets and sort order; the reopened room definition exercises unsorted and sorted selection. |
 | P1 | Edge-only highlighting made planar rooms and solid masses hard to identify. | Translucent accent faces under the existing wires/markers for hover and selection, with depth testing/writing disabled. Highlighting reuses the Link's owned pick meshes; meshing/material creation stays outside drawing. PNG checks sample the selected face centre, away from edges, to prove fill is present. |
 | P1 | Face-interior picking needed checking before these examples were useful. | Existing production shaded-mesh picking already worked; no picker algorithm change was necessary. RhinoCore checks hit all 17 room interiors and all six block roofs, plus explicit extrusion and mesh face probes. Table-originated selection is also checked before capturing the highlighted model face. |
@@ -26,7 +27,6 @@ installing it. Findings are ranked by impact on an architectural review.
 
 | Rank | Finding | Next action |
 |---|---|---|
-| P1 | Category legends and GFA-by-use bars cannot select all rooms/blocks in a category. | Implement group-key semantics in BrushState (already in NEXT.md). Examples deliberately leave category legends unkeyed; room/block table and individual bar keys link both ways. |
 | P2 | Model framing and card layout compete on small or high-DPI viewports. | Current GH files save manual card slots, not the Rhino camera. Use Top + Zoom Extents for rooms and Perspective + Zoom Extents for massing, then drag cards if needed. Responsive layout/card resizing is larger work. |
 | P2 | Tables have equal-width columns and can clip long names; tooltips contain full cells. | Consider per-column sizing in a later iteration. The new width input is a small interim improvement. |
 | P2 | Full-scene 2×/4× capture, architectural PDF output and depth-disabled faces in PDF remain unverified here. | Validate in normal Rhino. The existing full-scene high-resolution RhinoCore native-failure limitation is unchanged. ExportChecks now accepts architectural document geometry for PDF rather than substituting the truss. |
@@ -34,7 +34,66 @@ installing it. Findings are ranked by impact on an architectural review.
 | P3 | Bars show height/limit ratios, not paired actual/limit bars; label space is capped. | Raw values are available in the table and demo output lists. Consider a comparison chart and resizable bars separately. |
 | P3 | Room GIA has no wall thickness and massing GFA has no setbacks, voids or exclusions. | Keep the schematic assumptions visible. These fixtures are not area-measurement or planning-rule implementations. |
 
-## Verification performed
+## Group keys A2 verification (2026-11-07)
+
+A2 changes remain uncommitted for Claude's review; no developer installation.
+The screenshot harness frames the model inside the open centre between cards;
+the saved GH definitions still leave camera choice to Rhino. Each full-scene
+screenshot runs in its own RhinoCore host because repeated captures in this host
+can throw a native SEHException. Only wrapper-owned hosts are stopped after
+successful overlay/view cleanup.
+
+- `dotnet build ConduitPlus.sln -c Debug`: 0 warnings/errors.
+- `dotnet test ConduitPlus.sln -c Debug`: 233 passed, 0 failed/skipped.
+- Both architectural `.gh` files regenerated. All three examples reopened/solved
+  in isolated RhinoCore 8.36.26296.17001 / .NET 8.0.33 hosts without runtime
+  warnings/errors. Existing structural GUIDs and appended-input loading remain valid.
+- Real GH input probes cover path-ordered and empty branches, wired-empty trees,
+  explicit-key requirements, Metric Key alone, path/item errors and gradient rejection.
+- Group actions verify selected member outputs, one event, full/partial toggling,
+  sorted table reveal, failure Metric/Clear, private Canvas selection and changing
+  geometry (rooms: eight failures to zero; massing: two failures to one).
+- PNGs are 1× captures, 1874 × 1729 physical pixels at the host's 200% DPI:
+  - `artifacts/screenshots-groups/room-areas/bedroom-selected.png`
+  - `artifacts/screenshots-groups/room-areas/bedroom-partial.png`
+  - `artifacts/screenshots-groups/massing/residential-selected.png`
+- All three were visually inspected. All five bedroom faces/table rows and both
+  Residential blocks/rows highlight together. The partial legend uses a dash in
+  the right gutter; moving it there fixed an initial Metric dash that looked like
+  a minus sign. Category swatches/bars remain unchanged; model and cards do not
+  overlap in the final verification framing. No remaining group-paint defect was
+  apparent. Smaller interactive viewports still need manual camera/card layout.
+- Separate GroupHover captures compare to the selected captures with **zero
+  differing RGBA pixels** in both fixtures, proving card and model hover omission.
+  Evidence: `artifacts/screenshots-groups/hover-export-comparison.json`.
+- All-example reopen logs: `artifacts/screenshots-groups/final-reopen/`.
+- No group-semantic design deviations. Verification uses one capture per native
+  host and a wider camera frame; it does not change the saved GH camera or layout.
+  Live mouse/DPI behavior and experimental PDF remain for normal Rhino testing.
+
+A2 files changed:
+
+- Core: `GroupInputs.cs`, `BrushPresentation.cs`, `CanvasCards.cs`, `Drawing.cs`,
+  `CardPainter.cs`, `LineCardPainter.cs`, `Tooltip.cs`.
+- GH: `Components.cs`, `DemoArchitectureComponents.cs`, `CanvasCardComponent.cs`,
+  `CanvasCardAttributes.cs`.
+- Rhino: `OverlayManager.cs`, `OverlaySession.cs`, `OverlayInteraction.cs`,
+  `OverlayTooltip.cs`, `PdfCommand.cs`, `Rendering/RasterCardRenderer.cs`.
+- Tests: `GroupPresentationTests.cs`, `TooltipSortTests.cs`,
+  `ConduitPlus.Core.Tests.csproj` (source-links the Rhino-free event wire record).
+- Tools: `Build-Examples.ps1`, `Dashboard.cs`, `ArchitectureDashboard.cs`,
+  `ArchitectureGroupChecks.cs`, `GroupInputChecks.cs` under `tools/examples`.
+- Examples/docs: `room-areas.gh`, `massing.gh`, `README.md`, `NEXT.md`, `ux-notes.md`.
+
+Try Bedroom in the room legend, then deselect one bedroom row: the legend should
+show a partial dash. Click Bedroom to complete the group, then again to remove
+it. Sort by Type to see all five bedroom rows together. Click Rooms below minimum,
+change Plan scale to 2 (an inert zero-member group), then return to 1. In Massing,
+click Residential in GFA by use or the legend, then Blocks above 30 m. Connect
+the grouped cards to separate Canvas Cards to test the same local interactions;
+selection stays private until the separate Scope work is integrated.
+
+## Verification performed (earlier architectural UX work)
 
 - `dotnet build ConduitPlus.sln -c Debug`: zero warnings/errors.
 - `dotnet test ConduitPlus.sln -c Debug`: 171 passed, zero failed/skipped.

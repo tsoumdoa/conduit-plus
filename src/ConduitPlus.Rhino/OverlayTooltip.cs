@@ -11,7 +11,7 @@ namespace ConduitPlus.Rhino;
 internal sealed partial class OverlaySession
 {
     // Owner is implicit in the session. Cursor movement is deliberately absent from the cache identity.
-    private sealed record TooltipTarget(string? Card, string Key, long Rev, double Dpi, bool Model);
+    private sealed record TooltipTarget(string? Card, string Key, long Rev, double Dpi, bool Model, long DomainVersion);
     private readonly System.Windows.Forms.Timer _tooltipTimer = new() { Interval = 50 };
     private (string Card, string Key)? _cardHover;
     private TooltipTarget? _tooltipTarget;
@@ -40,20 +40,22 @@ internal sealed partial class OverlaySession
         if (!TooltipAllowed) { HideTooltip(); return; }
         var model = OverlayManager.ModelHover(this);
         var key = model ? _brush.HoverKey : _cardHover?.Key;
+        var domain = OverlayManager.DomainSnapshot(this);
+        var membership = domain?.Membership;
         CardSpec? card = null; string[]? lines = null;
         if (!string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key))
         {
             if (model)
             {
                 foreach (var c in Cards)
-                    if (Tooltip.For(c, key) is { } content) { card = c; lines = content; break; }
-                lines = [key, .. (lines ?? []).Where(line => line != key)];
+                    if (!c.Groups.ContainsKey(key) && Tooltip.For(c, key) is { } content) { card = c; lines = content; break; }
+                lines = Tooltip.WithMemberGroups([key, .. (lines ?? []).Where(line => line != key)], membership, key);
             }
             else if (_cardHover is { } hover && Card(hover.Card) is { } c)
-            { card = c; lines = Tooltip.For(c, key); }
+            { card = c; lines = Tooltip.For(c, key, membership); }
         }
         if (lines is null || key is null) { HideTooltip(); return; }
-        var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model);
+        var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model, domain?.Version ?? 0);
         if (_tooltipTarget == next) { if (_tooltipReady) View.Redraw(); return; }
         HideTooltip(); _tooltipTarget = next; _tooltipLines = lines;
         _tooltipSince = Stopwatch.GetTimestamp(); _tooltipTimer.Start();

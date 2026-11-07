@@ -4,7 +4,27 @@ namespace ConduitPlus.Core;
 
 public static class Tooltip
 {
-    public static string[]? For(CardSpec c, string? key)
+    public static string[]? For(CardSpec c, string? key, MembershipIndex? membership = null)
+    {
+        var lines = Content(c, key);
+        if (lines is null && key is not null && c.Groups.ContainsKey(key)) lines = [key];
+        if (lines is null || key is null) return lines;
+        if (c.Groups.ContainsKey(key))
+        {
+            if (c.GroupStates.GetValueOrDefault(key) is { } group)
+                return [.. lines, .. (group.IsEnabled ? GroupTooltip.Lines(group) : ["Group disabled: conflicting membership."])];
+            return lines;
+        }
+        return WithMemberGroups(lines, membership, key);
+    }
+    public static string[] WithMemberGroups(string[] lines, MembershipIndex? membership, string key)
+    {
+        if (membership is null) return lines;
+        var groups = GroupTooltip.ForMember(membership, key);
+        return [.. lines, .. groups.Labels.Select(label => "Group: " + label),
+            .. (groups.RemainingCount > 0 ? new[] { $"+{groups.RemainingCount} more groups" } : [])];
+    }
+    private static string[]? Content(CardSpec c, string? key)
     {
         if (string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key)) return null;
         if (c.Kind == CardKind.Table)
@@ -14,12 +34,13 @@ public static class Tooltip
         }
         var index = Array.IndexOf(c.Keys, key);
         if (index < 0) return null;
+        if (c.Kind == CardKind.Metric) return [string.IsNullOrWhiteSpace(c.Title) ? key : c.Title, (c.Value ?? "—") + (string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)];
         if (c.Kind == CardKind.Legend && !c.Min.HasValue) return string.IsNullOrWhiteSpace(c.Labels[index]) ? null : [c.Labels[index]];
         if (c.Kind is not (CardKind.Bar or CardKind.Line)) return null;
         var label = c.Labels[index]; var value = c.Values[index];
         var lines = new List<string> { string.IsNullOrEmpty(label) ? key : label,
             value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "missing" };
-        if (c.Kind == CardKind.Bar && value.HasValue)
+        if (c.Kind == CardKind.Bar && value.HasValue && c.Threshold > 0)
             lines.Add((value.Value / c.Threshold * 100).ToString("0.###", CultureInfo.InvariantCulture) + "% of threshold");
         if (c.Kind == CardKind.Bar && !string.IsNullOrEmpty(label) && key != label) lines.Add(key);
         return lines.ToArray();

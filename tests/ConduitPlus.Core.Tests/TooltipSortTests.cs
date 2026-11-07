@@ -48,7 +48,7 @@ public sealed class TooltipSortTests
             Assert.Null(Tooltip.For(c, null)); Assert.Null(Tooltip.For(c, ""));
             Assert.Null(Tooltip.For(c, "absent")); Assert.Null(Tooltip.For(c, TableSort.Key(0)));
         }
-        Assert.Null(Tooltip.For(cards[0] with { Keys = ["key"] }, "key"));
+        Assert.Equal(new[] { "Max deflection", "18.4 mm" }, Tooltip.For(cards[0] with { Keys = ["key"] }, "key"));
         Assert.Null(Tooltip.For(StructuralDemo.Extras()[1] with { Keys = ["key"] }, "key"));
         Assert.Null(Tooltip.For(StructuralDemo.Extras()[0] with { Keys = ["key"] }, "key"));
         Assert.Null(Tooltip.For(StructuralDemo.Extras()[2] with { Labels = ["", "Fail"] }, "passes"));

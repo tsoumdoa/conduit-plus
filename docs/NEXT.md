@@ -31,11 +31,27 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
 | Examples | Structural dashboard, room area check and massing/zoning with keyed demo geometry |
 
+## Group keys A2 (implemented in this worktree; awaiting review)
+
+- Appended Members to Bar/categorical Legend, Key + Members to Metric. Existing
+  GUIDs and input order retained; empty branches and path/item diagnostics verified.
+- Shared painter shows effective-hover outlines, direct light fills, strong full
+  selection and partial dashes across Paper/Night/Smoke/Blueprint/Auto-resolved.
+- Overlay highlights effective member sets; one event per group action includes
+  targetKind/affectedKeys/selectedKeys. Sorted table reveal occurs once per action.
+- Room/Massing examples wire dynamic category/failure membership. Private Canvas
+  uses the same semantics. Scope/shared selection is deliberately out of scope.
+- Debug build: zero warnings/errors; 233 tests passed. Both architectural files
+  regenerated and all three examples reopened/solved without warnings/errors.
+  Group PNGs and pixel-identical hover omission checks are under
+  `artifacts/screenshots-groups/`; see [UX notes](ux-notes.md). Normal GUI
+  mouse/DPI/PDF checks remain on the reviewer's live checklist.
+
 ## Next up (recommended order)
 1. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
 2. **Small fixes the testing will probably ask for** (architectural findings: [ux-notes.md](ux-notes.md); Decimals, row reveal and wheel-hover refresh are implemented)
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
-3. **Group keys.** A Metric's "governing member" keys and legend swatches that select a whole group (e.g. "fails" selects every failing member). Needs group hover/select semantics in `BrushState`.
+3. **Shared selection Scope (B1/B2).** Group keys A1/A2 are implemented: group-aware Bar/Legend/Metric inputs, painting, local Canvas and Overlay member-based interactions, tooltips, geometry highlights and example wiring. Scope and the GH broker remain separate work; review/integrate A2 before adapting these host paths.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
 5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
 

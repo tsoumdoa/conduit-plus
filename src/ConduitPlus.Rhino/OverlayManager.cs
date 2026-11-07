@@ -4,7 +4,6 @@ using Rhino.Display;
 
 namespace ConduitPlus.Rhino;
 
-public sealed record OverlayInteraction(Guid Owner, string CardId, string Key, string Kind);
 public sealed record LayoutProposal(Guid Owner, IReadOnlyDictionary<string, LayoutOverride> Changes);
 
 public static partial class OverlayManager
@@ -16,7 +15,6 @@ public static partial class OverlayManager
         public uint DocumentSerial { get; } = document;
         public Guid? ViewId { get; set; } = view;
         public BrushState Brush { get; } = new();
-        public bool ModelHover { get; set; }
         public Dictionary<string, LayoutOverride> Layout { get; set; } = new(StringComparer.Ordinal);
         public CardSpec[] Originals { get; set; } = [];
     }
@@ -169,29 +167,37 @@ public static partial class OverlayManager
     }
     internal static BrushSnapshot Snapshot(OverlaySession session)
     { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Snapshot : new([], null); }
-    internal static bool ModelHover(OverlaySession session)
-    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) && state.ModelHover; }
+    internal static BrushDomainSnapshot? DomainSnapshot(OverlaySession session)
+    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Brush.Current : null; }
+    internal static bool ModelHover(OverlaySession session) => DomainSnapshot(session)?.HoverOrigin?.Surface == "model";
+    private static BrushOrigin Origin(OverlaySession session, bool model) => new(session.Owner.ToString("N"), model ? "model" : "card", 0);
     internal static bool TooltipBlocked => Busy || Mouse.Interacting;
-    internal static void Hover(OverlaySession session, string? key, bool model = false)
+    internal static void Hover(OverlaySession session, string? key, bool model = false, string? card = null)
     {
-        Change(session, b =>
-        {
-            States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover = model;
-            return b.Hover(key);
-        });
+        var origin = Origin(session, model);
+        var spec = card is null ? null : session.Card(card);
+        Change(session, b => key is null ? b.ClearHover(origin) : b.Hover(origin, key,
+            spec is null ? BrushTargetKind.Member : BrushPresentation.TargetKind(spec, key)));
         session.SyncTooltip();
     }
     internal static void ClearHover(OverlaySession session, bool model)
     {
-        Change(session, b => States[(session.Document.RuntimeSerialNumber, session.Owner)].ModelHover == model && b.Hover(null));
+        Change(session, b => b.ClearHover(Origin(session, model)));
         session.SyncTooltip();
     }
     internal static void Select(OverlaySession session, string card, string key)
     {
         var clear = key == CardMeasure.ClearKey;
         if (!clear && CardMeasure.IsReserved(key)) return;
-        if (Change(session, b => clear ? b.Clear() : b.Toggle(key)))
-            Interaction?.Invoke(new(session.Owner, card, key, clear ? "clear" : "click"));
+        BrushEvent? action = null;
+        if (Change(session, b =>
+        {
+            var source = new BrushActionSource(session.Owner, card, card == "model" ? "model" : "card");
+            var kind = session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
+            var changed = clear ? b.Clear(source) : b.Toggle(key, kind, source);
+            if (changed) action = b.Current.Events[^1];
+            return changed;
+        })) Interaction?.Invoke(OverlayInteraction.From(action!));
     }
     private static bool Change(OverlaySession session, Func<BrushState, bool> change)
     {
