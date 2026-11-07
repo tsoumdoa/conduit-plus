@@ -108,7 +108,7 @@ internal static class ArchitectureDashboard
                 var result = Path.Combine(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!, name); Directory.CreateDirectory(result);
                 File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = gh.ObjectCount, warnings = messages, theme = theme.Name, cards = cards.Select(c => c.Title), metrics = metrics.Select(c => new { c.Title, c.Value }), faceInteriorHits = centres.Length, proxyFaceInteriorHits = rooms ? 0 : 2, selectionRevealed = key, tableToModelSelection = true }));
                 var groupState = args[Array.IndexOf(args, "--state") + 1];
-                if (args.Contains("--exports") && !groupState.StartsWith("group", StringComparison.Ordinal))
+                if (args.Contains("--exports") && groupState != "scope" && !groupState.StartsWith("group", StringComparison.Ordinal))
                 {
                     Require(!args.Contains("--compact"), "Compact export fixture is structural only; use -Example Structural.");
                     var scale = int.Parse(args[Array.IndexOf(args, "--scale") + 1], System.Globalization.CultureInfo.InvariantCulture);
@@ -128,7 +128,10 @@ internal static class ArchitectureDashboard
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
                 }
+                if (rooms) ScopeHostChecks.Run(gh, doc, view, result, args.Contains("--exports") && groupState == "scope");
+                session = ((Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!).Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
                 ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none");
+                if (rooms) ScopeRhinoCloseChecks.Run(doc, result);
                 Console.WriteLine($"Reopened {path}: {gh.ObjectCount} objects, 0 warnings/errors; {cards.Length} cards; {centres.Length} face-interior hits; sorted selection reveal passed.");
             }
             finally { Instances.DocumentServer.RemoveDocument(gh); }
@@ -171,6 +174,14 @@ internal static class ArchitectureDashboard
         var chunk = new GH_Archive().CreateTopLevelNode("Overlay"); overlay.Write(chunk); chunk.RemoveItem("ConduitPlus.Layout"); chunk.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(layout)); overlay.Read((GH_IReader)chunk);
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);
 
+        if (rooms)
+        {
+            var scope = Add(new ConduitPlus.Grasshopper.ScopeComponent(), 1340, 1030);
+            Text(scope, 0, "Room review"); Wire(overlay, 3, scope.Params.Output[0]);
+            var canvas = Add(new ConduitPlus.Grasshopper.CanvasCardComponent(), 1700, 750);
+            Wire(canvas, 0, table.Params.Output[0]); Wire(canvas, 1, scope.Params.Output[0]);
+            Group("4  Shared room selection · Canvas ↔ viewport", [scope, canvas]);
+        }
         Group("1  Explore schematic geometry (metres)", [slider, demo]); Group("2  Cards · explicit room/block keys", cards); Group("3  Click geometry ↔ row", [link, overlay]);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!); var archive = new GH_Archive(); Require(archive.AppendObject(gh, "Definition") && archive.WriteToFile(path, true, false), "Cannot save " + path); Console.WriteLine("Generated " + path);
 

@@ -100,6 +100,11 @@ public sealed class ScopeBroker : IDisposable
         if (!IsDisposed && !IsSuspended && !binding.Owner.Locked) binding.Notify(change.Snapshot);
         if (!_inSolution) Dispatch(_refresh.Take());
     }
+    internal void RefreshEnabledOutputs(ScopeBinding binding)
+    {
+        if (!_inSolution && !IsDisposed && !IsSuspended && !binding.OutputRefreshWarning && _refresh.IsDirty(binding.Lease))
+            Schedule(new(InteractionRefreshKind.Interaction, [binding.Lease]));
+    }
     internal void RecordOutputs(ScopeBinding binding)
     {
         VerifyThread();
@@ -164,7 +169,7 @@ public sealed class ScopeBroker : IDisposable
             broker._scheduled = false;
             foreach (var lease in broker._scheduledParticipants.ToArray())
                 if (broker._bindings.TryGetValue(lease, out var binding) && !binding.Owner.Locked && broker._refresh.IsDirty(lease))
-                    binding.Owner.ExpireSolution(false);
+                    { binding.NotifyOutputRefresh(); binding.Owner.ExpireSolution(false); }
             broker._scheduledParticipants.Clear();
         });
     }
@@ -224,7 +229,7 @@ public sealed class ScopeBroker : IDisposable
 }
 
 /// <summary>B2 adapter seam. Retain through tab unload; dispose on detach/delete or scope change.</summary>
-public sealed class ScopeBinding : IDisposable
+public sealed class ScopeBinding : IDisposable, IBrushBinding
 {
     private readonly ScopeBroker _broker;
     private Action<BrushDomainSnapshot>? _snapshotChanged;
@@ -232,6 +237,9 @@ public sealed class ScopeBinding : IDisposable
     internal InteractionDomain Domain { get; }
     internal bool InteractionEnabled { get; private set; } = true;
     public ParticipantLease Lease { get; }
+    public string ParticipantId => Lease.ParticipantId;
+    public event Action? OutputRefreshRequested;
+    internal void NotifyOutputRefresh() => OutputRefreshRequested?.Invoke();
     public BrushDomainSnapshot Current => Domain.Current;
     public bool IsValid => Domain.Contains(Lease);
     public bool IsActive => _broker.CanInteract(this);
@@ -246,7 +254,16 @@ public sealed class ScopeBinding : IDisposable
         domain.Changed += OnChanged;
     }
     private void OnChanged(InteractionChange change) => _broker.Changed(this, change);
-    internal void Notify(BrushDomainSnapshot snapshot) => _snapshotChanged?.Invoke(snapshot);
+    internal void Notify(BrushDomainSnapshot snapshot)
+    {
+        ReportDiagnostics();
+        _snapshotChanged?.Invoke(snapshot);
+    }
+    internal void ReportDiagnostics()
+    {
+        foreach (var diagnostic in Current.Membership.Diagnostics.Where(d => d.ParticipantId == ParticipantId))
+            Owner.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Card {diagnostic.CardId}, key '{diagnostic.Key}': {diagnostic.Message}");
+    }
     internal void NotifyActivity(bool active) => ActivityChanged?.Invoke(active);
     public DomainPublication? BeginPublication() { _broker.VerifyThread(); return Domain.BeginPublication(Lease); }
     public bool Stage(DomainPublication publication, BrushRegistration? registration) => _broker.Stage(this, publication, registration);
@@ -262,7 +279,11 @@ public sealed class ScopeBinding : IDisposable
     public bool Hover(BrushOrigin origin, string? key, BrushTargetKind? kind = null) => IsActive && Domain.Hover(Lease, origin, key, kind);
     public bool ClearHover(BrushOrigin origin) { _broker.VerifyThread(); return Domain.ClearHover(Lease, origin); }
     /// <summary>Host calls on lock/navigation/drag changes; membership and selection stay frozen.</summary>
-    public void SetEnabled(bool enabled) { _broker.VerifyThread(); InteractionEnabled = enabled; Domain.SetEnabled(Lease, enabled); }
+    public void SetEnabled(bool enabled)
+    {
+        _broker.VerifyThread(); InteractionEnabled = enabled; Domain.SetEnabled(Lease, enabled);
+        if (enabled) _broker.RefreshEnabledOutputs(this);
+    }
     public void Dispose()
     {
         _broker.VerifyThread();
@@ -270,6 +291,6 @@ public sealed class ScopeBinding : IDisposable
         Domain.Changed -= OnChanged;
         _snapshotChanged = null;
         _broker.Detach(this);
-        Invalidated?.Invoke(); Invalidated = null; ActivityChanged = null;
+        Invalidated?.Invoke(); Invalidated = null; ActivityChanged = null; OutputRefreshRequested = null;
     }
 }

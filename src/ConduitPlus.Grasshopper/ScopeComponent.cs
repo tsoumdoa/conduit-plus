@@ -30,7 +30,7 @@ public sealed class ScopeParam() : GH_Param<ScopeGoo>("Scope", "S", "Conduit+ se
     public override GH_Exposure Exposure => GH_Exposure.hidden;
 }
 
-public sealed class ScopeComponent() : GH_Component("Scope", "Scope", "An explicit selection scope (display adapters arrive in B2)", "Conduit+", "Display")
+public sealed class ScopeComponent() : GH_Component("Scope", "Scope", "Share member selection and hover between explicitly connected displays", "Conduit+", "Display")
 {
     private ScopeBroker? _broker;
     private Bitmap? _icon;

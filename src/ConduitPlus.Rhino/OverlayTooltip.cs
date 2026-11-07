@@ -38,6 +38,7 @@ internal sealed partial class OverlaySession
     internal void SyncTooltip()
     {
         if (!TooltipAllowed) { HideTooltip(); return; }
+        if (!OverlayManager.LocalHover(this)) { HideTooltip(); return; }
         var model = OverlayManager.ModelHover(this);
         var key = model ? _brush.HoverKey : _cardHover?.Key;
         var domain = OverlayManager.DomainSnapshot(this);

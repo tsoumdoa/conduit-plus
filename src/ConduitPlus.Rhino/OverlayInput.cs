@@ -35,6 +35,7 @@ public static partial class OverlayManager
         {
             var previous = _gesture; _gesture = null;
             previous?.Session.EndLayoutDrag();
+            if (previous is not null) CancelBrushHover(previous.Session);
         }
         public void Forget(OverlaySession session)
         {
@@ -59,7 +60,7 @@ public static partial class OverlayManager
         {
             _hoverTimer.Stop();
             var pending = _pending; _pending = null;
-            if (_gesture is not null || _pressed || pending is not { } p) return;
+            if (_gesture is not null || _pressed || pending is not { } p || !p.View.ScreenRectangle.Contains(System.Windows.Forms.Control.MousePosition)) return;
             _lastPick = System.Diagnostics.Stopwatch.GetTimestamp();
             var sessions = InView(p.View);
             var hit = !Busy && !Command.InCommand() && !sessions.Any(s => s.Hit(p.Point.X, p.Point.Y) is not null)
@@ -134,7 +135,12 @@ public static partial class OverlayManager
         {
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
-            if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left) return;
+            if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left)
+            {
+                _hoverTimer.Stop(); _pending = null;
+                foreach (var session in InView(e.View)) CancelBrushHover(session);
+                return;
+            }
             var sessions = InView(e.View);
             var hits = sessions.Select(s => (Session: s, Hit: s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y))).Where(h => h.Hit.HasValue).ToArray();
             foreach (var s in sessions)

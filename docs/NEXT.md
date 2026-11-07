@@ -17,8 +17,8 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
   [live verification checklist](verification/canvas-cards.md): GH drag/select
   precedence, DPI/zoom, disabled/hidden states, undo/reload, export and cache/GDI
   lifetime. These GUI checks are still pending.
-- Deferred by [approved design](design/canvas-cards.md): boards, resize, wheel
-  interception, cross-host selection scopes and Selection/Events outputs.
+- Deferred: boards, resize and wheel interception. B2 now implements explicit
+  cross-host Scope and the appended Canvas Selection output; Canvas Events remain deferred.
 
 ## What's in main now
 | Area | What works |
@@ -47,11 +47,23 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
   `artifacts/screenshots-groups/`; see [UX notes](ux-notes.md). Normal GUI
   mouse/DPI/PDF checks remain on the reviewer's live checklist.
 
+## Shared selection Scope B2 (implemented; awaiting review)
+
+- Canvas Card and Overlay stage original cards/Link keys through ScopeBinding;
+  solution-end commit reconciles the complete domain union. Rendering remains local.
+- Snapshots repaint both hosts; only selection/event revision changes schedule
+  coalesced output solutions. One reconciliation refresh is allowed, then a warning.
+- Whole-tree token validation, origin-safe hover, local tooltips, transient lifecycle
+  and bound Rhino view/document rules are exercised in the RhinoCore harness.
+- Room example includes Scope + Canvas table. 1× GH export and viewport evidence
+  are under `artifacts/screenshots-scope/`; see the linked verification record.
+- No installation, commit or push by the implementation sub-agent.
+
 ## Next up (recommended order)
 1. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
 2. **Small fixes the testing will probably ask for** (architectural findings: [ux-notes.md](ux-notes.md); Decimals, row reveal and wheel-hover refresh are implemented)
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
-3. **Shared selection Scope (B1/B2).** Group keys A1/A2 are implemented: group-aware Bar/Legend/Metric inputs, painting, local Canvas and Overlay member-based interactions, tooltips, geometry highlights and example wiring. Scope and the GH broker remain separate work; review/integrate A2 before adapting these host paths.
+3. **Review/integrate shared selection Scope B2.** Appended Scope inputs and Canvas Selection, broker-backed adapters, shared Events, bounded feedback, lifecycle checks and the room example are implemented. See [verification](verification/selection-scope.md). The implementation is uncommitted for Claude review; reviewer builds/tests and installs. Physical mouse/tab/DPI testing remains for normal Rhino.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
 5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
 

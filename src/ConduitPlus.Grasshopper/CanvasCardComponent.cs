@@ -24,7 +24,24 @@ public sealed class CanvasCardComponent : GH_Component
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private string? _inputError;
     private MembershipIndex? _membership;
-    public CanvasCardComponent() : base("Canvas Card", "Canvas Card", "Display exactly one Conduit+ card on the Grasshopper canvas", "Conduit+", "Display") => GdiCanvas.RegisterTextMetrics();
+    private ScopeBinding? _scope;
+    private bool _scopeValid = true;
+    private readonly InteractionRefreshQueue _privateRefresh = new();
+    private readonly ParticipantLease _privateLease = new(new(0, Guid.Empty), "private", Guid.NewGuid());
+    private bool _privateScheduled;
+    internal bool BrushEnabled => _scopeValid && (_scope?.IsActive ?? true);
+    public CanvasCardComponent() : base("Canvas Card", "Canvas Card", "Display exactly one Conduit+ card on the Grasshopper canvas", "Conduit+", "Display") {
+        GdiCanvas.RegisterTextMetrics();
+        ObjectChanged += (_, e) =>
+        {
+            if (e.Type != GH_ObjectEventType.Enabled) return;
+            _scope?.SetEnabled(!Locked);
+            State.CancelHover();
+            if (!Locked) RefreshScope();
+        };
+        State.Changed += PrivateChanged;
+        _privateRefresh.Watch(_privateLease, State.Current, false);
+    }
     public override Guid ComponentGuid => new("b28d203e-2254-4b6f-94c0-d4db7e251c5a");
     protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("C");
     public override void CreateAttributes() => m_attributes = new CanvasCardAttributes(this);
@@ -32,8 +49,10 @@ public sealed class CanvasCardComponent : GH_Component
     {
         p.AddGenericParameter("Card", "C", "Exactly one Metric, Bar, Table, Line, Text or Legend card across the whole tree", GH_ParamAccess.tree);
         p[0].Optional = true;
+        p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree);
+        p[1].Optional = true;
     }
-    protected override void RegisterOutputParams(GH_OutputParamManager p) { }
+    protected override void RegisterOutputParams(GH_OutputParamManager p) => p.AddTextParameter("Selection", "S", "Sorted selected member keys for the entire domain", GH_ParamAccess.list);
     protected override void SolveInstance(IGH_DataAccess da)
     {
         CardSpec? spec = null; string? error = null;
@@ -62,23 +81,90 @@ public sealed class CanvasCardComponent : GH_Component
         }
         if (error is not null) AddRuntimeMessage(GH_RuntimeMessageLevel.Error, error);
         WarnTheme();
-        var snapshot = error is null ? spec : null;
-        var generation = _generation;
-        RhinoApp.InvokeOnUiThread((Action)(() =>
+        var token = ScopeInput.Read(this, da, 1, out _scopeValid);
+        if (_scope?.Lease.Token != token || _scope?.IsValid == false)
         {
-            if (!_active || generation != _generation || Locked) return;
-            var oldSize = BodySize;
-            var attributes = Attributes as CanvasCardAttributes;
-            attributes?.CancelGesture();
-            State.Replace(snapshot);
-            _inputError = error;
-            MeasureBody();
-            Placeholder = error is null ? "Connect one Conduit+ Card" : "Invalid Card input";
-            if (snapshot is null) attributes?.ReleaseFrame();
-            if (oldSize != BodySize) attributes?.ExpireLayout();
-            attributes?.RequestDisplay();
-        }));
+            DetachScope();
+            if (token is not null && OnPingDocument() is { } document)
+            {
+                _scope = ScopeBroker.ForDocument(document).Attach(token, this, _ => RefreshScope(), selectionOutput: true);
+                _scope.Invalidated += ScopeInvalidated;
+                _scope.ActivityChanged += ScopeActivity;
+            }
+        }
+        State.Bind(_scope, InstanceGuid, _scopeValid);
+        var snapshot = error is null ? spec : null;
+        var attributes = Attributes as CanvasCardAttributes;
+        attributes?.CancelGesture();
+        var oldSize = BodySize;
+        State.Replace(snapshot);
+        _inputError = error;
+        if (_scope is { } scope)
+        {
+            scope.Publish(snapshot is null ? [] : [snapshot], []);
+            da.SetDataList(0, scope.Current.SelectedKeys);
+            scope.RecordOutputs(); scope.ReportDiagnostics();
+        }
+        else
+        {
+            da.SetDataList(0, _scopeValid ? State.Current.SelectedKeys : []);
+            _privateRefresh.RecordOutputs(_privateLease, State.Current);
+        }
+        MeasureBody();
+        Placeholder = error is null ? "Connect one Conduit+ Card" : "Invalid Card input";
+        if (snapshot is null) attributes?.ReleaseFrame();
+        if (oldSize != BodySize) attributes?.ExpireLayout();
+        attributes?.RequestDisplay();
     }
+    private void RefreshScope()
+    {
+        if (!_active || Locked) return;
+        State.Refresh();
+        (Attributes as CanvasCardAttributes)?.RequestDisplay();
+    }
+    private void DetachScope()
+    {
+        if (_scope is not { } scope) return;
+        scope.Invalidated -= ScopeInvalidated; scope.ActivityChanged -= ScopeActivity;
+        scope.Dispose(); _scope = null;
+    }
+    private void ScopeInvalidated()
+    {
+        _scopeValid = false;
+        AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Scope is no longer available; connect a live Scope from this document.");
+        State.Bind(null, InstanceGuid, false);
+        (Attributes as CanvasCardAttributes)?.CancelGesture();
+        (Attributes as CanvasCardAttributes)?.RequestDisplay();
+    }
+    private void ScopeActivity(bool active)
+    {
+        State.CancelHover();
+        if (active) RefreshScope();
+        else (Attributes as CanvasCardAttributes)?.Detach();
+    }
+    private void PrivateChanged(InteractionChange change)
+    {
+        if (_scope is not null || !_scopeValid || !_active) return;
+        _privateRefresh.Observe(_privateLease, change);
+        if (change.Kind != InteractionChangeKind.Selection) return; // SolveInstance reads reconciled private outputs directly.
+        var decision = _privateRefresh.Take();
+        if (decision.Refresh is null) return;
+        if (_privateScheduled) return;
+        SchedulePrivateOutputs();
+    }
+    private void SchedulePrivateOutputs()
+    {
+        if (OnPingDocument() is not { } document || _privateScheduled) return;
+        _privateScheduled = true;
+        var generation = _generation;
+        document.ScheduleSolution(1, _ =>
+        {
+            if (!_active || generation != _generation) return;
+            _privateScheduled = false;
+            if (!Locked && _privateRefresh.IsDirty(_privateLease)) ExpireSolution(false);
+        });
+    }
+
     private void WarnTheme()
     {
         if (!Theme.TryGet(_themeName, out _))
@@ -148,7 +234,8 @@ public sealed class CanvasCardComponent : GH_Component
         if (context == GH_DocumentContext.Close) Deactivate(true);
         else if (context == GH_DocumentContext.Unloaded) Deactivate(false);
         else if (context is GH_DocumentContext.Loaded or GH_DocumentContext.Open) Activate();
-        else if (context == GH_DocumentContext.Lock) (Attributes as CanvasCardAttributes)?.CancelGesture();
+        else if (context == GH_DocumentContext.Lock) { _scope?.SetEnabled(false); (Attributes as CanvasCardAttributes)?.CancelGesture(); }
+        else if (context == GH_DocumentContext.Unlock) { _scope?.SetEnabled(true); RefreshScope(); }
     }
     private void Activate()
     {
@@ -156,6 +243,8 @@ public sealed class CanvasCardComponent : GH_Component
         _generation++; _active = true;
         RhinoApp.AppSettingsChanged += AppearanceChanged;
         AppearanceChanged(this, EventArgs.Empty);
+        RefreshScope();
+        if (_scope is null && _privateRefresh.IsDirty(_privateLease)) SchedulePrivateOutputs();
     }
     private void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
     {
@@ -170,6 +259,9 @@ public sealed class CanvasCardComponent : GH_Component
     private void Deactivate(bool clearState)
     {
         RhinoApp.AppSettingsChanged -= AppearanceChanged;
+        if (clearState) DetachScope();
+        State.CancelHover();
+        _privateScheduled = false;
         _active = false; var generation = ++_generation;
         RhinoApp.InvokeOnUiThread((Action)(() =>
         {
@@ -177,7 +269,7 @@ public sealed class CanvasCardComponent : GH_Component
             (Attributes as CanvasCardAttributes)?.Detach();
             // GH 8.20 also unloads on a document-tab switch, then loads without expiring solved objects.
             // Keep managed results/local state there; all images, callbacks and subscriptions are released.
-            if (clearState) State = new();
+            if (clearState) { State.Changed -= PrivateChanged; State = new(); State.Changed += PrivateChanged; _privateRefresh.Clear(); _privateRefresh.Watch(_privateLease, State.Current, false); }
             MeasureBody();
         }));
     }
