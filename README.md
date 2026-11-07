@@ -14,7 +14,8 @@ persistence, undo and an Inspector are future work.
 
 - Windows and Rhino **8.20+**, running **.NET 8** (use Rhino's `SetDotNetRuntime`
   command if necessary). Grasshopper ships with Rhino.
-- Development: **.NET SDK 9 or 10** and the .NET 8 Windows Desktop runtime.
+- Development: **.NET SDK 9 or 10**, the .NET 8 Windows Desktop runtime and
+  **PowerShell 7** for release packaging.
   No JavaScript toolchain is needed.
 - Rhino is needed for interactive use, the RhinoCore benchmark and Yak packaging.
   Building and unit testing use public RhinoCommon/Grasshopper NuGet packages
@@ -48,12 +49,17 @@ build `8.20.25147.11001-rc`.
 Build a local Yak package with an installed Rhino 8:
 
 ```powershell
-./tools/Pack-Yak.ps1
+./tools/Pack-Yak.ps1                  # package the current version
+./tools/Pack-Yak.ps1 -Version 0.2.0   # or bump, commit "Release 0.2.0", then package
 ```
 
-This stages the three plugin assemblies, manifest, licence and available PNG
-icon in `artifacts/yak/`, then runs Yak's Windows package build. It never
-publishes a package. Install the resulting `.yak` by dropping it onto Rhino,
+This runs the Release build and tests, stages the three plugin assemblies,
+manifest, licence, install notes and icon, then verifies Yak's Windows archive.
+`Directory.Build.props` is the single version source. The candidate, SHA-256 and
+validation record are written to `artifacts/yak/`. Use `-AllowDirty` for local
+uncommitted trials or `-StageOnly` to stage without Rhino/Yak. The default
+requires a clean working tree. See [the release workflow](docs/releasing.md).
+It never publishes a package; `tools/Publish-Yak.ps1` does that after testing. Install the resulting `.yak` by dropping it onto Rhino,
 then restart Rhino and open Grasshopper. When a release is published, it can
 also be installed through Rhino's `PackageManager` using `conduit-plus`.
 
@@ -212,7 +218,7 @@ export checks and may time out in this host.
 - `src/ConduitPlus.Grasshopper`: card and Overlay components.
 - `tests/ConduitPlus.Core.Tests`: pure Core and Windows GDI alpha/clip/painter tests.
 - `tools/bench`: RhinoCore host and bounded benchmark entry point.
-- `packaging`: Yak manifest; `tools/Pack-Yak.ps1` builds the local package.
+- `packaging`: Yak manifest; `tools/Pack-Yak.ps1` bumps and builds the local package, `tools/Publish-Yak.ps1` publishes it.
 
 The renderer feasibility history remains in `docs/spike/`; removed renderer code
 is recoverable at tag `spike-renderer-feasibility`. `docs/PLAN.md` and

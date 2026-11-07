@@ -22,7 +22,7 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
    - Hover doesn't refresh after scrolling a table until the mouse moves.
 3. **Group keys.** A Metric's "governing member" keys and legend swatches that select a whole group (e.g. "fails" selects every failing member). Needs group hover/select semantics in `BrushState`.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
-5. **Release 0.2.0.** Bump `packaging/manifest.yml`, build Release, `tools/Pack-Yak.ps1`, install the `.yak` locally. (Never `yak push` without the owner's go-ahead.)
+5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
 
 ## Later (v1 interactive, from PLAN.md)
 - **Inputs.** Viewport controls bound to GH sliders/toggles (commit on release, one undo step).

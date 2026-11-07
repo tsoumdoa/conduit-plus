@@ -10,5 +10,7 @@
     <Copyright>Copyright (c) Tomo S</Copyright>
     <RhinoApiVersion>8.20.25147.11001-rc</RhinoApiVersion>
     <Deterministic>true</Deterministic>
+    <!-- Keep local checkout and user paths out of released assemblies and PDBs. -->
+    <PathMap Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)=/_/</PathMap>
   </PropertyGroup>
 </Project>
