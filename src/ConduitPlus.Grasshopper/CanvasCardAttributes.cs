@@ -147,7 +147,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
                 var theme = Disabled ? Frame?.Theme : Component.CardTheme;
                 if (spec is not null && theme is not null)
                 {
-                    spec = spec with { HoverKey = null, ScrollOffset = _dragScroll ? _originalOffset : spec.ScrollOffset };
+                    spec = BrushPresentation.WithoutHover(spec) with { ScrollOffset = _dragScroll ? _originalOffset : spec.ScrollOffset };
                     var plan = CanvasRasterPlan.Create(CardMeasure.Measure(spec, theme), scale);
                     using var image = RasterDrawing.Render(spec, theme, plan.Scale);
                     graphics.DrawImage(image, WithMargin(new RectangleF(_body.X, _body.Y, (float)exportSize.Width, (float)exportSize.Height), theme, plan.Scale));
@@ -274,7 +274,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
     {
         if (!Interactive || _pressed is not null || _dragScroll || _canvas?.IsActiveInteraction == true) return;
-        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Spec, hit.Key) is { } lines)
+        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Spec, hit.Key, Component.State.Membership) is { } lines)
         {
             _tooltipOwned = true;
             e.Title = frame.Spec.Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";

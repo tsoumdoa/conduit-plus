@@ -107,7 +107,8 @@ internal static class ArchitectureDashboard
                 }
                 var result = Path.Combine(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!, name); Directory.CreateDirectory(result);
                 File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = gh.ObjectCount, warnings = messages, theme = theme.Name, cards = cards.Select(c => c.Title), metrics = metrics.Select(c => new { c.Title, c.Value }), faceInteriorHits = centres.Length, proxyFaceInteriorHits = rooms ? 0 : 2, selectionRevealed = key, tableToModelSelection = true }));
-                if (args.Contains("--exports"))
+                var groupState = args[Array.IndexOf(args, "--state") + 1];
+                if (args.Contains("--exports") && !groupState.StartsWith("group", StringComparison.Ordinal))
                 {
                     Require(!args.Contains("--compact"), "Compact export fixture is structural only; use -Example Structural.");
                     var scale = int.Parse(args[Array.IndexOf(args, "--scale") + 1], System.Globalization.CultureInfo.InvariantCulture);
@@ -127,6 +128,7 @@ internal static class ArchitectureDashboard
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
                 }
+                ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none");
                 Console.WriteLine($"Reopened {path}: {gh.ObjectCount} objects, 0 warnings/errors; {cards.Length} cards; {centres.Length} face-interior hits; sorted selection reveal passed.");
             }
             finally { Instances.DocumentServer.RemoveDocument(gh); }
@@ -144,14 +146,18 @@ internal static class ArchitectureDashboard
         Metric(rooms ? 6 : 5, rooms ? "Net / gross" : "Allowed GFA", rooms ? "%" : "m²", rooms ? 1 : 0);
         Metric(rooms ? 7 : 6, rooms ? "Circulation" : "FAR (allowed 2.0)", rooms ? "%" : "ratio", rooms ? 1 : 2);
         Metric(rooms ? 8 : 11, rooms ? "Rooms below minimum" : "Blocks above 30 m", "", 0);
+        Text(cards[^1], 5, rooms ? "below-minimum" : "above-height-limit");
+        Wire(cards[^1], 6, demo.Params.Output[rooms ? 17 : 19]);
         var bar = Component(202, 740, 600); Wire(bar, 0, demo.Params.Output[rooms ? 3 : 2]); Wire(bar, 1, demo.Params.Output[rooms ? 2 : 1]); Wire(bar, 2, demo.Params.Output[1]); Text(bar, 3, rooms ? "Area − minimum (m²)" : "Height / 30 m limit"); Number(bar, 4, rooms ? 0 : 1);
         if (rooms) Wire(bar, 6, demo.Params.Output[9]); cards.Add(bar);
         var table = Component(203, 740, 820); Text(table, 0, rooms ? ["Room", "Type", "m²", "Min m²", "Δ m²", "Status"] : ["Block", "Use", "Floors", "Height m", "Limit m", "GFA m²"]);
         Wire(table, 1, demo.Params.Output[rooms ? 4 : 3]); Wire(table, 2, demo.Params.Output[1]); Text(table, 3, rooms ? "Room area check" : "Block schedule"); Number(table, 6, 600); cards.Add(table);
-        var legend = Component(208, 740, 1050); Wire(legend, 0, demo.Params.Output[rooms ? 11 : 9]); Wire(legend, 1, demo.Params.Output[rooms ? 10 : 7]); Text(legend, 6, rooms ? "Room types" : "Building uses"); cards.Add(legend);
+        var legend = Component(208, 740, 1050); Wire(legend, 0, demo.Params.Output[rooms ? 11 : 9]); Wire(legend, 1, demo.Params.Output[rooms ? 10 : 7]); Text(legend, 6, rooms ? "Room types" : "Building uses");
+        Wire(legend, 5, demo.Params.Output[rooms ? 15 : 17]); Wire(legend, 8, demo.Params.Output[rooms ? 16 : 18]); cards.Add(legend);
         if (!rooms)
         {
-            var useBar = Component(202, 740, 1240); Wire(useBar, 0, demo.Params.Output[8]); Wire(useBar, 1, demo.Params.Output[7]); Wire(useBar, 6, demo.Params.Output[9]); Text(useBar, 3, "GFA by use (m²)"); Number(useBar, 4, 16000); cards.Add(useBar);
+            var useBar = Component(202, 740, 1240); Wire(useBar, 0, demo.Params.Output[8]); Wire(useBar, 1, demo.Params.Output[7]); Wire(useBar, 6, demo.Params.Output[9]); Text(useBar, 3, "GFA by use (m²)"); Number(useBar, 4, 16000);
+            Wire(useBar, 2, demo.Params.Output[17]); Wire(useBar, 7, demo.Params.Output[18]); cards.Add(useBar);
             var note = Component(207, 740, 1450); Text(note, 0, "Schematic zoning study"); Text(note, 1, "100 × 80 m site · FAR limit 2.0 · height limit 30 m.\nGFA counts whole floorplates. Limits are fictitious.\nClick a face or row; change Extra floors."); cards.Add(note);
         }
         else

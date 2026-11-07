@@ -33,6 +33,16 @@ public abstract class CardComponent(string name, string nickname, string descrip
         using var f = new Font("Segoe UI", 13, FontStyle.Bold, GraphicsUnit.Pixel); g.DrawString(letter, f, Brushes.White, 5, 3); return b;
     }
     protected void Output(IGH_DataAccess da, CardSpec c) { c.Validate(); da.SetData(0, new GH_ObjectWrapper(c)); }
+    protected bool HasInput(int index) => Params.Input[index].SourceCount > 0 || Params.Input[index].VolatileData.PathCount > 0;
+    protected ImmutableDictionary<string, GroupDefinition> ReadMembers(IGH_DataAccess da, int index,
+        string[] keys, int entries, bool explicitKeys, bool gradient = false)
+    {
+        if (!HasInput(index)) return GroupInputs.Create(keys, entries, explicitKeys, null, gradient);
+        da.GetDataTree(index, out GH_Structure<GH_String> tree);
+        var branches = tree is null ? [] : tree.Paths.Select((path, i) =>
+            new MemberInputBranch(path.ToString(), tree.Branches[i].Select(v => v?.Value).ToArray())).ToArray();
+        return GroupInputs.Create(keys, entries, explicitKeys, branches, gradient);
+    }
     protected string CardId => InstanceGuid.ToString("N");
     protected override void RegisterOutputParams(GH_OutputParamManager p) => p.AddGenericParameter("Card", "C", "Connect to Overlay", GH_ParamAccess.item);
     protected static Slot? ReadSlot(IGH_DataAccess da, int index)
@@ -50,12 +60,15 @@ public sealed class MetricComponent : CardComponent
         p.AddTextParameter("Unit", "U", "Unit suffix", GH_ParamAccess.item, "");
         p.AddTextParameter("Slot", "S", "Optional wired slot: tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[3].Optional = true;
         p.AddIntegerParameter("Decimals", "D", "Optional numeric precision (0–12); unwired preserves text", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddTextParameter("Key", "K", "Optional stable member or group key", GH_ParamAccess.item); p[5].Optional = true;
+        p.AddTextParameter("Members", "M", "Optional group members in exactly one branch; requires Key", GH_ParamAccess.tree); p[6].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         string value = "", title = "Metric", unit = ""; var hasValue = da.GetData(0, ref value); da.GetData(1, ref title); da.GetData(2, ref unit);
         int decimals = 0; var hasDecimals = da.GetData(4, ref decimals);
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Metric, Title = title, Value = MetricFormatting.Format(hasValue ? value : null, hasDecimals ? decimals : null), Unit = unit, WiredSlot = ReadSlot(da, 3) }); }
+        string key = ""; var hasKey = da.GetData(5, ref key);
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Metric, Keys = hasKey ? [key] : [], Groups = ReadMembers(da, 6, hasKey ? [key] : [], 1, hasKey), Title = title, Value = MetricFormatting.Format(hasValue ? value : null, hasDecimals ? decimals : null), Unit = unit, WiredSlot = ReadSlot(da, 3) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
@@ -73,14 +86,16 @@ public sealed class BarComponent : CardComponent
         p.AddNumberParameter("Threshold", "Th", "Nonnegative threshold; zero for signed deltas", GH_ParamAccess.item, 1);
         p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[5].Optional = true;
         p.AddColourParameter("Colors", "C", "Optional per-bar colors; default compares values to Threshold", GH_ParamAccess.list); p[6].Optional = true;
+        p.AddTextParameter("Members", "M", "One path-ordered branch per bar, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[7].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var values = new List<double>(); var labels = new List<string>(); var keys = new List<string>(); string title = "Member utilisation"; double threshold = 1;
         if (!da.GetDataList(0, values)) return; da.GetDataList(1, labels); da.GetDataList(2, keys); da.GetData(3, ref title); da.GetData(4, ref threshold);
         var colors = new List<Color>(); da.GetDataList(6, colors);
+        var explicitKeys = keys.Count > 0;
         if (labels.Count == 0) labels = Enumerable.Range(1, values.Count).Select(i => $"M{i:00}").ToList(); if (keys.Count == 0) keys = [.. labels];
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Bar, Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, WiredSlot = ReadSlot(da, 5) }); }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Bar, Groups = ReadMembers(da, 7, keys.ToArray(), values.Count, explicitKeys), Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, WiredSlot = ReadSlot(da, 5) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
@@ -143,6 +158,7 @@ public sealed class LegendComponent : CardComponent
         p.AddTextParameter("Keys", "K", "Optional unique categorical selection keys", GH_ParamAccess.list); p[5].Optional = true;
         p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
         p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[7].Optional = true;
+        p.AddTextParameter("Members", "M", "One path-ordered branch per category, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[8].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -150,7 +166,7 @@ public sealed class LegendComponent : CardComponent
         if (!da.GetDataList(0, colors)) return; da.GetDataList(1, labels); da.GetData(4, ref unit); da.GetDataList(5, keys); da.GetData(6, ref title);
         var hasMin = Params.Input[2].SourceCount > 0; var hasMax = Params.Input[3].SourceCount > 0;
         if ((hasMin && !da.GetData(2, ref min)) || (hasMax && !da.GetData(3, ref max))) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Wired Min and Max must supply numbers."); return; }
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Legend, Title = title, Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Min = hasMin ? min : null, Max = hasMax ? max : null, Unit = unit, WiredSlot = ReadSlot(da, 7) }); }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Legend, Groups = ReadMembers(da, 8, keys.ToArray(), colors.Count, keys.Count > 0, hasMin || hasMax), Title = title, Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Min = hasMin ? min : null, Max = hasMax ? max : null, Unit = unit, WiredSlot = ReadSlot(da, 7) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
@@ -245,6 +261,7 @@ public sealed class LinkComponent : GH_Component
 public sealed class OverlayComponent : GH_Component
 {
     private readonly Queue<string> _events = new();
+    private MembershipIndex? _membership;
     private readonly object _publishLock = new();
     private bool _publishScheduled;
     private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId);
@@ -445,7 +462,10 @@ public sealed class OverlayComponent : GH_Component
         if (cards.Length != wrapped.Count || links.Length != wrappedLinks.Count)
         { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Cards must come from Conduit+ card components; Links must come from Link."); QueuePublish([], []); return; }
         var snapshot = OverlayManager.Snapshot(InstanceGuid);
-        var live = cards.SelectMany(BrushState.Keys).Concat(links.SelectMany(l => l.Keys)).ToHashSet(StringComparer.Ordinal);
+        var membership = _membership = MembershipIndex.Create([new BrushRegistration("private", cards, links.SelectMany(l => l.Keys))], _membership);
+        foreach (var diagnostic in membership.Diagnostics)
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Card {diagnostic.CardId}, key '{diagnostic.Key}': {diagnostic.Message}");
+        var live = membership.MemberKeys;
         var selection = snapshot.SelectedKeys.Where(live.Contains).ToArray();
         Message = $"{selection.Length} selected";
         da.SetDataList(0, selection);

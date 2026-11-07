@@ -74,7 +74,10 @@ public sealed class CanvasCardState
     private int _offset;
     private int? _column;
     private bool _descending;
+    private readonly BrushOrigin _origin = new("canvas", "card", 0);
     public CardSpec? Spec { get; private set; }
+    public MembershipIndex Membership => _brush.Current.Membership;
+    public string[]? TooltipFor(string key) => Spec is null ? null : Tooltip.For(Spec, key, Membership);
     public void Replace(CardSpec? source)
     {
         source?.Validate();
@@ -98,14 +101,19 @@ public sealed class CanvasCardState
         };
         _store.Update([spec]); Spec = _store.Snapshot[0];
     }
-    public void Hover(string? key) { if (_brush.Hover(key)) Reconcile(); }
+    public void Hover(string? key)
+    {
+        var changed = string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? _brush.ClearHover(_origin) :
+            _brush.Hover(_origin, key, _source is null ? null : BrushPresentation.TargetKind(_source, key));
+        if (changed) Reconcile();
+    }
     public void Activate(string key)
     {
         if (Spec is null) return;
         if (key == CardMeasure.ClearKey) _brush.Clear();
         else if (TableSort.Column(key) is { } column && Spec.Kind == CardKind.Table && column >= 0 && column < Spec.Headers.Length)
         { var sorted = TableSort.Cycle(Spec, column); _column = sorted.SortColumn; _descending = sorted.SortDescending; }
-        else _brush.Toggle(key);
+        else _brush.Toggle(key, BrushPresentation.TargetKind(Spec, key), new(Guid.Empty, Spec.Id, "canvas"));
         Reconcile();
     }
     public void Scroll(int offset) { _offset = offset; Reconcile(); }

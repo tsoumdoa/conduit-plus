@@ -54,7 +54,7 @@ public sealed class ConduitPlusPdf : Command
                 {
                     var spec = session.Cards.Single(c => c.Id == layout.Id);
                     using var canvas = new PdfCanvas(pdf, page, layout.X * dpi, layout.Y * dpi, dpi);
-                    CardPainter.Paint(canvas, spec, session.Theme);
+                    CardPainter.Paint(canvas, BrushPresentation.WithoutHover(spec), session.Theme);
                 }
             }
             var path = Path.Combine(OutputPaths.Captures, "overlay-vector.pdf");

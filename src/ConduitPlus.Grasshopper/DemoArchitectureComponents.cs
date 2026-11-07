@@ -43,6 +43,9 @@ public sealed class DemoRoomsComponent : DemoArchitectureComponent
         p.AddNumberParameter("Areas", "A", "Area per room, m²", GH_ParamAccess.list);
         p.AddNumberParameter("Required areas", "RA", "Illustrative minimum per room type, m²", GH_ParamAccess.list);
         p.AddTextParameter("Room types", "RT", "Type per room", GH_ParamAccess.list);
+        p.AddTextParameter("Type keys", "TK", "Stable group keys in Types order", GH_ParamAccess.list);
+        p.AddTextParameter("Type members", "TM", "One member-key branch per room type", GH_ParamAccess.tree);
+        p.AddTextParameter("Failing members", "FM", "Exactly one branch, including an empty branch when all pass", GH_ParamAccess.tree);
     }
     protected override void BeforeSolveInstance() => Preview([], []);
     protected override void SolveInstance(IGH_DataAccess da)
@@ -63,6 +66,9 @@ public sealed class DemoRoomsComponent : DemoArchitectureComponent
             da.SetDataList(10, r.Rooms.Select(room => room.Type).Distinct());
             da.SetDataList(11, DemoArchitectureRows.TypeColors);
             da.SetDataList(12, r.Rooms.Select(room => room.Area)); da.SetDataList(13, r.Rooms.Select(room => room.Required)); da.SetDataList(14, r.Rooms.Select(room => room.Type));
+            da.SetDataList(15, types.Select(type => "type:" + type.ToLowerInvariant()));
+            da.SetDataTree(16, DemoArchitectureRows.Create(types.Select(type => r.Rooms.Where(room => room.Type == type).Select(room => room.Key).ToArray())));
+            da.SetDataTree(17, DemoArchitectureRows.Create([r.Rooms.Where(room => !room.Pass).Select(room => room.Key).ToArray()]));
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
@@ -95,6 +101,9 @@ public sealed class DemoMassingComponent : DemoArchitectureComponent
         p.AddNumberParameter("Height limits", "HL", "Illustrative height limit per block, m", GH_ParamAccess.list);
         p.AddNumberParameter("Block GFA", "BG", "GFA per block, m²", GH_ParamAccess.list);
         p.AddTextParameter("Block uses", "BU", "Use per block", GH_ParamAccess.list);
+        p.AddTextParameter("Use keys", "UK", "Stable group keys in Uses order", GH_ParamAccess.list);
+        p.AddTextParameter("Use members", "UM", "One member-key branch per use", GH_ParamAccess.tree);
+        p.AddTextParameter("Height failure members", "HF", "Exactly one branch of blocks above the height limit", GH_ParamAccess.tree);
     }
     protected override void BeforeSolveInstance() => Preview([], []);
     protected override void SolveInstance(IGH_DataAccess da)
@@ -113,6 +122,9 @@ public sealed class DemoMassingComponent : DemoArchitectureComponent
             da.SetData(10, new Rectangle3d(Plane.WorldXY, r.SiteWidth, r.SiteDepth).ToNurbsCurve()); da.SetData(11, r.HeightFailures);
             da.SetDataList(12, r.Blocks.Select(b => b.Floors)); da.SetDataList(13, r.Blocks.Select(b => b.Height)); da.SetDataList(14, r.Blocks.Select(b => b.HeightLimit));
             da.SetDataList(15, r.Blocks.Select(b => b.Gfa)); da.SetDataList(16, r.Blocks.Select(b => b.Use));
+            da.SetDataList(17, r.Uses.Select(use => "use:" + use.ToLowerInvariant()));
+            da.SetDataTree(18, DemoArchitectureRows.Create(r.Uses.Select(use => r.Blocks.Where(b => b.Use == use).Select(b => b.Key).ToArray())));
+            da.SetDataTree(19, DemoArchitectureRows.Create([r.Blocks.Where(b => b.Height > b.HeightLimit).Select(b => b.Key).ToArray()]));
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
@@ -125,7 +137,11 @@ internal static class DemoArchitectureRows
     internal static GH_Structure<GH_String> Create(IEnumerable<string[]> rows)
     {
         var tree = new GH_Structure<GH_String>(); int i = 0;
-        foreach (var row in rows) tree.AppendRange(row.Select(s => new GH_String(s)), new GH_Path(i++));
+        foreach (var row in rows)
+        {
+            var path = new GH_Path(i++); tree.EnsurePath(path);
+            tree.AppendRange(row.Select(s => new GH_String(s)), path);
+        }
         return tree;
     }
 }

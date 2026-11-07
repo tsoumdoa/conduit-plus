@@ -36,6 +36,9 @@ public static class LineCardPainter
 
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
+        var hits = Hits(c);
+        foreach (var hit in hits)
+            if (hit.Key == c.HoverKey) canvas.Rect(new(hit.X, hit.Y, hit.W, hit.H), t.Track);
         var ticks = ChartTicks.Nice(Math.Min(0, c.Values.Min() ?? 0), Math.Max(c.Threshold, c.Values.Max() ?? 0));
         var lo = ticks[0]; var hi = ticks[^1]; var right = c.Width - 20;
         double Y(double v) => 184 - (v - lo) / (hi - lo) * 140;
@@ -70,8 +73,10 @@ public static class LineCardPainter
                 using var clip = canvas.Clip(new(X(i) - 12, 190, Math.Min(50, c.Width - X(i) + 12), 20));
                 canvas.Text(c.Labels[i], new(X(i) - 12, 190), 10, t.Muted, t.Font);
             }
-            if (c.HoverKey == c.Keys[i] || c.SelectedKeys.Contains(c.Keys[i]))
-                canvas.Line(new(X(i), 44), new(X(i), 184), t.Ink, 2);
+            var selected = c.SelectedKeys.Contains(c.Keys[i]);
+            if (selected) canvas.Line(new(X(i), 44), new(X(i), 184), t.Ink, 2);
+            if (c.HoveredKeys.Contains(c.Keys[i]) || c.HoverKey == c.Keys[i])
+                CardPainter.Outline(canvas, hits[i], t.Accent);
         }
     }
 }

@@ -28,6 +28,9 @@ internal sealed partial class OverlaySession : IDisposable
     internal bool HasLinks => _links.Length > 0;
     private BoundingBox _linkBounds = BoundingBox.Empty;
     private BrushSnapshot _brush = new([], null);
+    private IReadOnlySet<string> _selectedMembers = new HashSet<string>(StringComparer.Ordinal);
+    private IReadOnlySet<string> _hoveredMembers = new HashSet<string>(StringComparer.Ordinal);
+    private bool _rasterHasCaptureState;
     /// <summary>Per-card scroll position. View state, so it is re-applied to every incoming spec (GH solves send 0).</summary>
     private readonly Dictionary<string, int> _scroll = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int? Column, bool Descending)> _sort = new(StringComparer.Ordinal);
@@ -50,10 +53,13 @@ internal sealed partial class OverlaySession : IDisposable
         }
         specs = ApplyViewState(OverlayManager.Project(this, specs));
         _brush = OverlayManager.Snapshot(this);
+        if (OverlayManager.DomainSnapshot(this) is { } domain)
+        { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.HoveredKeys; }
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
-        _raster.Prepare(next, Theme, UiContext.Dpi(View));
+        _raster.Prepare(next, Theme, UiContext.Dpi(View), force: _rasterHasCaptureState);
+        _rasterHasCaptureState = false;
         Cards = next;
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
@@ -83,7 +89,7 @@ internal sealed partial class OverlaySession : IDisposable
             else _headerHover = null;
         }
         // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
-        if (c.Kind == CardKind.Table && c.SelectedKeys.FirstOrDefault(k => !_brush.SelectedKeys.Contains(k, StringComparer.Ordinal)) is { } added)
+        if (c.Kind == CardKind.Table && BrushPresentation.FirstNewRow(c, _selectedMembers) is { } added)
         {
             var revealed = TableScroll.Reveal(c, added);
             _scroll[c.Id] = revealed;
@@ -145,7 +151,7 @@ internal sealed partial class OverlaySession : IDisposable
         _cardHover = card is not null && !string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key) ? (card, key) : null;
         var header = card is not null && key is not null && TableSort.Column(key).HasValue ? (card, key) : ((string, string)?)null;
         var changed = _headerHover != header; _headerHover = header;
-        OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key);
+        OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key, card: card);
         if (changed) UpdateInteraction(Cards);
         SyncTooltip();
     }
@@ -175,7 +181,7 @@ internal sealed partial class OverlaySession : IDisposable
     internal void Draw(DrawEventArgs e)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
-        DrawHighlights(e.Display);
+        DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = UiContext.Dpi(View) * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.
@@ -188,13 +194,21 @@ internal sealed partial class OverlaySession : IDisposable
         }
         // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
         // including direct captures; the next screen draw lazily restores screen resolution.
-        if (_raster.Scale != scale)
+        if (_raster.Scale != scale || e.Display.IsInViewCapture || _rasterHasCaptureState)
         {
             // Never let an exception escape a display conduit (e.g. GDI+ out of memory for a very large capture):
             // keep drawing the existing bitmaps, scaled as they are, and report the failure.
-            try { _raster.Prepare(Cards, Theme, scale); }
+            try
+            {
+                _raster.Prepare(e.Display.IsInViewCapture ? Cards.Select(BrushPresentation.WithoutHover).ToArray() : Cards, Theme, scale, force: e.Display.IsInViewCapture || _rasterHasCaptureState);
+                _rasterHasCaptureState = e.Display.IsInViewCapture;
+            }
             catch (Exception ex) when (ex is OutOfMemoryException or ArgumentException or System.ComponentModel.Win32Exception or OverflowException)
-            { RhinoApp.WriteLine($"Conduit+ raster at {scale:0.##}× failed; using screen-resolution cards. {ex.Message}"); }
+            {
+                RhinoApp.WriteLine($"Conduit+ raster at {scale:0.##}× failed. {ex.Message}");
+                // A capture must never fall back to pixels containing transient hover.
+                if (e.Display.IsInViewCapture) return;
+            }
         }
         foreach (var layout in layouts)
         {
@@ -205,13 +219,13 @@ internal sealed partial class OverlaySession : IDisposable
         if (!e.Display.IsInViewCapture) DrawLayoutEditing(e.Display, layouts, scale);
         FrameCount++;
     }
-    private void DrawHighlights(DisplayPipeline display)
+    private void DrawHighlights(DisplayPipeline display, bool includeHover)
     {
         if (_links.Length == 0) return;
         var muted = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Muted);
         foreach (var link in _links.Where(l => l.ShowBase))
             foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 2, false, false);
-        if (_brush.HoverKey is null && _brush.SelectedKeys.Length == 0) return;
+        if ((!includeHover || _hoveredMembers.Count == 0) && _selectedMembers.Count == 0) return;
         var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
         display.PushDepthTesting(false);
         try
@@ -219,9 +233,11 @@ internal sealed partial class OverlaySession : IDisposable
             display.PushDepthWriting(false);
             try
             {
-                if (_brush.HoverKey is { } hover && !_brush.SelectedKeys.Contains(hover, StringComparer.Ordinal))
-                    foreach (var link in _links) link.Draw(display, hover, color, 2, false);
-                foreach (var key in _brush.SelectedKeys)
+                if (includeHover)
+                    foreach (var hover in _hoveredMembers)
+                        if (!_selectedMembers.Contains(hover))
+                            foreach (var link in _links) link.Draw(display, hover, color, 2, false);
+                foreach (var key in _selectedMembers)
                     foreach (var link in _links) link.Draw(display, key, color, 4, true);
             }
             finally { display.PopDepthWriting(); }
