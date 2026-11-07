@@ -14,6 +14,7 @@ public sealed record CardLayout(string Id, long Rev, double X, double Y, double 
 
 public interface ICanvas2D
 {
+    // All color arguments accept #RRGGBB and #RRGGBBAA, using source-over alpha.
     Size2 MeasureText(string text, double size, string font);
     void Rect(Rect2 rect, string fill);
     /// <summary>Horizontal linear gradient with evenly spaced color stops, left to right.</summary>

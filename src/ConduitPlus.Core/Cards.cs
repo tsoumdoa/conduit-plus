@@ -100,6 +100,7 @@ public static class TableScroll
 
 public sealed record Theme
 {
+    public string Name { get; init; } = "Paper";
     public string Surface { get; init; } = "#FFFFFF";
     public string Ink { get; init; } = "#17191E";
     public string Muted { get; init; } = "#626875";
@@ -110,12 +111,49 @@ public sealed record Theme
     public string Good { get; init; } = "#1F8A5B";
     public string Area { get; init; } = "#E7EDFF";
     public string ThresholdBand { get; init; } = "#FCECEF";
+    public string Highlight { get; init; } = "#EEF0F3";
+    public string TooltipSurface { get; init; } = "#1F2329";
+    public string TooltipInk { get; init; } = "#FFFFFF";
+    public double TooltipRadius { get; init; } = 4;
+    public string Border { get; init; } = "#00000000";
+    public double BorderWidth { get; init; }
+    // Legacy Paper has no painted shadow; keep its pixels and bitmap extent unchanged.
+    public bool Shadow { get; init; }
+    public string ShadowColor { get; init; } = "#00000008";
+    public double ShadowExtent => Shadow ? 8 : 0;
+    public double GhostOpacity { get; init; } = .85;
+    public string LayoutOutline => ColorRgba.Parse(Accent).WithAlpha(100).ToHex();
+    public string LayoutFill => ColorRgba.Parse(Accent).WithAlpha(15).ToHex();
+    public string LayoutActiveFill => ColorRgba.Parse(Accent).WithAlpha(40).ToHex();
     public string Font { get; init; } = "Segoe UI";
     public double Padding { get; init; } = 12;
     public double FontSize { get; init; } = 12;
     public double RowHeight { get; init; } = 22;
     public double Radius { get; init; } = 5;
     public static Theme Paper { get; } = new();
+    public static Theme Smoke { get; } = new()
+    {
+        Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
+        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#8FB0FF", Radius = 10,
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#8FB0FF26", ThresholdBand = "#E0546F26",
+        Highlight = "#8FB0FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
+        // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
+    };
+    public static Theme Blueprint { get; } = new()
+    {
+        Name = "Blueprint", Surface = "#0A2654CC", Ink = "#E6F1FF", Muted = "#8FB4E3",
+        Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Radius = 0,
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E",
+        Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
+        Border = "#8CBEFF73", BorderWidth = 1
+    };
+    public static IReadOnlyList<Theme> Presets { get; } = Array.AsReadOnly(new[] { Paper, Smoke, Blueprint });
+    /// <summary>Unknown names return false and the backwards-compatible Paper fallback.</summary>
+    public static bool TryGet(string? name, out Theme theme)
+    {
+        theme = Presets.FirstOrDefault(t => string.Equals(t.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? Paper;
+        return Presets.Any(t => string.Equals(t.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public static class CardJson
@@ -132,16 +170,19 @@ public sealed class CardStore
     private readonly Dictionary<string, (string Content, CardSpec Spec)> _cards = new(StringComparer.Ordinal);
     private long _revision;
     private string[] _order = [];
-    public IReadOnlyList<CardSpec> Update(IEnumerable<CardSpec> specs)
+    private Theme _theme = Theme.Paper;
+    public IReadOnlyList<CardSpec> Update(IEnumerable<CardSpec> specs, Theme? theme = null)
     {
         var incoming = specs.ToArray();
         if (incoming.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != incoming.Length) throw new ArgumentException("Duplicate card IDs.");
         foreach (var c in incoming) c.Validate();
+        theme ??= Theme.Paper;
+        var themeChanged = _theme != theme;
         var dirty = new List<CardSpec>();
         foreach (var input in incoming)
         {
             var content = CardJson.Serialize(input with { Rev = 0 });
-            if (_cards.TryGetValue(input.Id, out var old) && old.Content == content) continue;
+            if (!themeChanged && _cards.TryGetValue(input.Id, out var old) && old.Content == content) continue;
             var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
@@ -149,6 +190,7 @@ public sealed class CardStore
         var live = incoming.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _cards.Keys.Where(k => !live.Contains(k)).ToArray()) _cards.Remove(id);
         _order = incoming.Select(c => c.Id).ToArray();
+        _theme = theme;
         return dirty;
     }
     public CardSpec[] Snapshot => _order.Select(id => _cards[id].Spec).ToArray();

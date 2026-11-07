@@ -7,8 +7,10 @@ public static class CardPainter
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
         var size = CardMeasure.Measure(c, t);
+        ThemePainter.Shadow(canvas, size, t);
         using var clip = canvas.Clip(new(0, 0, size.Width, size.Height));
         canvas.RoundedRect(new(0, 0, size.Width, size.Height), t.Radius, t.Surface);
+        ThemePainter.Border(canvas, size, t);
         var clear = CardMeasure.Clear(c, t);
         using (canvas.Clip(new(t.Padding, 7, (clear?.X ?? (c.Width - t.Padding)) - t.Padding - 4, 24)))
             canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
@@ -89,7 +91,7 @@ public static class CardPainter
     }
     internal static void Highlight(ICanvas2D canvas, CardSpec c, Theme t, HitRegion h)
     {
-        if (c.SelectedKeys.Contains(h.Key) || c.HoverKey == h.Key) canvas.Rect(new(h.X, h.Y, h.W, h.H), t.Track);
+        if (c.SelectedKeys.Contains(h.Key) || c.HoverKey == h.Key) canvas.Rect(new(h.X, h.Y, h.W, h.H), t.Highlight);
         if (c.SelectedKeys.Contains(h.Key)) canvas.Rect(new(h.X, h.Y, 2, h.H), t.Accent);
     }
 }

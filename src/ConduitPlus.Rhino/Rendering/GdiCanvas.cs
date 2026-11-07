@@ -26,6 +26,7 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         graphics.CompositingQuality = CompositingQuality.HighQuality;
+        graphics.CompositingMode = CompositingMode.SourceOver;
         // ClearType assumes an opaque background: never use it on our alpha textures.
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
     }
@@ -39,7 +40,12 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
         if (!_brushes.TryGetValue(color, out var brush)) _brushes.Add(color, brush = new SolidBrush(C(color)));
         return brush;
     }
-    private static Color C(string value) => ColorTranslator.FromHtml(value);
+    public static Color ParseColor(string value)
+    {
+        var rgba = ColorRgba.Parse(value);
+        return Color.FromArgb(rgba.A, rgba.R, rgba.G, rgba.B);
+    }
+    private static Color C(string value) => ParseColor(value);
     public Size2 MeasureText(string text, double size, string font)
     {
         var measured = graphics.MeasureString(text, FontOf(font, size), int.MaxValue, _format); return new(measured.Width, measured.Height);

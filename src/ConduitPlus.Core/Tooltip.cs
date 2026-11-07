@@ -39,12 +39,15 @@ public static class TooltipPainter
     public static void Paint(ICanvas2D canvas, IReadOnlyList<string> lines, Theme t)
     {
         var size = Measure(canvas, lines, t);
+        var frame = t with { Radius = t.TooltipRadius };
+        ThemePainter.Shadow(canvas, size, frame);
         using var clip = canvas.Clip(new(0, 0, size.Width, size.Height));
-        canvas.RoundedRect(new(0, 0, size.Width, size.Height), 4, "#1F2329");
+        canvas.RoundedRect(new(0, 0, size.Width, size.Height), t.TooltipRadius, t.TooltipSurface);
+        ThemePainter.Border(canvas, size, frame);
         var y = Padding;
         for (var i = 0; i < lines.Count; i++)
         {
-            canvas.Text(lines[i], new(Padding, y), FontSize(t, i), "#FFFFFF", t.Font);
+            canvas.Text(lines[i], new(Padding, y), FontSize(t, i), t.TooltipInk, t.Font);
             y += Height(canvas, t, i);
         }
     }

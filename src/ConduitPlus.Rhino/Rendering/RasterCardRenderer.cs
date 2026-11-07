@@ -24,7 +24,7 @@ internal sealed class RasterCardRenderer : IDisposable
                 if (_theme == theme && _prepared.TryGetValue(spec.Id, out var old) && old.Capture.Spec.Rev == spec.Rev && old.Capture.Scale == scale)
                 { next.Add(spec.Id, old); continue; }
                 var size = CardMeasure.Measure(spec, theme);
-                var capture = new CapturedCard(spec, new(spec.Id, spec.Rev, 0, 0, size.Width, size.Height, CardMeasure.Hits(spec, theme)), RasterDrawing.Render(spec, theme, scale), scale);
+                var capture = new CapturedCard(spec, new(spec.Id, spec.Rev, 0, 0, size.Width, size.Height, CardMeasure.Hits(spec, theme)), RasterDrawing.Render(spec, theme, scale), scale, RasterDrawing.Margin(theme, scale));
                 BitmapCard replacement;
                 try { replacement = new(capture); } catch { capture.Dispose(); throw; }
                 created.Add(replacement); next.Add(spec.Id, replacement); RenderCount++;

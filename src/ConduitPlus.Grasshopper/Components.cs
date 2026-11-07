@@ -240,7 +240,7 @@ public sealed class OverlayComponent : GH_Component
     private readonly Queue<string> _events = new();
     private readonly object _publishLock = new();
     private bool _publishScheduled;
-    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, bool Interaction, uint? DocumentSerial, Guid? ViewId);
+    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId);
     private PendingPublish? _pending;
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
@@ -249,9 +249,12 @@ public sealed class OverlayComponent : GH_Component
     private Dictionary<string, LayoutOverride> _layout = new(StringComparer.Ordinal);
     private CardSpec[] _originals = [];
     private bool _layoutWarning;
+    private Theme _menuTheme = Theme.Paper;
+    private Theme _resolvedTheme = Theme.Paper;
     public override bool Write(GH_IWriter writer)
     {
         lock (_publishLock) writer.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(_layout));
+        writer.SetString("ConduitPlus.Theme", _menuTheme.Name);
         return base.Write(writer);
     }
     public override bool Read(GH_IReader reader)
@@ -260,6 +263,10 @@ public sealed class OverlayComponent : GH_Component
         var json = ""; var found = reader.TryGetString("ConduitPlus.Layout", ref json);
         lock (_publishLock) _layout = LayoutEditing.Read(json, out _layoutWarning);
         _layoutWarning |= !found && reader.ItemExists("ConduitPlus.Layout");
+        var themeName = "Paper";
+        reader.TryGetString("ConduitPlus.Theme", ref themeName);
+        Theme.TryGet(themeName, out _menuTheme);
+        _resolvedTheme = _menuTheme;
         if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         return result;
     }
@@ -267,6 +274,56 @@ public sealed class OverlayComponent : GH_Component
     {
         base.AppendAdditionalComponentMenuItems(menu);
         Menu_AppendItem(menu, "Reset layout", (_, _) => ChangeLayout(new Dictionary<string, LayoutOverride>(StringComparer.Ordinal)), true, false);
+        // A wired Theme input wins, so the menu is shown but disabled while it is connected.
+        var wired = Params.Input[2].SourceCount > 0;
+        var themes = Menu_AppendItem(menu, wired ? "Theme (set by input)" : "Theme");
+        foreach (var theme in Theme.Presets)
+            Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme), !wired, _menuTheme == theme);
+    }
+    private void ChangeTheme(Theme theme)
+    {
+        if (OnPingDocument() is null || _menuTheme == theme) return;
+        RecordUndoEvent("Change theme", new ThemeUndoAction(InstanceGuid, _menuTheme.Name, theme.Name));
+        ApplyTheme(theme.Name);
+    }
+    private void ApplyTheme(string name)
+    {
+        Theme.TryGet(name, out _menuTheme);
+        // Menu edits and undo stay in the bound view and do not trigger a data solve.
+        if (Params.Input[2].SourceCount == 0)
+        {
+            lock (_publishLock)
+            {
+                _resolvedTheme = _menuTheme;
+                if (_pending is not null) _pending = _pending with { Theme = _resolvedTheme };
+            }
+            OverlayManager.ReplaceTheme(InstanceGuid, _resolvedTheme);
+        }
+        OnPingDocument()?.Modified();
+    }
+    public sealed class ThemeUndoAction : GH_ObjectUndoAction
+    {
+        private Guid _owner;
+        private string _before = "Paper", _after = "Paper";
+        public ThemeUndoAction() : base(Guid.Empty) { }
+        public ThemeUndoAction(Guid owner, string before, string after) : base(owner)
+        { _owner = owner; _before = before; _after = after; }
+        public override bool ExpiresSolution => false;
+        public override bool ExpiresDisplay => true;
+        protected override void Object_Undo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyTheme(_before); }
+        protected override void Object_Redo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyTheme(_after); }
+        protected override void Internal_Undo(GH_Document doc) => Object_Undo(doc, doc.FindObject(_owner, false));
+        protected override void Internal_Redo(GH_Document doc) => Object_Redo(doc, doc.FindObject(_owner, false));
+        public override bool Write(GH_IWriter writer)
+        {
+            writer.SetGuid("Owner", _owner); writer.SetString("Before", _before); writer.SetString("After", _after);
+            return base.Write(writer);
+        }
+        public override bool Read(GH_IReader reader)
+        {
+            _owner = reader.GetGuid("Owner"); _before = reader.GetString("Before"); _after = reader.GetString("After");
+            return base.Read(reader);
+        }
     }
     private void OnLayoutProposal(LayoutProposal proposal)
     {
@@ -327,6 +384,7 @@ public sealed class OverlayComponent : GH_Component
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Text or Legend cards", GH_ParamAccess.list);
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
+        p.AddTextParameter("Theme", "T", "Paper, Smoke or Blueprint (case-insensitive). A wired input overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -365,6 +423,14 @@ public sealed class OverlayComponent : GH_Component
     {
         if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         lock (_publishLock) _solveScheduled = false;
+        var theme = _menuTheme;
+        if (Params.Input[2].SourceCount > 0)
+        {
+            var name = "";
+            da.GetData(2, ref name);
+            if (!Theme.TryGet(name, out theme)) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Unknown theme '{name}'. Use Paper, Smoke or Blueprint; falling back to Paper.");
+        }
+        lock (_publishLock) _resolvedTheme = theme;
         var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
         da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
         var cards = wrapped.Select(g => g?.ScriptVariable()).OfType<CardSpec>().ToArray();
@@ -384,7 +450,7 @@ public sealed class OverlayComponent : GH_Component
         var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = new(cards, links, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId);
+            _pending = new(cards, links, _resolvedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId);
             _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;
@@ -413,7 +479,7 @@ public sealed class OverlayComponent : GH_Component
                 lock (_publishLock)
                 {
                     _originals = pending.Cards;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout, pending.Theme);
                 }
             }
         }

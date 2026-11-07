@@ -51,10 +51,10 @@ internal sealed partial class OverlaySession
             using (var g = Graphics.FromImage(bitmap))
             using (var attributes = new ImageAttributes())
             {
-                attributes.SetColorMatrix(new ColorMatrix { Matrix33 = .85f });
+                attributes.SetColorMatrix(new ColorMatrix { Matrix33 = (float)Theme.GhostOpacity });
                 g.DrawImage(original, new Rectangle(0, 0, bitmap.Width, bitmap.Height), 0, 0, original.Width, original.Height, GraphicsUnit.Pixel, attributes);
             }
-            _layoutDrag = new(id, Cards, frozen, viewport, dpi, new(press.X - source.X, press.Y - source.Y), bitmap);
+            _layoutDrag = new(id, Cards, frozen, viewport, dpi, new(press.X - source.X + raster.Capture.Margin, press.Y - source.Y + raster.Capture.Margin), bitmap);
         }
         catch { bitmap.Dispose(); throw; }
         _titleHover = null;
@@ -84,7 +84,7 @@ internal sealed partial class OverlaySession
     }
     private void DrawLayoutEditing(DisplayPipeline display, CardLayout[] layouts, double scale)
     {
-        var accent = ColorTranslator.FromHtml(Theme.Accent);
+        var accent = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
         if (_layoutDrag is not { } drag)
         {
             if (_titleHover is not { } id || Card(id) is not { } card || layouts.FirstOrDefault(l => l.Id == id) is not { } l) return;
@@ -116,7 +116,8 @@ internal sealed partial class OverlaySession
         {
             var r = LayoutEditing.Zone(slot, drag.Viewport, scale); var active = slot == drag.Target;
             display.DrawRoundedRectangle(new((float)(r.X + r.Width / 2), (float)(r.Y + r.Height / 2)), (float)r.Width, (float)r.Height,
-                (float)(5 * scale), active ? accent : Color.FromArgb(100, accent), active ? 2 : 1, Color.FromArgb(active ? 40 : 15, accent));
+                (float)(5 * scale), active ? accent : ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.LayoutOutline), active ? 2 : 1,
+                ConduitPlus.Rendering.GdiCanvas.ParseColor(active ? Theme.LayoutActiveFill : Theme.LayoutFill));
             display.Draw2dText(slot.ToString().ToUpperInvariant(), accent, new global::Rhino.Geometry.Point2d(r.X + r.Width / 2, r.Y + r.Height / 2), true, (int)(12 * scale));
         }
         var stack = LayoutEditing.Stack(drag.Cards, drag.Target, drag.CardId).Select(c => drag.Frozen.First(l => l.Id == c.Id)).ToArray();

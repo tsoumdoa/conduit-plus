@@ -4,7 +4,7 @@ using Rhino.Display;
 
 namespace ConduitPlus.Rhino;
 
-internal sealed record CapturedCard(CardSpec Spec, CardLayout Layout, Bitmap Bitmap, double Scale) : IDisposable
+internal sealed record CapturedCard(CardSpec Spec, CardLayout Layout, Bitmap Bitmap, double Scale, int Margin = 0) : IDisposable
 {
     public void Dispose() => Bitmap.Dispose();
 }
