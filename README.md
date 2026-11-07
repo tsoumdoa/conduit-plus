@@ -155,13 +155,14 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
+| Scope | Optional Name is a display label only; outputs a typed selection-scope token for this GH document. Infrastructure only: it does nothing until B2 wires Canvas Card and Overlay to the broker. |
 | Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Auto theme by default for new components. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 | Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Right-click → Theme. No outputs. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
-Card components are under **Cards**; Link, Overlay and Canvas Card are under **Display**.
+Card components are under **Cards**; Link, Scope, Overlay and Canvas Card are under **Display**.
 Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the right-click menu.
 New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light
 UI, Night for its dark UI. Auto follows Rhino settings changes without a solve.
