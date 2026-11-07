@@ -31,6 +31,7 @@ internal static class ExportChecks
     internal static void RunCompact(RhinoDoc doc, RhinoView fullView, object fullSession, CardSpec[] fullCards, string output, int scale, string state)
     {
         Console.WriteLine("Preparing compact fixture.");
+        var theme = (Theme)Get(fullSession, "Theme");
         OverlayManager.Remove((Guid)Get(fullSession, "Owner"));
         var compactOutput = Path.Combine(output, "compact"); Directory.CreateDirectory(compactOutput);
         using var cleanup = new RestoreOutput(output);
@@ -43,12 +44,12 @@ internal static class ExportChecks
             var truss = DemoTruss.Create(bays: 4);
             CardSpec[] cards = [fullCards[0] with { Width = 180, ManualSlot = Slot.Tl, ManualOrder = null, OrderSlot = null }];
             var link = new Link(truss.Members.Select(m => m.Key), truss.Members.Select(m => (m.Key, (object)new Line(new Point3d(m.Start.X, 0, m.Start.Y), new Point3d(m.End.X, 0, m.End.Y))))) { ShowBase = true };
-            OverlayManager.Set(doc, view, owner, cards, [link]);
+            OverlayManager.Set(doc, view, owner, cards, [link], theme: theme);
             Console.WriteLine("Compact fixture published.");
             var session = typeof(OverlayManager).GetMethod("Get", Internal)!.Invoke(null, [doc, view, (Guid?)owner])!;
             view.ActiveViewport.SetCameraLocations(new(12, 0, 1.5), new(31, -32, 17));
             view.ActiveViewport.ZoomBoundingBox(new BoundingBox(new Point3d(-8, -10, -1), new Point3d(32, 10, 18)));
-            var dpi = Dpi(view); var layout = SlotLayout.Place(cards, Theme.Paper, new(view.ActiveViewport.Size.Width, view.ActiveViewport.Size.Height), dpi)[0];
+            var dpi = Dpi(view); var layout = SlotLayout.Place(cards, theme, new(view.ActiveViewport.Size.Width, view.ActiveViewport.Size.Height), dpi)[0];
             if (state == "drag")
             {
                 Require((bool)Call(session, "BeginLayoutDrag", cards[0].Id, new Point2(layout.X + 40, layout.Y + 20))!, "Cannot begin verification drag.");
@@ -58,7 +59,7 @@ internal static class ExportChecks
             {
                 // Supply a ready tooltip without depending on a hidden window's physical cursor/timer.
                 Call(session, "Cursor", new Point2(400, 280), true);
-                var tooltip = RasterDrawing.RenderTooltip(["M04", "Tooltip export sentinel"], Theme.Paper, dpi);
+                var tooltip = RasterDrawing.RenderTooltip(["M04", "Tooltip export sentinel"], theme, dpi);
                 Field(session, "_tooltipBitmap", tooltip); Field(session, "_tooltipDisplay", new DisplayBitmap(tooltip)); Field(session, "_tooltipReady", true);
             }
             if (state == "selected") Call(session, "Select", "model", "M04");
@@ -76,7 +77,9 @@ internal static class ExportChecks
         using var image = new Bitmap(Path.Combine(output, "captures", $"raster-{scale}x.png"));
         var size = view.ActiveViewport.Size;
         Require(image.Width == size.Width * scale && image.Height == size.Height * scale, "PNG dimensions mismatch.");
-        var layouts = SlotLayout.Place(cards, Theme.Paper, new(image.Width, image.Height), Dpi(view) * scale);
+        var theme = (Theme)Get(session, "Theme");
+        var surface = GdiCanvas.ParseColor(theme.Surface);
+        var layouts = SlotLayout.Place(cards, theme, new(image.Width, image.Height), Dpi(view) * scale);
         for (var i = 0; i < layouts.Length; i++)
         for (var j = i + 1; j < layouts.Length; j++)
         {
@@ -86,16 +89,16 @@ internal static class ExportChecks
         var regions = layouts.Select(l =>
         {
             Require(l.X >= 0 && l.Y >= 0 && l.X + l.W <= image.Width && l.Y + l.H <= image.Height, "Card outside capture.");
-            var samples = 0; var opaque = 0; var ink = 0;
+            var samples = 0; var covered = 0; var ink = 0;
             for (var y = (int)l.Y + 5 * scale; y < l.Y + l.H - 5 * scale; y += 3 * scale)
             for (var x = (int)l.X + 5 * scale; x < l.X + l.W - 5 * scale; x += 3 * scale)
             {
-                samples++; var c = image.GetPixel(x, y); if (c.A > 240) opaque++;
-                if (c.A > 240 && c.R + c.G + c.B < 600) ink++;
+                samples++; var c = image.GetPixel(x, y); if (c.A >= surface.A * .98) covered++;
+                if (c.A >= surface.A * .98 && Math.Abs(c.R - surface.R) + Math.Abs(c.G - surface.G) + Math.Abs(c.B - surface.B) > 90) ink++;
             }
-            var fraction = opaque / (double)samples;
+            var fraction = covered / (double)samples;
             Require(fraction > .98 && ink > 5, "Missing card pixels/text.");
-            return new { l.Id, l.X, l.Y, l.W, l.H, samples, opaque, ink, fraction };
+            return new { l.Id, l.X, l.Y, l.W, l.H, samples, covered, ink, fraction };
         }).ToArray();
         Console.WriteLine($"PNG {scale}x: {image.Width}x{image.Height}, frames {before}->{after}, {regions.Length} card regions.");
         return new { scale, image.Width, image.Height, before, after, regions };

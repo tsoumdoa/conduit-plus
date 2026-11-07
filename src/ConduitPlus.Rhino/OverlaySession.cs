@@ -200,7 +200,7 @@ internal sealed partial class OverlaySession : IDisposable
         if (_links.Length == 0) return;
         var muted = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Muted);
         foreach (var link in _links.Where(l => l.ShowBase))
-            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 1, false, false);
+            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 2, false, false);
         if (_brush.HoverKey is null && _brush.SelectedKeys.Length == 0) return;
         var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
         display.PushDepthTesting(false);

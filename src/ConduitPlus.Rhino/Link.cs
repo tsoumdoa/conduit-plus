@@ -16,7 +16,7 @@ public sealed partial class Link
     private readonly Dictionary<(int Argb, bool Selected), DisplayMaterial> _materials = [];
     public IReadOnlyList<string> Keys { get; }
     public BoundingBox Bounds { get; }
-    /// <summary>Draw every linked wire faintly (for commands without a Grasshopper preview, e.g. the demo).</summary>
+    /// <summary>Draw secondary linked wires (for commands without a Grasshopper preview, e.g. the demo).</summary>
     public bool ShowBase { get; init; }
     internal IEnumerable<string> LinkedKeys => _wires.Keys;
     public Link(IEnumerable<string> keys, IEnumerable<(string Key, object Geometry)> items)
@@ -102,7 +102,7 @@ public sealed partial class Link
     private DisplayMaterial Material(Color color, bool selected)
     {
         var key = (Color.FromArgb(255, color).ToArgb(), selected);
-        if (!_materials.TryGetValue(key, out var material)) _materials.Add(key, material = new(Color.FromArgb(255, color), selected ? .65 : .82));
+        if (!_materials.TryGetValue(key, out var material)) _materials.Add(key, material = new(Color.FromArgb(255, color), selected ? .40 : .72));
         return material;
     }
     internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected, bool shade = true)

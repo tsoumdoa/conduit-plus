@@ -52,6 +52,8 @@ internal static class Dashboard
             var sessions = (Array)Manager.GetMethod("InView", Internal)!.Invoke(null, [doc, view])!;
             var session = sessions.Cast<object>().SingleOrDefault(s => (Guid)Property(s, "Owner") == overlay.InstanceGuid);
             Require(session is not null, "Overlay did not publish a session for its InstanceGuid.");
+            var theme = args.Contains("--theme") ? Theme.Presets.Single(t => string.Equals(t.Name, args[Array.IndexOf(args, "--theme") + 1], StringComparison.OrdinalIgnoreCase)) : Theme.Paper;
+            OverlayManager.ReplaceTheme(overlay.InstanceGuid, theme);
             var cards = (CardSpec[])Property(session!, "Cards");
             Require(cards.Length == 9, $"Expected nine dashboard cards; got {cards.Length}: {string.Join(", ", cards.Select(c => c.Title))}.");
             Console.WriteLine($"Reopened {path}: {definition.ObjectCount} objects, 0 warnings/errors; owner {overlay.InstanceGuid}, {cards.Length} cards.");

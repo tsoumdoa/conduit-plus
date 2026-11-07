@@ -7,6 +7,7 @@ param(
     [switch]$Safe,
     [switch]$Compact,
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
+    [ValidateSet('Paper', 'Smoke', 'Blueprint')][string]$Theme = 'Paper',
     [ValidateSet('Baseline', 'Drag', 'Tooltip', 'Selected')][string]$State = 'Baseline',
     [ValidateRange(10, 600)][int]$TimeoutSeconds = 180
 )
@@ -34,6 +35,7 @@ foreach ($fixture in $fixtures) {
     if ($Compact) { $arguments += '--compact' }
     $arguments += @('--example', $fixture.ToLowerInvariant())
     $arguments += @('--scale', $Scale)
+    $arguments += @('--theme', $Theme)
     $arguments += @('--state', $State.ToLowerInvariant())
     $previousOutput = $env:CONDUITPLUS_RESULTS
     try {

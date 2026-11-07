@@ -38,6 +38,10 @@ internal static class ArchitectureDashboard
                 var session = sessions.Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
                 var cards = (CardSpec[])Get(session, "Cards");
                 Require(cards.Length == (rooms ? 7 : 9), "Unexpected architectural card count.");
+                var metrics = cards.Where(c => c.Kind == CardKind.Metric).ToArray();
+                Require(metrics.Select(c => c.Value).SequenceEqual(rooms ? ["320", "87.5", "12.5", "8"] : new[] { "14976", "16000", "1.87", "2" }), "Unexpected architectural metric precision.");
+                var theme = args.Contains("--theme") ? Theme.Presets.Single(t => string.Equals(t.Name, args[Array.IndexOf(args, "--theme") + 1], StringComparison.OrdinalIgnoreCase)) : Theme.Paper;
+                OverlayManager.ReplaceTheme(overlay.InstanceGuid, theme);
                 var links = (Link[])session.GetType().GetField("_links", Instance)!.GetValue(session)!;
                 Require(links.Length == 1 && links[0].Keys.Count == (rooms ? 17 : 6), "Missing keyed architecture geometry.");
                 foreach (var link in links) typeof(Link).GetProperty("ShowBase")!.SetValue(link, true);
@@ -102,7 +106,7 @@ internal static class ArchitectureDashboard
                     view.ActiveViewport.ZoomBoundingBox(new BoundingBox(-10, -10, 0, 110, 90, 45));
                 }
                 var result = Path.Combine(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!, name); Directory.CreateDirectory(result);
-                File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = gh.ObjectCount, warnings = messages, cards = cards.Select(c => c.Title), faceInteriorHits = centres.Length, proxyFaceInteriorHits = rooms ? 0 : 2, selectionRevealed = key, tableToModelSelection = true }));
+                File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = gh.ObjectCount, warnings = messages, theme = theme.Name, cards = cards.Select(c => c.Title), metrics = metrics.Select(c => new { c.Title, c.Value }), faceInteriorHits = centres.Length, proxyFaceInteriorHits = rooms ? 0 : 2, selectionRevealed = key, tableToModelSelection = true }));
                 if (args.Contains("--exports"))
                 {
                     Require(!args.Contains("--compact"), "Compact export fixture is structural only; use -Example Structural.");
@@ -118,7 +122,7 @@ internal static class ArchitectureDashboard
                         var point = centres[^1].Point; point.Transform(view.ActiveViewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen));
                         using var png = new Bitmap(Path.Combine(result, "captures", $"raster-{scale}x.png"));
                         var pixel = png.GetPixel((int)Math.Round(point.X * scale), (int)Math.Round(point.Y * scale));
-                        Require(pixel.A > 0 && pixel.B > pixel.R + 20 && pixel.B > pixel.G + 10, "Selected face interior is not shaded blue.");
+                        Require(pixel.A >= 140 && pixel.A < 240 && pixel.B > pixel.R + 20 && pixel.B > pixel.G + 10, "Selected face interior needs readable, translucent blue shading.");
                         File.WriteAllText(Path.Combine(result, "surface-check.json"), CardJson.Serialize(new { key, x = point.X, y = point.Y, pixel.R, pixel.G, pixel.B, pixel.A }));
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
@@ -136,7 +140,7 @@ internal static class ArchitectureDashboard
         slider.Slider.Minimum = rooms ? .5m : -1; slider.Slider.Maximum = rooms ? 2 : 5; slider.Slider.DecimalPlaces = rooms ? 2 : 0; slider.SetSliderValue(rooms ? 1 : 0);
         var demo = Component(rooms ? 210 : 211, 340, 280); Wire(demo, 0, slider);
         var cards = new List<GH_Component>();
-        Metric(rooms ? 5 : 4, rooms ? "Schematic GIA" : "Total GFA", "m²", 1);
+        Metric(rooms ? 5 : 4, rooms ? "Schematic GIA" : "Total GFA", "m²", 0);
         Metric(rooms ? 6 : 5, rooms ? "Net / gross" : "Allowed GFA", rooms ? "%" : "m²", rooms ? 1 : 0);
         Metric(rooms ? 7 : 6, rooms ? "Circulation" : "FAR (allowed 2.0)", rooms ? "%" : "ratio", rooms ? 1 : 2);
         Metric(rooms ? 8 : 11, rooms ? "Rooms below minimum" : "Blocks above 30 m", "", 0);
