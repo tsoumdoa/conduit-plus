@@ -43,7 +43,8 @@ if ($hash -cne $record.sha256) { throw 'Candidate checksum differs from its vali
 $head = & git -C $repo rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read HEAD.' }
 if ($head -ne $record.sourceCommit) { throw "Candidate was built from $($record.sourceCommit), but HEAD is $head." }
-& (Join-Path $PSScriptRoot 'Test-YakPackage.ps1') -Package $package -Version $Version
+# Validation is read-only; keep -WhatIf from leaking into the validator's pipeline.
+& { $WhatIfPreference = $false; & (Join-Path $PSScriptRoot 'Test-YakPackage.ps1') -Package $package -Version $Version }
 
 function Invoke-Checked([string]$What, [scriptblock]$Command) {
     & $Command
