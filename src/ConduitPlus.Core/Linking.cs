@@ -9,7 +9,8 @@ public sealed class BrushState
     private HashSet<string> _live = new(StringComparer.Ordinal);
     private string? _hover;
     public BrushSnapshot Snapshot => new(_selected.Order(StringComparer.Ordinal).ToArray(), _hover);
-    public static IEnumerable<string> Keys(CardSpec c) => c.Kind == CardKind.Table ? c.Rows.Select(r => r.Key) : c.Keys;
+    public static IEnumerable<string> Keys(CardSpec c) => c.Kind switch
+    { CardKind.Table => c.Rows.Select(r => r.Key), CardKind.Bar or CardKind.Line => c.Keys, CardKind.Legend when !c.Min.HasValue => c.Keys, _ => [] };
     public void Prune(IEnumerable<CardSpec> cards, IEnumerable<string> linkKeys)
     {
         _live = cards.SelectMany(Keys).Concat(linkKeys).ToHashSet(StringComparer.Ordinal);

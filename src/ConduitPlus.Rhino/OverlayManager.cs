@@ -27,6 +27,7 @@ public static partial class OverlayManager
     internal static void Start()
     {
         if (_started) return;
+        ConduitPlus.Rendering.GdiCanvas.RegisterTextMetrics();
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;

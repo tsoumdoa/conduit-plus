@@ -1,7 +1,7 @@
 # Conduit+
 
 Conduit+ displays result cards over Rhino viewports from Grasshopper: metrics,
-signed utilisation bars, scrollable tables and line charts. A shared C# painter
+signed utilisation bars, scrollable tables, line charts, notes and legends. A shared C# painter
 draws each dirty card into a GDI+ bitmap; a DisplayConduit composites the cached
 cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
@@ -79,12 +79,16 @@ to **Overlay**.
 |---|---|
 | Metric | Formatted value, title, unit and optional slot; missing values display an em dash. |
 | Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. |
+| Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title, optional threshold and slot. A positive wired threshold shows a band. |
+| Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
+| Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Overlay | Cards and optional Links inputs; Selection and Events outputs. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 
-Line charts are available through the Core card spec and demo; there is no
-separate Grasshopper Line component yet. Component and plugin GUIDs are stable.
+Card components are under **Cards**; Link and Overlay are under **Display**.
+Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
+strings; Grasshopper color inputs are converted automatically (alpha is ignored).
 
 Connect **Link** to **Overlay → Links**, and give the cards and linked geometry
 the same explicit keys. Bar keys default to labels; Table keys default to branch
@@ -101,7 +105,7 @@ sessions and do not currently reserve space around one another.
 
 | Command | Behavior |
 |---|---|
-| `ConduitPlusDemo` | Shows metrics, bars, a table and a line chart, with linked frame members M01–M20 visible on hover/selection. |
+| `ConduitPlusDemo` | Shows metrics, bars, a table, a line chart, legends and a design note, with linked frame members M01–M20 visible on hover/selection. |
 | `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
 | `ConduitPlusPdf` | **Experimental** vector PDF export; output, typography and export behavior remain unverified. |
 | `ConduitPlusBench` | Measures Raster metric-update, compact-bar hover and model-pick latency, checks cache lifecycle and runs per-card raster benchmarks. |

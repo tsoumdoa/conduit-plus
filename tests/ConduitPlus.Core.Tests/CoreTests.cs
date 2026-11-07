@@ -8,6 +8,8 @@ namespace ConduitPlus.Core.Tests;
 
 public sealed class CoreTests
 {
+    public CoreTests() => GdiCanvas.RegisterTextMetrics();
+    private static CardSpec[] AllCards() => [.. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras()];
     [Fact]
     public void SpecsRoundTripPreservesNullSignedValuesAndKeys()
     {
@@ -49,7 +51,7 @@ public sealed class CoreTests
     public void PainterWritesTransparentSnapshotsAtThreeScales()
     {
         var output = Path.Combine(AppContext.BaseDirectory, "artifacts"); Directory.CreateDirectory(output);
-        foreach (var c in StructuralDemo.Create().Append(StructuralDemo.Line()))
+        foreach (var c in AllCards())
         foreach (var scale in new[] { 1d, 1.5, 2d })
         {
             var size = CardMeasure.Measure(c, Theme.Paper);
@@ -65,7 +67,7 @@ public sealed class CoreTests
     [InlineData(2d)]
     public void CardPainterRendersEveryCardKindThroughGdiCanvas(double scale)
     {
-        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
+        var cards = AllCards().GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
         Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Order());
         foreach (var card in cards)
         {
@@ -83,7 +85,7 @@ public sealed class CoreTests
     [Fact]
     public void RasterUsesPremultipliedAlphaWithTransparentCornersAndCoveredInterior()
     {
-        foreach (var c in StructuralDemo.Create().Append(StructuralDemo.Line()))
+        foreach (var c in AllCards())
         foreach (var scale in new[] { 1d, 2d, 4d })
         {
             using var bitmap = RasterDrawing.Render(c, Theme.Paper, scale);
@@ -165,7 +167,7 @@ public sealed class CoreTests
     [Fact]
     public void BrushingProjectsAcrossCardsAndSnapshotsCannotMutateState()
     {
-        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).ToArray();
+        var cards = AllCards();
         var brush = new BrushState(); brush.Prune(cards, ["link-only"]);
         Assert.True(brush.Toggle("M04")); Assert.True(brush.Hover("M04"));
         var projected = brush.Project(cards);
@@ -202,7 +204,7 @@ public sealed class CoreTests
     [Fact]
     public void ClearHitsOnlyKeyedCardsWithOwnerSelectionAndAvoidsScrollAndData()
     {
-        var cards = StructuralDemo.Create().Append(StructuralDemo.Line()).ToArray();
+        var cards = AllCards();
         var brush = new BrushState(); brush.Prune(cards, ["link-only"]);
         Assert.All(cards, c => Assert.DoesNotContain(CardMeasure.Hits(c, Theme.Paper), h => h.Key == CardMeasure.ClearKey));
         brush.Toggle("link-only"); // even cards without a locally selected key can clear the owner
@@ -220,6 +222,148 @@ public sealed class CoreTests
             Assert.True(bitmap.Width > 0);
         }
         brush.Clear(); Assert.All(brush.Project(cards), c => Assert.Null(CardMeasure.Clear(c, Theme.Paper)));
+    }
+
+    [Fact]
+    public void NewSpecsValidateRoundTripAndTrackDirtyArrays()
+    {
+        var cards = StructuralDemo.Extras(); foreach (var c in cards) c.Validate();
+        var json = CardJson.Serialize(cards); Assert.Equal(json, CardJson.Serialize(CardJson.Deserialize<CardSpec[]>(json)));
+        var text = cards.Single(c => c.Kind == CardKind.Text); var gradient = cards[0]; var categorical = cards[2];
+        Assert.Throws<ArgumentException>(() => (text with { Width = double.NaN }).Validate());
+        Assert.Throws<ArgumentException>(() => (text with { Width = 179 }).Validate());
+        Assert.Throws<ArgumentException>(() => (text with { Keys = ["note"] }).Validate());
+        foreach (var colors in new[] { Array.Empty<string>(), new[] { "red" }, new[] { "#12345G" }, new[] { "#FF123456" } })
+            Assert.Throws<ArgumentException>(() => (categorical with { Colors = colors }).Validate());
+        Assert.Throws<ArgumentException>(() => (categorical with { Labels = ["one"] }).Validate());
+        Assert.Throws<ArgumentException>(() => (categorical with { Keys = ["one"] }).Validate());
+        Assert.Throws<ArgumentException>(() => (categorical with { Keys = ["same", "same"] }).Validate());
+        Assert.Throws<ArgumentException>(() => (categorical with { Keys = [CardMeasure.ClearKey, "ok"] }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Max = null }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Min = null }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Min = 1.2 }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Min = 2 }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Max = double.PositiveInfinity }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Min = double.NaN }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Colors = ["#FFFFFF"] }).Validate());
+        Assert.Throws<ArgumentException>(() => (gradient with { Keys = ["scale"] }).Validate());
+        (categorical with { Keys = [] }).Validate();
+        var store = new CardStore(); Assert.Equal(cards.Length, store.Update(cards).Count); var before = store.Snapshot;
+        Assert.Empty(store.Update(cards)); cards[0].Colors[0] = "#000000";
+        Assert.Equal(cards[0].Id, Assert.Single(store.Update(cards)).Id); Assert.Equal("#1F8A5B", before[0].Colors[0]);
+        cards[1] = text with { Text = text.Text + "\nUpdated." }; Assert.Equal(text.Id, Assert.Single(store.Update(cards)).Id);
+        cards[0] = cards[0] with { Max = 1.5 }; Assert.Equal(cards[0].Id, Assert.Single(store.Update(cards)).Id);
+        Assert.Equal(6, StructuralDemo.Create().Length);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WrappedTextMeasureEqualsPaintedContentExtent(bool fallback)
+    {
+        var original = TextMetrics.Measurer;
+        try
+        {
+            if (fallback) TextMetrics.Measurer = TextMetrics.Estimate;
+            foreach (var title in new[] { "", "Design note" })
+            foreach (var width in new[] { 180d, 280, 500 })
+            foreach (var text in new[] { "", "First line\n\nThird line", "First\r\nSecond\rThird", string.Join(" ", Enumerable.Repeat("Review structural results before issuing.", 12)), new string('W', 2000), string.Join("\n", Enumerable.Repeat("Long note", 40)) })
+            {
+                var c = new CardSpec { Id = "note", Kind = CardKind.Text, Title = title, Text = text, Width = width };
+                var t = Theme.Paper; var layout = TextMetrics.Layout(c, t); var measured = CardMeasure.Measure(c, t);
+                var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, t);
+                var body = canvas.Texts.Skip(1).ToArray(); // first call is the optional header
+                Assert.Equal(layout.Lines, body.Select(call => call.Text)); Assert.InRange(body.Length, 1, TextMetrics.MaxLines);
+                Assert.Equal(measured.Height, body[^1].Position.Y + layout.LineHeight + t.Padding);
+                Assert.Equal(measured.Height, canvas.Surfaces.Single().Height);
+                Assert.All(body, call => Assert.True(TextMetrics.Measurer(call.Text, t.FontSize, t.Font).Width <= width - 2 * t.Padding));
+                Assert.Empty(CardMeasure.Hits(c, t)); Assert.Empty(BrushState.Keys(c));
+                if (text.StartsWith("First line", StringComparison.Ordinal)) Assert.Equal(new[] { "First line", "", "Third line" }, layout.Lines);
+                if (text.Length >= 2000 || text.StartsWith("Long note", StringComparison.Ordinal)) { Assert.Equal(30, body.Length); Assert.EndsWith("…", body[^1].Text); }
+            }
+        }
+        finally { TextMetrics.Measurer = original; }
+    }
+
+    [Fact]
+    public void LegendPaintUsesNiceTicksMultiStopGradientAndCategoricalKeys()
+    {
+        var c = StructuralDemo.Extras()[0]; var t = Theme.Paper;
+        Assert.Equal(new[] { 0d, .5, 1, 1.2 }, LegendCardPainter.Ticks(c));
+        var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, t);
+        Assert.Equal(c.Colors, Assert.Single(canvas.Gradients).Colors);
+        Assert.Equal(new[] { c.Title, "0", "0.5", "1", "1.2", "ratio" }, canvas.Texts.Select(call => call.Text));
+        Assert.Empty(CardMeasure.Hits(c, t));
+        var signed = c with { Min = -.7, Max = .8 }; Assert.Equal(new[] { -.7, -.5, 0, .5, .8 }, LegendCardPainter.Ticks(signed));
+        var categorical = StructuralDemo.Extras()[2]; var hits = CardMeasure.DataHits(categorical, t);
+        Assert.Equal(categorical.Keys, hits.Select(h => h.Key));
+        var brush = new BrushState(); brush.Prune([categorical], ["fails"]); Assert.True(brush.Toggle("fails")); Assert.True(brush.Hover("fails"));
+        var selected = Assert.Single(brush.Project([categorical])); Assert.Equal(new[] { "fails" }, selected.SelectedKeys); Assert.Equal("fails", selected.HoverKey);
+        var painted = new RecordingCanvas(); CardPainter.Paint(painted, selected, t);
+        Assert.Contains(painted.Rects, r => r.Fill == t.Accent && r.Rect.Y == hits[1].Y);
+        Assert.NotNull(CardMeasure.Clear(selected, t));
+    }
+
+    [Fact]
+    public void LineHitsCoverEverySampleAndThresholdCanBeDisabled()
+    {
+        var c = StructuralDemo.Line(); var t = Theme.Paper; var hits = CardMeasure.DataHits(c, t);
+        for (var i = 0; i < c.Values.Length; i++)
+        {
+            var x = 44 + i * (c.Width - 64) / (c.Values.Length - 1);
+            Assert.Equal(c.Keys[i], Assert.Single(hits, h => h.Contains(x, 100)).Key);
+        }
+        var brush = new BrushState(); brush.Prune([c], []); brush.Toggle(c.Keys[^1]); brush.Hover(c.Keys[^1]);
+        var projected = Assert.Single(brush.Project([c])); Assert.Equal(new[] { c.Keys[^1] }, projected.SelectedKeys); Assert.Equal(c.Keys[^1], projected.HoverKey);
+        foreach (var threshold in new[] { 0d, 1d })
+        {
+            var line = c with { Threshold = threshold }; line.Validate(); var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, line, t);
+            Assert.Equal(threshold > 0, canvas.Rects.Any(r => r.Fill == t.ThresholdBand));
+            Assert.Equal(threshold > 0, canvas.Lines.Any(l => l.Color == t.Bad));
+        }
+        (c with { Threshold = 0, Values = Enumerable.Repeat<double?>(null, c.Values.Length).ToArray() }).Validate();
+        Assert.Throws<ArgumentException>(() => (c with { Threshold = -1 }).Validate());
+        Assert.Throws<ArgumentException>(() => (c with { Threshold = double.NaN }).Validate());
+        Assert.Throws<ArgumentException>(() => (c with { Values = [1] }).Validate());
+    }
+
+    [Theory]
+    [InlineData(1d)]
+    [InlineData(2d)]
+    public void GradientRasterRetainsStopsAndTextFitsRegisteredMetrics(double scale)
+    {
+        var gradient = StructuralDemo.Extras()[0]; using var bitmap = RasterDrawing.Render(gradient, Theme.Paper, scale);
+        var left = Theme.Paper.Padding + 16; var width = gradient.Width - 2 * left;
+        var start = bitmap.GetPixel((int)((left + 2) * scale), (int)(46 * scale));
+        var middle = bitmap.GetPixel((int)((left + width / 2) * scale), (int)(46 * scale));
+        var end = bitmap.GetPixel((int)((left + width - 2) * scale), (int)(46 * scale));
+        Assert.True(start.G > start.R); Assert.True(middle.R > 200 && middle.G > 150); Assert.True(end.R > end.G * 2);
+        using var surface = new Bitmap(1000, 1000); using var graphics = Graphics.FromImage(surface); graphics.ScaleTransform((float)scale, (float)scale);
+        using var canvas = new GdiCanvas(graphics);
+        var note = StructuralDemo.Extras()[1] with { Width = 180, Text = string.Join(" ", Enumerable.Repeat("Check the structural utilisation envelope.", 10)) };
+        var layout = TextMetrics.Layout(note, Theme.Paper);
+        Assert.All(layout.Lines, line => Assert.InRange(canvas.MeasureText(line, Theme.Paper.FontSize, Theme.Paper.Font).Width, 0, note.Width - 2 * Theme.Paper.Padding));
+        using var raster = RasterDrawing.Render(note, Theme.Paper, scale);
+        Assert.Equal((int)(CardMeasure.Measure(note, Theme.Paper).Height * scale), raster.Height);
+    }
+
+    private sealed class RecordingCanvas : ICanvas2D
+    {
+        public List<(string Text, Point2 Position)> Texts { get; } = [];
+        public List<Rect2> Surfaces { get; } = [];
+        public List<(Rect2 Rect, string Fill)> Rects { get; } = [];
+        public List<(Point2 From, Point2 To, string Color)> Lines { get; } = [];
+        public List<(Rect2 Rect, string[] Colors)> Gradients { get; } = [];
+        public Size2 MeasureText(string text, double size, string font) => TextMetrics.Measurer(text, size, font);
+        public void Rect(Rect2 rect, string fill) => Rects.Add((rect, fill));
+        public void Gradient(Rect2 rect, IReadOnlyList<string> colors) => Gradients.Add((rect, colors.ToArray()));
+        public void RoundedRect(Rect2 rect, double radius, string fill) => Surfaces.Add(rect);
+        public void Line(Point2 from, Point2 to, string color, double width = 1) => Lines.Add((from, to, color));
+        public void Text(string text, Point2 topLeft, double size, string color, string font) => Texts.Add((text, topLeft));
+        public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) { }
+        public void FillPolygon(IReadOnlyList<Point2> points, string fill) { }
+        public IDisposable Clip(Rect2 rect) => new Scope();
+        private sealed class Scope : IDisposable { public void Dispose() { } }
     }
 
     [Fact]

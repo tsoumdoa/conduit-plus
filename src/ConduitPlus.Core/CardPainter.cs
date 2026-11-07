@@ -18,6 +18,14 @@ public static class CardPainter
             canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Accent, t.Font);
         }
         if (c.Kind == CardKind.Line) { LineCardPainter.Paint(canvas, c, t); return; }
+        if (c.Kind == CardKind.Text)
+        {
+            var layout = TextMetrics.Layout(c, t);
+            using var bodyClip = canvas.Clip(new(t.Padding, layout.Top, c.Width - 2 * t.Padding, layout.Lines.Length * layout.LineHeight));
+            for (var i = 0; i < layout.Lines.Length; i++) canvas.Text(layout.Lines[i], new(t.Padding, layout.Top + i * layout.LineHeight), t.FontSize, t.Ink, t.Font);
+            return;
+        }
+        if (c.Kind == CardKind.Legend) { LegendCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Metric)
         {
             var value = c.Value ?? "—";
@@ -67,7 +75,7 @@ public static class CardPainter
             }
         }
     }
-    private static void Highlight(ICanvas2D canvas, CardSpec c, Theme t, HitRegion h)
+    internal static void Highlight(ICanvas2D canvas, CardSpec c, Theme t, HitRegion h)
     {
         if (c.SelectedKeys.Contains(h.Key) || c.HoverKey == h.Key) canvas.Rect(new(h.X, h.Y, h.W, h.H), t.Track);
         if (c.SelectedKeys.Contains(h.Key)) canvas.Rect(new(h.X, h.Y, 2, h.H), t.Accent);

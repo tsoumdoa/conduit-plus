@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace ConduitPlus.Core;
 
-public enum CardKind { Metric, Bar, Table, Line }
+public enum CardKind { Metric, Bar, Table, Line, Text, Legend }
 public enum Slot { Tl, Tr, Bl, Br, Lc, Rc }
 public sealed record TableRow(string Key, string?[] Cells);
 public sealed record CardSpec
@@ -15,6 +15,10 @@ public sealed record CardSpec
     public string Title { get; init; } = "";
     public string? Value { get; init; }
     public string Unit { get; init; } = "";
+    public string Text { get; init; } = "";
+    public string[] Colors { get; init; } = [];
+    public double? Min { get; init; }
+    public double? Max { get; init; }
     public double?[] Values { get; init; } = [];
     public string[] Labels { get; init; } = [];
     public string[] Keys { get; init; } = [];
@@ -36,10 +40,22 @@ public sealed record CardSpec
     {
         if (string.IsNullOrWhiteSpace(Id)) throw new ArgumentException("Card ID is required.");
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
-        if (!double.IsFinite(Threshold) || Threshold <= 0) throw new ArgumentException("Threshold must be positive and finite.");
+        if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind != CardKind.Line && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Line accepts zero to disable it).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");
         if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
         if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
+        if (Kind == CardKind.Text && (Text is null || Keys.Length > 0)) throw new ArgumentException("Text cards require text and are not keyed.");
+        if (Kind == CardKind.Legend)
+        {
+            if (Colors.Length == 0 || Colors.Any(color => color is null || color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit))) throw new ArgumentException("Legend colors must be #RRGGBB strings.");
+            if (Min.HasValue != Max.HasValue) throw new ArgumentException("Gradient legends need both Min and Max.");
+            if (Min.HasValue)
+            {
+                if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value >= Max.Value || !double.IsFinite(Max.Value - Min.Value)) throw new ArgumentException("Gradient legends need 2+ colors and finite Min < Max.");
+                if (Keys.Length > 0) throw new ArgumentException("Only categorical legends can have keys.");
+            }
+            else if (Labels.Length != Colors.Length || (Keys.Length != 0 && Keys.Length != Colors.Length)) throw new ArgumentException("Categorical colors, labels and optional keys must match.");
+        }
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
         if (keys.Any(k => string.IsNullOrWhiteSpace(k) || k == CardMeasure.ClearKey) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
@@ -134,6 +150,12 @@ public sealed class CardStore
 
 public static class StructuralDemo
 {
+    public static CardSpec[] Extras() =>
+    [
+        new() { Id = "utilisation-legend", Kind = CardKind.Legend, Title = "Utilisation scale", Colors = ["#1F8A5B", "#E5B63D", "#C2334D"], Min = 0, Max = 1.2, Unit = "ratio", WiredSlot = Slot.Lc },
+        new() { Id = "result-note", Kind = CardKind.Text, Title = "Design note", Text = "ULS envelope · preliminary results\nReview members above 1.0 utilisation before issuing the design.", WiredSlot = Slot.Lc },
+        new() { Id = "status-legend", Kind = CardKind.Legend, Title = "Member status", Colors = ["#1F8A5B", "#C2334D"], Labels = ["Passing", "Requires review"], Keys = ["passes", "fails"], WiredSlot = Slot.Lc }
+    ];
     public static CardSpec Line() => new() { Id = "load-cases", Kind = CardKind.Line, Title = "M01 utilisation / load case", Width = 340, Values = [.32, .58, .91, 1.12, null, .73, .86, 1.04], Keys = Enumerable.Range(1, 8).Select(i => $"LC{i:00}").ToArray(), Labels = Enumerable.Range(1, 8).Select(i => $"LC{i:00}").ToArray(), WiredSlot = Slot.Bl };
     public static CardSpec[] Create(int metricCount = 4)
     {

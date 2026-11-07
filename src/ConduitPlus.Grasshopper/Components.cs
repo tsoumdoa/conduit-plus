@@ -76,6 +76,76 @@ public sealed class BarComponent : CardComponent
     }
 }
 
+public sealed class LineComponent : CardComponent
+{
+    public LineComponent() : base("Line", "Line", "Keyed result samples; NaN becomes a gap") { }
+    public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae206");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddNumberParameter("Values", "V", "Ordered sample values (at least two)", GH_ParamAccess.list);
+        p.AddTextParameter("Labels", "L", "Optional labels; default 1…n", GH_ParamAccess.list); p[1].Optional = true;
+        p.AddTextParameter("Keys", "K", "Unique stable keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
+        p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Structural results");
+        p.AddNumberParameter("Threshold", "Th", "Optional positive threshold; unwired or nonpositive hides the band", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[5].Optional = true;
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        var values = new List<double>(); var labels = new List<string>(); var keys = new List<string>(); string title = "Structural results"; double threshold = 0;
+        if (!da.GetDataList(0, values)) return; da.GetDataList(1, labels); da.GetDataList(2, keys); da.GetData(3, ref title);
+        if (Params.Input[4].SourceCount > 0) da.GetData(4, ref threshold);
+        if (labels.Count == 0) labels = Enumerable.Range(1, values.Count).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList(); if (keys.Count == 0) keys = [.. labels];
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Line, Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Threshold = threshold <= 0 ? 0 : threshold, WiredSlot = ReadSlot(da, 5) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
+public sealed class TextComponent : CardComponent
+{
+    public TextComponent() : base("Text", "Text", "A wrapped note with explicit newlines (up to 30 lines)") { }
+    public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae207");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddTextParameter("Title", "T", "Optional note title", GH_ParamAccess.item); p[0].Optional = true;
+        p.AddTextParameter("Text", "N", "Note text; newlines are preserved", GH_ParamAccess.item);
+        p.AddNumberParameter("Width", "W", "Card width in CSS pixels (180–1200)", GH_ParamAccess.item, 280);
+        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[3].Optional = true;
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        string title = "", text = ""; double width = 280;
+        da.GetData(0, ref title); if (!da.GetData(1, ref text)) return; da.GetData(2, ref width);
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Text, Title = title, Text = text, Width = width, WiredSlot = ReadSlot(da, 3) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
+public sealed class LegendComponent : CardComponent
+{
+    public LegendComponent() : base("Legend", "Legend", "Categorical swatches or a gradient scale when Min and Max are wired") { }
+    public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae208");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddColourParameter("Colors", "C", "Swatch colors or 2+ evenly spaced gradient stops", GH_ParamAccess.list);
+        p.AddTextParameter("Labels", "L", "One label per color in categorical mode", GH_ParamAccess.list); p[1].Optional = true;
+        p.AddNumberParameter("Min", "Mn", "Wire both Min and Max for a gradient", GH_ParamAccess.item); p[2].Optional = true;
+        p.AddNumberParameter("Max", "Mx", "Gradient maximum", GH_ParamAccess.item); p[3].Optional = true;
+        p.AddTextParameter("Unit", "U", "Optional gradient unit", GH_ParamAccess.item, "");
+        p.AddTextParameter("Keys", "K", "Optional unique categorical selection keys", GH_ParamAccess.list); p[5].Optional = true;
+        p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
+        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[7].Optional = true;
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        var colors = new List<Color>(); var labels = new List<string>(); var keys = new List<string>(); string title = "Legend", unit = ""; double min = 0, max = 0;
+        if (!da.GetDataList(0, colors)) return; da.GetDataList(1, labels); da.GetData(4, ref unit); da.GetDataList(5, keys); da.GetData(6, ref title);
+        var hasMin = Params.Input[2].SourceCount > 0; var hasMax = Params.Input[3].SourceCount > 0;
+        if ((hasMin && !da.GetData(2, ref min)) || (hasMax && !da.GetData(3, ref max))) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Wired Min and Max must supply numbers."); return; }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Legend, Title = title, Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Min = hasMin ? min : null, Max = hasMax ? max : null, Unit = unit, WiredSlot = ReadSlot(da, 7) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
 public sealed class TableComponent : CardComponent
 {
     public TableComponent() : base("Table", "Table", "One branch per result row; optional stable row keys") { }
@@ -176,7 +246,7 @@ public sealed class OverlayComponent : GH_Component
     protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("+");
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Cards", "C", "Metric, Bar or Table cards", GH_ParamAccess.list);
+        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Text or Legend cards", GH_ParamAccess.list);
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
