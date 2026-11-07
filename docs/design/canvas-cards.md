@@ -30,7 +30,7 @@ Selection scope in PR1 is (GH document instance, Canvas Card InstanceGuid), back
 
 ## Theme, scope and verification
 
-Default to **Paper**. Offer a persisted component-menu choice of Paper/Smoke/Blueprint using the parallel theme PR's shared Core presets and resolver; no duplicated palette or global Overlay setting. Invalid saved choices fall back to Paper with a warning. Theme changes repaint/re-measure without solving and support undo. GH selection/disabled chrome remains recognizable around every theme.
+New components default to **Auto** (Paper in Rhino light mode, Night in dark mode). Offer a persisted component-menu choice of Auto/Paper/Night/Smoke/Blueprint using shared Core presets and resolution policy; no duplicated palette or global Overlay setting. Saved explicit choices are retained; legacy reads without a theme stay Paper. Invalid saved choices fall back to Paper with a warning. Theme changes repaint/re-measure without solving and support undo. Auto is saved as a selection, and Rhino settings changes request a repaint without a solve. GH selection/disabled chrome remains recognizable around every theme.
 
 PR1 covers six existing card kinds, measured layout, bounded raster caching/export, local interactions and theme choice. Defer boards, resize, wheel interception, cross-host linking and Selection/Events outputs. When outputs arrive, schedule one coalesced solve only after a committed selection change, never from Render/hover or snapshot projection; publishing/pruning must not emit fresh click events. Test feedback wiring explicitly to prevent solve loops.
 

@@ -35,6 +35,7 @@ public static partial class OverlayManager
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
+        RhinoApp.AppSettingsChanged += AppearanceChanged;
         global::Rhino.Commands.Command.BeginCommand += CommandStarted;
         WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
@@ -45,6 +46,7 @@ public static partial class OverlayManager
         Mouse.Enabled = false;
         _started = false;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
+        RhinoApp.AppSettingsChanged -= AppearanceChanged;
         global::Rhino.Commands.Command.BeginCommand -= CommandStarted;
         WheelHook.Uninstall();
         foreach (var s in Sessions.Values) s.Dispose(); Sessions.Clear();
@@ -54,6 +56,11 @@ public static partial class OverlayManager
     {
         foreach (var session in Sessions.Values.ToArray()) session.HideTooltip();
     }
+    private static void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
+    {
+        if (!_started) return;
+        foreach (var session in Sessions.Values.ToArray()) session.RefreshTheme();
+    }));
     private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match)
     {
         foreach (var key in Sessions.Keys.Where(match).ToArray())

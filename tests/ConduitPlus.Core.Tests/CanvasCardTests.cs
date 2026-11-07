@@ -177,7 +177,7 @@ public sealed class CanvasCardTests
     [Fact]
     public void CanvasThemeMarginKeepsTheCardBodyAtItsMeasuredSize()
     {
-        foreach (var theme in Theme.Presets)
+        foreach (var theme in Theme.Presets.SelectMany(t => new[] { t.Resolve(false), t.Resolve(true) }).Distinct())
         {
             var spec = new CardSpec { Id = "m", Kind = CardKind.Metric, Title = "GIA", Value = "320", Unit = "m²" };
             var size = CardMeasure.Measure(spec, theme);

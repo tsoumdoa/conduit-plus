@@ -15,6 +15,7 @@ internal sealed partial class OverlaySession : IDisposable
     public RhinoView View { get; }
     public CardSpec[] Cards { get; private set; } = [];
     public Theme Theme { get; private set; } = Theme.Paper;
+    private Theme _themeSelection = Theme.Paper;
     public double CaptureMultiplier { get; set; } = 1;
     public long FrameCount { get; private set; }
     public bool Visible { get => _conduit.Enabled; set => _conduit.Enabled = value; }
@@ -39,11 +40,13 @@ internal sealed partial class OverlaySession : IDisposable
     {
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (theme is not null && Theme != theme)
+        if (theme is not null) _themeSelection = theme;
+        var resolved = RhinoTheme.Resolve(_themeSelection);
+        if (Theme != resolved)
         {
             OverlayManager.CancelGesture(this);
             HideTooltip();
-            Theme = theme;
+            Theme = resolved;
         }
         specs = ApplyViewState(OverlayManager.Project(this, specs));
         _brush = OverlayManager.Snapshot(this);
@@ -56,6 +59,13 @@ internal sealed partial class OverlaySession : IDisposable
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
         foreach (var id in _sort.Keys.Where(id => !live.Contains(id)).ToArray()) _sort.Remove(id);
         SyncTooltip();
+    }
+
+    internal void RefreshTheme()
+    {
+        if (_disposed || Theme == RhinoTheme.Resolve(_themeSelection)) return;
+        Update(Cards);
+        View.Redraw();
     }
 
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>

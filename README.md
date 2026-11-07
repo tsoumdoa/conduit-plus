@@ -6,7 +6,7 @@ draws each dirty card into a GDI+ bitmap; a DisplayConduit composites the cached
 cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
 
-Licensed under MIT. Features include Paper, Smoke and Blueprint overlay themes,
+Licensed under MIT. Features include Auto, Paper, Night, Smoke and Blueprint themes,
 deterministic viewport slots, keyed geometry highlighting, saved layout editing
 and undo. A docked Inspector is future work.
 
@@ -155,19 +155,23 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; title and slot are supported. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
-| Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Themes: Paper (default), Smoke and Blueprint. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
+| Overlay | Cards, optional Links and Theme inputs; Selection and Events outputs. Auto theme by default for new components. Follows the bound document's active view on data solves; interaction solves stay in the bound view. |
 | Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Right-click → Theme. No outputs. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link, Overlay and Canvas Card are under **Display**.
-Choose **Overlay → Theme → Paper / Smoke / Blueprint** in the right-click menu.
-The choice is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
+Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the right-click menu.
+New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light
+UI, Night for its dark UI. Auto follows Rhino settings changes without a solve.
+Existing saved choices are retained; older files with no saved theme stay Paper.
+The selection (including Auto) is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
 text input overrides the menu (case-insensitive); unknown names warn and use Paper.
-PNG captures and vector PDF exports use each Overlay's active theme. Smoke has a
-translucent dark surface and rounded corners; Blueprint has a translucent navy surface,
-square corners and a thin blue border. Paper keeps its existing opaque appearance.
+PNG captures and vector PDF exports use each Overlay's active theme. Paper and Night
+are opaque light/dark counterparts with the same geometry and no border or shadow.
+Smoke has a translucent dark surface and rounded corners; Blueprint has a translucent navy surface,
+square corners and a thin blue border.
 
 Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
 strings; Grasshopper color inputs are converted automatically (alpha is ignored).
@@ -206,10 +210,9 @@ source card ID changes, and is not saved in the `.gh`. It is not shared with
 Overlay and never triggers a solve. Card width/visible rows come from the source;
 Slot has no canvas meaning. There is no canvas resize control in this version.
 
-Right-click **Canvas Card → Theme: Paper/Smoke/Blueprint** to save a theme choice
-with Undo/Redo. **Integration note:** this checkout contains the temporary shared
-resolver: Paper works; Smoke/Blueprint currently fall back to Paper with a warning
-until the parallel themes PR is merged. Invalid saved names also fall back to Paper.
+Right-click **Canvas Card → Theme: Auto/Paper/Night/Smoke/Blueprint** to save a theme
+choice with Undo/Redo. It uses the same presets and Auto policy as Overlay.
+Invalid saved names fall back to Paper with a warning.
 
 Preview off/Hidden do not hide the canvas card. A locked component or disabled
 document keeps its last image with a Disabled title and no card interaction.

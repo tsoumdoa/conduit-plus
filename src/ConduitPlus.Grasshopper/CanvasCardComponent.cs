@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using ConduitPlus.Core;
 using ConduitPlus.Rendering;
+using ConduitPlus.Rhino;
 using GH_IO.Serialization;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
@@ -13,12 +14,12 @@ namespace ConduitPlus.Grasshopper;
 
 public sealed class CanvasCardComponent : GH_Component
 {
-    private string _themeName = "Paper";
+    private string _themeName = Theme.NewComponentDefault.Name;
     private Bitmap? _icon;
     private bool _active;
     private long _generation;
     internal CanvasCardState State { get; private set; } = new();
-    internal Theme CardTheme { get; private set; } = Theme.Paper;
+    internal Theme CardTheme => RhinoTheme.Resolve(Theme.ReadSelection(_themeName));
     internal string Placeholder { get; private set; } = "Connect one Conduit+ Card";
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private string? _inputError;
@@ -76,16 +77,19 @@ public sealed class CanvasCardComponent : GH_Component
     }
     private void WarnTheme()
     {
-        if (Theme.TryGet(_themeName, out var theme)) CardTheme = theme;
-        else { CardTheme = Theme.Paper; AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Theme '{_themeName}' is unavailable; using Paper."); }
+        if (!Theme.TryGet(_themeName, out _))
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Theme '{_themeName}' is unavailable; using Paper.");
     }
     private void MeasureBody() => BodySize = State.Spec is { } spec ? CardMeasure.Measure(spec, CardTheme) : new(280, 92);
     public override bool Write(GH_IWriter writer) { writer.SetString("ConduitPlus.CanvasTheme", _themeName); return base.Write(writer); }
     public override bool Read(GH_IReader reader)
     {
         var size = BodySize;
-        var result = base.Read(reader); _themeName = "Paper";
-        if (!reader.TryGetString("ConduitPlus.CanvasTheme", ref _themeName) && reader.ItemExists("ConduitPlus.CanvasTheme")) _themeName = "Invalid saved theme";
+        var result = base.Read(reader);
+        var savedName = "";
+        var found = reader.TryGetString("ConduitPlus.CanvasTheme", ref savedName);
+        _themeName = found ? savedName : Theme.ReadSelection(null).Name;
+        if (!found && reader.ItemExists("ConduitPlus.CanvasTheme")) _themeName = "Invalid saved theme";
         WarnTheme(); MeasureBody();
         if (size != BodySize) (Attributes as CanvasCardAttributes)?.ExpireLayout();
         return result;
@@ -142,9 +146,26 @@ public sealed class CanvasCardComponent : GH_Component
         else if (context is GH_DocumentContext.Loaded or GH_DocumentContext.Open) Activate();
         else if (context == GH_DocumentContext.Lock) (Attributes as CanvasCardAttributes)?.CancelGesture();
     }
-    private void Activate() { if (!_active) { _generation++; _active = true; } }
+    private void Activate()
+    {
+        if (_active) return;
+        _generation++; _active = true;
+        RhinoApp.AppSettingsChanged += AppearanceChanged;
+        AppearanceChanged(this, EventArgs.Empty);
+    }
+    private void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
+    {
+        if (!_active || Theme.ReadSelection(_themeName) != Theme.Auto) return;
+        var size = BodySize;
+        var attributes = Attributes as CanvasCardAttributes;
+        attributes?.CancelGesture();
+        MeasureBody();
+        if (size != BodySize) attributes?.ExpireLayout();
+        attributes?.RequestDisplay();
+    }));
     private void Deactivate(bool clearState)
     {
+        RhinoApp.AppSettingsChanged -= AppearanceChanged;
         _active = false; var generation = ++_generation;
         RhinoApp.InvokeOnUiThread((Action)(() =>
         {

@@ -10,6 +10,8 @@ public sealed class ThemeTests
 {
     [Theory]
     [InlineData("Paper", "Paper")]
+    [InlineData("aUtO", "Auto")]
+    [InlineData(" NIGHT ", "Night")]
     [InlineData("sMoKe", "Smoke")]
     [InlineData(" BLUEPRINT ", "Blueprint")]
     public void LookupIsCaseInsensitiveAndTrimsWhitespace(string name, string expected)
@@ -26,6 +28,52 @@ public sealed class ThemeTests
     {
         Assert.False(Theme.TryGet(name, out var theme));
         Assert.Same(Theme.Paper, theme);
+    }
+
+    [Theory]
+    [InlineData(false, "Paper")]
+    [InlineData(true, "Night")]
+    public void AutoResolvesWithoutChangingTheSavedSelection(bool darkMode, string expected)
+    {
+        var selection = Theme.ReadSelection("Auto");
+        Assert.Equal(expected, selection.Resolve(darkMode).Name);
+        Assert.Equal("Auto", selection.Name);
+        Assert.Same(Theme.Auto, selection);
+        foreach (var fixedTheme in Theme.Presets.Where(t => t != Theme.Auto))
+            Assert.Same(fixedTheme, fixedTheme.Resolve(darkMode));
+    }
+
+    [Fact]
+    public void NewComponentsDefaultToAutoButLegacyReadDefaultsToPaper()
+    {
+        // Both Overlay and Canvas Card initialize from NewComponentDefault and call
+        // ReadSelection(null) when their saved theme item is absent, overriding that default.
+        Assert.Same(Theme.Auto, Theme.NewComponentDefault);
+        Assert.Same(Theme.Paper, Theme.ReadSelection(null));
+        Assert.Same(Theme.Paper, Theme.ReadSelection("invalid"));
+        Assert.Same(Theme.Paper, Theme.ReadSelection(""));
+        foreach (var saved in Theme.Presets)
+            Assert.Same(saved, Theme.ReadSelection(saved.Name));
+        Assert.Equal(new[] { "Auto", "Paper", "Night", "Smoke", "Blueprint" }, Theme.Presets.Select(t => t.Name));
+    }
+
+    [Fact]
+    public void NightIsOpaqueAndKeepsPaperGeometryAndTypography()
+    {
+        var night = Theme.Night; var paper = Theme.Paper;
+        Assert.Equal((byte)255, ColorRgba.Parse(night.Surface).A);
+        Assert.False(night.Shadow);
+        Assert.Equal(0, night.BorderWidth);
+        Assert.Equal(paper.Radius, night.Radius);
+        Assert.Equal(paper.Padding, night.Padding);
+        Assert.Equal(paper.RowHeight, night.RowHeight);
+        Assert.Equal(paper.Font, night.Font);
+        Assert.Equal(paper.FontSize, night.FontSize);
+        foreach (var card in Cards())
+        {
+            Assert.Equal(CardMeasure.Measure(card, paper), CardMeasure.Measure(card, night));
+            Assert.Equal(CardMeasure.Hits(card, paper), CardMeasure.Hits(card, night));
+        }
     }
 
     [Theory]
@@ -57,7 +105,7 @@ public sealed class ThemeTests
         var store = new CardStore();
         Assert.Equal(cards.Length, store.Update(cards).Count);
         var previous = store.Snapshot;
-        foreach (var theme in new[] { Theme.Smoke, Theme.Blueprint, Theme.Paper, Theme.Paper with { Accent = "#123456" } })
+        foreach (var theme in new[] { Theme.Auto.Resolve(true), Theme.Auto.Resolve(false), Theme.Smoke, Theme.Blueprint, Theme.Paper, Theme.Paper with { Accent = "#123456" } })
         {
             Assert.Equal(cards.Length, store.Update(cards, theme).Count);
             Assert.All(store.Snapshot.Zip(previous), pair => Assert.True(pair.First.Rev > pair.Second.Rev));
@@ -71,7 +119,7 @@ public sealed class ThemeTests
     public void EveryCardAndTooltipUsesOnlyThemeTokensOrExplicitLegendColors()
     {
         // Unique replacement tokens catch literals that might coincidentally equal a preset token.
-        var sentinel = Theme.Smoke with
+        var sentinel = Theme.Night with
         {
             Surface = "#010101CC", Ink = "#020202", Muted = "#030303", Line = "#04040440",
             Track = "#05050530", Accent = "#060606", Good = "#070707", Bad = "#080808",
@@ -79,7 +127,7 @@ public sealed class ThemeTests
             TooltipSurface = "#121212CC", TooltipInk = "#131313", Border = "#14141480",
             BorderWidth = 1, Shadow = true, ShadowColor = "#15151508"
         };
-        foreach (var theme in Theme.Presets.Append(sentinel))
+        foreach (var theme in Theme.Presets.SelectMany(t => new[] { t.Resolve(false), t.Resolve(true) }).Distinct().Append(sentinel))
         {
             var tokens = typeof(Theme).GetProperties().Where(p => p.PropertyType == typeof(string))
                 .Select(p => (string)p.GetValue(theme)!).Where(s => s.StartsWith('#')).ToHashSet(StringComparer.Ordinal);
@@ -112,6 +160,9 @@ public sealed class ThemeTests
 
     [Theory]
     [InlineData("Paper", 1d)]
+    [InlineData("Night", 1d)]
+    [InlineData("Night", 2d)]
+    [InlineData("Night", 4d)]
     [InlineData("Smoke", 1d)]
     [InlineData("Smoke", 1.5d)]
     [InlineData("Smoke", 2d)]
@@ -170,6 +221,7 @@ public sealed class ThemeTests
 
     [Theory]
     [InlineData("Paper")]
+    [InlineData("Night")]
     [InlineData("Smoke")]
     [InlineData("Blueprint")]
     public void TooltipRasterIncludesThemeFrameAndShadowWithoutClipping(string name)
