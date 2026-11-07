@@ -90,7 +90,7 @@ Connect **Link** to **Overlay → Links**, and give the cards and linked geometr
 the same explicit keys. Bar keys default to labels; Table keys default to branch
 paths, so they do **not** auto-match. Keys are case-sensitive. Link supports points,
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
-geometry and caches its wires when solved.
+geometry and caches its wires and pick proxies when solved.
 
 Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
 a stored manual slot, followed by automatic placement. Cards stack within slots;
@@ -104,7 +104,7 @@ sessions and do not currently reserve space around one another.
 | `ConduitPlusDemo` | Shows metrics, bars, a table and a line chart, with linked frame members M01–M20 visible on hover/selection. |
 | `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
 | `ConduitPlusPdf` | **Experimental** vector PDF export; output, typography and export behavior remain unverified. |
-| `ConduitPlusBench` | Measures Raster metric-update and compact-bar hover latency, checks cache lifecycle and runs per-card raster benchmarks. |
+| `ConduitPlusBench` | Measures Raster metric-update, compact-bar hover and model-pick latency, checks cache lifecycle and runs per-card raster benchmarks. |
 
 Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).
 Set `CONDUITPLUS_RESULTS` to override it. Benchmark results are not written to
@@ -112,10 +112,13 @@ the repository by default.
 
 ## Scrolling and interaction
 
-- Hover brushes every card with the same key and draws linked geometry in a thin
+- Hover a bar/table row or linked viewport geometry to brush every card with the
+  same key and draw linked geometry in a thin
   accent wire. Click toggles selection, drawing thicker x-ray wires and point
   markers, also in captures. **Clear** in a keyed card's header clears that
-  owner's selection. Model clicks outside cards pass through.
+  owner's selection. Linked model clicks emit a `click` event with card id `model`.
+  Cards take priority; other model clicks pass through to Rhino. Model picking
+  pauses during Rhino commands and uses a six-pixel tolerance with hover near 30 Hz.
 - Overlay outputs selected keys and the last 32 click/clear events as JSON.
   Selection and hover belong to the document/owner and survive following another
   view; removed keys are pruned against all card and Link keys. Selection is
@@ -146,6 +149,11 @@ Use `-Output` to change the destination. Update and hover latency include revisi
 work, GDI+ paint and display-texture creation; they exclude redraw, GPU completion
 and physical mouse latency. The per-card benchmark measures allocation and paint
 at 2×. These measurements do not establish interactive orbit performance.
+
+Model picking uses cached proxies for 2,000 line members and 200 brep boxes over
+a 40×30 cursor grid (three passes); `samples-pick.json` records p50/p95, hit counts
+and whether the ≤ 5 ms p95 target was met. Its timing includes pick-context setup,
+clipping and bbox filtering, and excludes Link construction and card rendering.
 
 The wrapper bounds workload duration. If safe-mode RhinoCore shutdown stalls
 after successful workload and overlay/view cleanup, it stops only its own child

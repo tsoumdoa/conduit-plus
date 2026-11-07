@@ -2,6 +2,7 @@ using ConduitPlus.Core;
 using Rhino;
 using Rhino.Display;
 using Rhino.Geometry;
+using Rhino.Input.Custom;
 using System.Drawing;
 
 namespace ConduitPlus.Rhino;
@@ -23,6 +24,7 @@ internal sealed class OverlaySession : IDisposable
     private readonly RasterCardRenderer _raster = new();
     private bool _disposed;
     private Link[] _links = [];
+    internal bool HasLinks => _links.Length > 0;
     private BoundingBox _linkBounds = BoundingBox.Empty;
     private BrushSnapshot _brush = new([], null);
     /// <summary>Per-card scroll position. View state, so it is re-applied to every incoming spec (GH solves send 0).</summary>
@@ -101,6 +103,10 @@ internal sealed class OverlaySession : IDisposable
     {
         _links = links; _linkBounds = BoundingBox.Empty;
         foreach (var link in links) _linkBounds.Union(link.Bounds);
+    }
+    internal void Pick(PickContext context, Transform screen, Point2 cursor, ref PickCandidate? best)
+    {
+        foreach (var link in _links) link.Pick(context, screen, cursor, Owner, ref best);
     }
     private void UpdateInteraction(CardSpec[] cards)
     {

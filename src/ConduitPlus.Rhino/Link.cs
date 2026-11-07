@@ -6,7 +6,7 @@ using Point = Rhino.Geometry.Point;
 namespace ConduitPlus.Rhino;
 
 /// <summary>Shared, privately owned geometry snapshot. Sessions borrow it and never dispose it.</summary>
-public sealed class Link
+public sealed partial class Link
 {
     private sealed record Wires(Curve[] Curves, Line[] Lines, Point3d[] Points, Point3d[] Markers);
     private readonly GeometryBase[] _geometry;
@@ -25,6 +25,7 @@ public sealed class Link
         Keys = Array.AsReadOnly(declared);
         var geometry = new List<GeometryBase>();
         var wires = new List<(string Key, Wires Wire)>();
+        var picks = new List<(string Key, PickProxy Proxy)>();
         var bounds = BoundingBox.Empty;
         try
         {
@@ -37,12 +38,20 @@ public sealed class Link
                     geometry.Add(copy);
                     if (!copy.IsValid) throw new ArgumentException("Invalid geometry.");
                     bounds.Union(copy.GetBoundingBox(true));
-                    wires.Add((key, Prepare(copy)));
+                    var wire = Prepare(copy);
+                    wires.Add((key, wire));
+                    picks.Add((key, PreparePick(copy, wire, geometry)));
                 }
                 catch (ArgumentException e) { throw new ArgumentException($"{location}: {e.Message}", e); }
             }
             _geometry = geometry.ToArray();
             _wires = wires.GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Select(p => p.Wire).ToArray(), StringComparer.Ordinal);
+            _picks = picks.GroupBy(p => p.Key, StringComparer.Ordinal).Select(g =>
+            {
+                var box = BoundingBox.Empty;
+                foreach (var p in g) box.Union(p.Proxy.Bounds);
+                return new PickGroup(g.Key, box.GetCorners(), g.Select(p => p.Proxy).ToArray());
+            }).ToArray();
             Bounds = bounds;
         }
         catch
