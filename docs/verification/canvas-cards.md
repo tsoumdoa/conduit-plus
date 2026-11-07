@@ -39,6 +39,36 @@ API presence and the export dispatch path, not the live interaction/display resu
 
 ## Automated checks
 
+### Theme API and Auto mode
+
+Inspected `RhinoCommon/8.20.25147.11001-rc/lib/net7.0/RhinoCommon.dll`
+using `ilspycmd -t Rhino.Runtime.HostUtils` and `ilspycmd -t Rhino.RhinoApp`
+(each followed by that DLL path), alongside its shipped XML documentation.
+The pinned reference assembly exposes `public static bool RunningInDarkMode`
+and `public static event EventHandler AppSettingsChanged`. The latter is the
+general application-settings event; there is no dedicated public appearance event
+on those types. This verifies API availability in 8.20, not a live GUI switch.
+`AppearanceSettings.UsingDefaultDarkModeColors()` instead tests the default color
+scheme, so Auto uses `HostUtils.RunningInDarkMode` in the Rhino host adapter.
+
+Core resolves selection + mode to a palette without Rhino types. Overlay sessions
+retain the selection separately from the resolved palette. Settings callbacks
+marshal to the UI thread, re-resolve Auto and repaint sessions/Canvas Cards without
+solving or modifying the saved selection. Subscriptions are removed on manager
+shutdown and Canvas Card removal/unload. Overlay updates and Canvas Card repaint
+also re-resolve, so a later publish/paint can recover a missed notification. Locked
+or disabled Canvas Cards retain their existing last-frame behavior until enabled.
+Both component read paths override the new Auto default with Paper when the saved
+theme item is absent; Core tests cover this decision, explicit choices and Auto.
+
+Pending live checks: toggle Rhino light/dark with Auto on both displays (including
+a wired mixed-case `aUtO` Overlay input); confirm no GH solve, correct hover,
+selection/threshold colors and tooltips, and unchanged fixed palettes. Undo/redo
+theme choices, save/reopen Auto in the opposite mode, and open an older `.gh`
+without a theme item to confirm Paper. Check capture/PDF and GH image export.
+
+### Core and raster checks
+
 Run `dotnet build ConduitPlus.sln -c Debug` and
 `dotnet test ConduitPlus.sln -c Debug` from this checkout. Core tests load no Rhino
 or GH assemblies; GDI checks source-link the existing raster adapter.
@@ -70,8 +100,8 @@ sort/scroll clamping. All six card kinds are rendered through the bounded plan.
 4. Toggle Hidden/Preview off; the canvas image remains. Lock/disable it; the last
    image remains with Disabled chrome and no interaction. Pause the solver and
    verify the last result remains. Choose themes, Undo/Redo, save/reopen the `.gh`:
-   only the theme and GH pivot persist, not selection/sort/scroll. Smoke/Blueprint
-   use the warned Paper fallback until integration with the themes PR.
+   only the theme and GH pivot persist, not selection/sort/scroll. All five theme
+   choices use the shared presets; test Auto using the light/dark checklist above.
 5. Pan and continuously zoom, then stop: existing pixels scale during zoom and
    text becomes crisp after settling and queued repaints. Move Rhino between mixed
    DPI monitors and repeat. Test many visible cards and exceptionally tall Bar or
@@ -88,9 +118,8 @@ sort/scroll clamping. All six card kinds are rendered through the bounded plan.
 
 ## Scope and integration
 
-The only expected integration substitution is the temporary `Theme.FromName`
-resolver. Paper is the sole palette in this checkout; no Smoke/Blueprint colors
-have been invented. Cache pressure shares raster capacity across visible cards
+The theme resolver uses the shared Core presets, with Rhino mode detection in host
+code. Cache pressure shares raster capacity across visible cards
 with room for one atomic replacement, then evicts least-recently-visible frames
 as needed. The existing GDI measurer now caches managed measurement values rather
 than retaining an undisposable thread-static Graphics/bitmap/font cache.

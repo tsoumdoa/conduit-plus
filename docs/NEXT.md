@@ -8,9 +8,9 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
   bounded raster cache, shared zoom-settle scheduler and synchronous GH image export.
 - Local keyed selection/Clear, table sorting/scrollbar and GH hover tooltips; no
   interaction solves, wheel interception or implicit sharing with Overlay.
-- Persisted per-component theme menu with undo. Replace the clearly marked
-  `Theme.FromName` integration shim with the parallel themes PR's resolver: until
-  then Smoke/Blueprint render Paper with a warning.
+- Persisted per-component theme menu with undo, using the shared Core presets.
+  Auto (new-component default) follows Rhino's light/dark UI as Paper/Night without
+  a solve; explicit Paper/Smoke/Blueprint choices and legacy no-theme files are preserved.
 - Build and Core/source-linked GDI tests cover transforms, actual allocation bounds,
   budget sharing/LRU, revision/theme invalidation and local state reconciliation.
 - Before merge, reviewing agent installs from the integration checkout and runs the
@@ -24,7 +24,7 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 | Area | What works |
 |---|---|
 | Cards | Metric, Bar, Table (scroll, sortable columns), Line, Text, Legend (categorical or gradient) |
-| Themes | Paper (unchanged default), Smoke and Blueprint; optional Overlay Theme input or saved, undoable right-click choice; capture/PDF follow the active theme |
+| Themes | Auto, Paper, Night, Smoke and Blueprint; new components default to Auto, missing legacy saved themes to Paper; optional Overlay Theme input or saved, undoable menu; capture/PDF follow the resolved theme |
 | Linking | Link component; hover/click a card ↔ the member lights up in the model (both directions); selection shared across cards; Clear |
 | Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events |
@@ -51,6 +51,10 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 - **Export.** PDF of the whole view (model + cards) and a multi-page PDF report (see IDEAS.md).
 
 ## Still unverified / known trade-offs
+- **Auto light/dark switching.** Uses RhinoCommon 8.20 `HostUtils.RunningInDarkMode`
+  and `RhinoApp.AppSettingsChanged` (verified in the pinned NuGet DLL). Re-resolves
+  on Overlay updates and Canvas Card paints too. Live mode changes, undo/reload
+  and legacy no-theme files still need GUI verification; see [API notes](verification/canvas-cards.md#theme-api-and-auto-mode).
 - **Capture at 2×/4×.** Full-dashboard capture at those scales was only tried in headless RhinoCore, where it failed natively. Check in the GUI.
 - **PDF.** Whether linked selection wires appear in the PDF.
 - **Mixed-DPI monitors.** Dragging Rhino between monitors with different scaling.
@@ -61,7 +65,7 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 - **Diagrams and history.** [How charts are drawn](design/rendering.md) explains the current raster path, the former HTML/JS path and maintainability options.
 - **Raster.** On Rhino, `GdiCanvas` paints each card into its own transparent, premultiplied-alpha GDI+ bitmap at the screen's DPI scale. The bitmap becomes a `DisplayBitmap`.
 - **Caching.** `CardStore` gives a card a new revision when its spec or active theme changes (data, hover, selection, scroll or sort). The raster cache also compares the complete theme record and scale. Only dirty cards are re-painted.
-- **Theme typography.** The concept uses IBM Plex Sans (Segoe UI fallback), 12px body / 11px headings, Archivo 20px metric values and IBM Plex Mono 10–11px annotations. These do not vary by overlay theme. Keep the installed Segoe UI and existing sizes (12px body / 28px metric) for stable measurements and Paper compatibility; no web fonts are bundled. Legacy Paper has no painted shadow and retains that output; Smoke adds a soft exterior shadow, Blueprint a 1px border.
+- **Theme typography.** The concept uses IBM Plex Sans (Segoe UI fallback), 12px body / 11px headings, Archivo 20px metric values and IBM Plex Mono 10–11px annotations. These do not vary by overlay theme. Keep the installed Segoe UI and existing sizes (12px body / 28px metric) for stable measurements and Paper compatibility; no web fonts are bundled. Paper/Night have no border or shadow; Smoke has no shadow, Blueprint a 1px border.
 - **Drawing.** Each Overlay has a `DisplayConduit`. In `DrawForeground` it:
   1. draws highlighted linked geometry as 3D wires, with depth testing off;
   2. places card bitmaps by `SlotLayout` and draws them as 2D screen bitmaps;

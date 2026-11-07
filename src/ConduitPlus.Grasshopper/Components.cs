@@ -256,8 +256,8 @@ public sealed class OverlayComponent : GH_Component
     private Dictionary<string, LayoutOverride> _layout = new(StringComparer.Ordinal);
     private CardSpec[] _originals = [];
     private bool _layoutWarning;
-    private Theme _menuTheme = Theme.Paper;
-    private Theme _resolvedTheme = Theme.Paper;
+    private Theme _menuTheme = Theme.NewComponentDefault;
+    private Theme _selectedTheme = Theme.NewComponentDefault;
     public override bool Write(GH_IWriter writer)
     {
         lock (_publishLock) writer.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(_layout));
@@ -270,10 +270,10 @@ public sealed class OverlayComponent : GH_Component
         var json = ""; var found = reader.TryGetString("ConduitPlus.Layout", ref json);
         lock (_publishLock) _layout = LayoutEditing.Read(json, out _layoutWarning);
         _layoutWarning |= !found && reader.ItemExists("ConduitPlus.Layout");
-        var themeName = "Paper";
-        reader.TryGetString("ConduitPlus.Theme", ref themeName);
-        Theme.TryGet(themeName, out _menuTheme);
-        _resolvedTheme = _menuTheme;
+        var themeName = "";
+        var themeFound = reader.TryGetString("ConduitPlus.Theme", ref themeName);
+        _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);
+        _selectedTheme = _menuTheme;
         if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         return result;
     }
@@ -301,10 +301,10 @@ public sealed class OverlayComponent : GH_Component
         {
             lock (_publishLock)
             {
-                _resolvedTheme = _menuTheme;
-                if (_pending is not null) _pending = _pending with { Theme = _resolvedTheme };
+                _selectedTheme = _menuTheme;
+                if (_pending is not null) _pending = _pending with { Theme = _selectedTheme };
             }
-            OverlayManager.ReplaceTheme(InstanceGuid, _resolvedTheme);
+            OverlayManager.ReplaceTheme(InstanceGuid, _selectedTheme);
         }
         OnPingDocument()?.Modified();
     }
@@ -391,7 +391,7 @@ public sealed class OverlayComponent : GH_Component
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Text or Legend cards", GH_ParamAccess.list);
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
-        p.AddTextParameter("Theme", "T", "Paper, Smoke or Blueprint (case-insensitive). A wired input overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
+        p.AddTextParameter("Theme", "T", "Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A wired input overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -435,9 +435,9 @@ public sealed class OverlayComponent : GH_Component
         {
             var name = "";
             da.GetData(2, ref name);
-            if (!Theme.TryGet(name, out theme)) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Unknown theme '{name}'. Use Paper, Smoke or Blueprint; falling back to Paper.");
+            if (!Theme.TryGet(name, out theme)) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Unknown theme '{name}'. Use Auto, Paper, Night, Smoke or Blueprint; falling back to Paper.");
         }
-        lock (_publishLock) _resolvedTheme = theme;
+        lock (_publishLock) _selectedTheme = theme;
         var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
         da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
         var cards = wrapped.Select(g => g?.ScriptVariable()).OfType<CardSpec>().ToArray();
@@ -457,7 +457,7 @@ public sealed class OverlayComponent : GH_Component
         var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = new(cards, links, _resolvedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId);
+            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId);
             _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;

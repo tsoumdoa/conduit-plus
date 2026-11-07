@@ -142,6 +142,16 @@ public sealed record Theme
     public double RowHeight { get; init; } = 22;
     public double Radius { get; init; } = 5;
     public static Theme Paper { get; } = new();
+    public static Theme Night { get; } = new()
+    {
+        Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
+        Line = "#2C3039", Track = "#262A31", Accent = "#6D8CFF",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#252F4F", ThresholdBand = "#3D2733",
+        Highlight = "#303C60", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
+    };
+    // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.
+    public static Theme Auto { get; } = new() { Name = "Auto" };
+    public static Theme NewComponentDefault => Auto;
     public static Theme Smoke { get; } = new()
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
@@ -158,7 +168,14 @@ public sealed record Theme
         Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
         Border = "#8CBEFF73", BorderWidth = 1
     };
-    public static IReadOnlyList<Theme> Presets { get; } = Array.AsReadOnly(new[] { Paper, Smoke, Blueprint });
+    public static IReadOnlyList<Theme> Presets { get; } = Array.AsReadOnly(new[] { Auto, Paper, Night, Smoke, Blueprint });
+    public Theme Resolve(bool darkMode) => this == Auto ? (darkMode ? Night : Paper) : this;
+    /// <summary>Read must override the new-component default: old files without a theme stay Paper.</summary>
+    public static Theme ReadSelection(string? savedName)
+    {
+        TryGet(savedName, out var selection);
+        return selection;
+    }
     /// <summary>Unknown names return false and the backwards-compatible Paper fallback.</summary>
     public static bool TryGet(string? name, out Theme theme)
     {
