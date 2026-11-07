@@ -16,7 +16,7 @@ A modern successor to Proving Ground's Conduit (MIT, Dave Stasiuk; ~8.8k LOC C#,
 
 ## Architecture
 - The **card spec** is the product. Renderers are swappable behind it.
-- Primary candidate: web renders each card offscreen → cached bitmap + hit regions + revision (published atomically) → DisplayConduit composites per frame. Fallback: native DisplayPipeline 2D for pilot cards.
+- ~~Primary candidate: web renders each card offscreen…~~ Superseded: the spike chose the GDI+ Raster renderer (see Decisions). Current status and next steps: `docs/NEXT.md`.
 - No transparent overlay window. Rich editing and accessible controls live in a docked Inspector panel (Eto WebView).
 - Three update rates: per solve (dirty cards), per interaction (one card, no solve), per frame (reposition only).
 - Foundation: WebView2 UI-thread ownership, doc/view lifecycle, undo transactions, pending intent outside ScheduleSolution, explicit data semantics (nulls, negatives, units, ranges).
