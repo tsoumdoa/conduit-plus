@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -22,6 +23,16 @@ public sealed record CardSpec
     public double?[] Values { get; init; } = [];
     public string[] Labels { get; init; } = [];
     public string[] Keys { get; init; } = [];
+    private readonly ImmutableDictionary<string, GroupDefinition> _groups = ImmutableDictionary<string, GroupDefinition>.Empty.WithComparers(StringComparer.Ordinal);
+    /// <summary>Entry keys with explicit group membership; absent entries retain individual-key semantics.</summary>
+    public ImmutableDictionary<string, GroupDefinition> Groups
+    {
+        get => _groups;
+        init => _groups = value.WithComparers(StringComparer.Ordinal);
+    }
+    /// <summary>Effective hovered individual entries; group state lives in GroupStates. A2 consumes these fields.</summary>
+    public ImmutableArray<string> HoveredKeys { get; init; } = [];
+    public ImmutableDictionary<string, GroupProjection> GroupStates { get; init; } = ImmutableDictionary<string, GroupProjection>.Empty.WithComparers(StringComparer.Ordinal);
     public double Threshold { get; init; } = 1;
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
@@ -66,6 +77,7 @@ public sealed record CardSpec
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
         if (keys.Any(k => string.IsNullOrWhiteSpace(k) || CardMeasure.IsReserved(k)) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
+        GroupDefinition.Validate(this);
         if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }
 }
