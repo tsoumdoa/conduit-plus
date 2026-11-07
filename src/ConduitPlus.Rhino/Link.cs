@@ -11,9 +11,12 @@ public sealed partial class Link
     private sealed record Wires(Curve[] Curves, Line[] Lines, Point3d[] Points, Point3d[] Markers);
     private readonly GeometryBase[] _geometry;
     private readonly Dictionary<string, Wires[]> _wires;
+    private readonly Dictionary<string, Mesh[]> _faces;
+    // Face materials follow the highlight colour (the theme accent); cached so frames allocate nothing.
+    private readonly Dictionary<(int Argb, bool Selected), DisplayMaterial> _materials = [];
     public IReadOnlyList<string> Keys { get; }
     public BoundingBox Bounds { get; }
-    /// <summary>Draw every linked wire faintly (for commands without a Grasshopper preview, e.g. the demo).</summary>
+    /// <summary>Draw secondary linked wires (for commands without a Grasshopper preview, e.g. the demo).</summary>
     public bool ShowBase { get; init; }
     internal IEnumerable<string> LinkedKeys => _wires.Keys;
     public Link(IEnumerable<string> keys, IEnumerable<(string Key, object Geometry)> items)
@@ -46,6 +49,8 @@ public sealed partial class Link
             }
             _geometry = geometry.ToArray();
             _wires = wires.GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Select(p => p.Wire).ToArray(), StringComparer.Ordinal);
+            // Reuse privately owned pick meshes; no meshing/material allocation during a frame.
+            _faces = picks.GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.SelectMany(p => p.Proxy.Meshes).ToArray(), StringComparer.Ordinal);
             _picks = picks.GroupBy(p => p.Key, StringComparer.Ordinal).Select(g =>
             {
                 var box = BoundingBox.Empty;
@@ -94,9 +99,20 @@ public sealed partial class Link
         var curves = brep?.DuplicateEdgeCurves() ?? throw new ArgumentException("Cannot extract brep edge curves.");
         return new(curves, [], [], curves.SelectMany(c => new[] { c.PointAtStart, c.PointAtEnd }).Distinct().ToArray());
     }
-    internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected)
+    private DisplayMaterial Material(Color color, bool selected)
+    {
+        var key = (Color.FromArgb(255, color).ToArgb(), selected);
+        if (!_materials.TryGetValue(key, out var material)) _materials.Add(key, material = new(Color.FromArgb(255, color), selected ? .40 : .72));
+        return material;
+    }
+    internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected, bool shade = true)
     {
         if (!_wires.TryGetValue(key, out var wires)) return;
+        if (shade && _faces.TryGetValue(key, out var meshes))
+        {
+            var material = Material(color, selected);
+            foreach (var mesh in meshes) display.DrawMeshShaded(mesh, material);
+        }
         foreach (var w in wires)
         {
             foreach (var c in w.Curves) display.DrawCurve(c, color, width);

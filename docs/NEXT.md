@@ -29,15 +29,12 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 | Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events |
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
-| Example | `examples/structural-dashboard.gh` with the illustrative Demo Truss |
+| Examples | Structural dashboard, room area check and massing/zoning with keyed demo geometry |
 
 ## Next up (recommended order)
 1. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
-2. **Small fixes the testing will probably ask for**
-   - Metric: a Decimals/format input (wired numbers currently show every digit).
+2. **Small fixes the testing will probably ask for** (architectural findings: [ux-notes.md](ux-notes.md); Decimals, row reveal and wheel-hover refresh are implemented)
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
-   - Table: scroll to the selected row when it's selected from another card or the model.
-   - Hover doesn't refresh after scrolling a table until the mouse moves.
 3. **Group keys.** A Metric's "governing member" keys and legend swatches that select a whole group (e.g. "fails" selects every failing member). Needs group hover/select semantics in `BrushState`.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
 5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)

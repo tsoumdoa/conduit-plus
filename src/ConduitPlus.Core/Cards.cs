@@ -46,10 +46,11 @@ public sealed record CardSpec
         if (string.IsNullOrWhiteSpace(Id)) throw new ArgumentException("Card ID is required.");
         if (WiredSlot is { } wired && !Enum.IsDefined(wired) || ManualSlot is { } manual && !Enum.IsDefined(manual) || OrderSlot is { } orderSlot && !Enum.IsDefined(orderSlot) || ManualOrder < 0) throw new ArgumentException("Invalid card layout.");
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
-        if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind != CardKind.Line && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Line accepts zero to disable it).");
+        if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");
         if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
         if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
+        if (Kind == CardKind.Bar && Colors.Length != 0 && (Colors.Length != Values.Length || Colors.Any(color => color is null || color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit)))) throw new ArgumentException("Optional bar colors must match values and be #RRGGBB strings.");
         if (Kind == CardKind.Text && (Text is null || Keys.Length > 0)) throw new ArgumentException("Text cards require text and are not keyed.");
         if (Kind == CardKind.Legend)
         {
@@ -78,6 +79,16 @@ public static class TableScroll
     public static int MaxOffset(CardSpec c) => Math.Max(0, c.Rows.Length - Visible(c));
     public static int Offset(CardSpec c) => Math.Clamp(c.ScrollOffset, 0, MaxOffset(c));
     public static bool CanScroll(CardSpec c) => c.Kind == CardKind.Table && MaxOffset(c) > 0;
+
+    /// <summary>Minimal scroll to reveal a key in the sorted display order. Missing keys leave the offset alone.</summary>
+    public static int Reveal(CardSpec c, string key)
+    {
+        var offset = Offset(c);
+        if (c.Kind != CardKind.Table) return offset;
+        var index = Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
+        if (index < 0) return offset;
+        return Math.Clamp(index < offset ? index : index >= offset + Visible(c) ? index - Visible(c) + 1 : offset, 0, MaxOffset(c));
+    }
 
     /// <summary>Track and thumb in card-local CSS pixels; null when every row fits.</summary>
     public static (Rect2 Track, Rect2 Thumb)? Bar(CardSpec c, Theme t)

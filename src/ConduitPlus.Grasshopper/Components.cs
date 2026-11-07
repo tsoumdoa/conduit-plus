@@ -41,7 +41,7 @@ public abstract class CardComponent(string name, string nickname, string descrip
 
 public sealed class MetricComponent : CardComponent
 {
-    public MetricComponent() : base("Metric", "Metric", "A structural result metric") { }
+    public MetricComponent() : base("Metric", "Metric", "A result metric with optional numeric precision") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae201");
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
@@ -49,11 +49,14 @@ public sealed class MetricComponent : CardComponent
         p.AddTextParameter("Title", "T", "Metric title", GH_ParamAccess.item, "Metric");
         p.AddTextParameter("Unit", "U", "Unit suffix", GH_ParamAccess.item, "");
         p.AddTextParameter("Slot", "S", "Optional wired slot: tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[3].Optional = true;
+        p.AddIntegerParameter("Decimals", "D", "Optional numeric precision (0–12); unwired preserves text", GH_ParamAccess.item); p[4].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         string value = "", title = "Metric", unit = ""; var hasValue = da.GetData(0, ref value); da.GetData(1, ref title); da.GetData(2, ref unit);
-        Output(da, new CardSpec { Id = CardId, Kind = CardKind.Metric, Title = title, Value = hasValue ? value : null, Unit = unit, WiredSlot = ReadSlot(da, 3) });
+        int decimals = 0; var hasDecimals = da.GetData(4, ref decimals);
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Metric, Title = title, Value = MetricFormatting.Format(hasValue ? value : null, hasDecimals ? decimals : null), Unit = unit, WiredSlot = ReadSlot(da, 3) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
 
@@ -67,15 +70,17 @@ public sealed class BarComponent : CardComponent
         p.AddTextParameter("Labels", "L", "Optional labels (default M01…)", GH_ParamAccess.list); p[1].Optional = true;
         p.AddTextParameter("Keys", "K", "Unique stable member keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Member utilisation");
-        p.AddNumberParameter("Threshold", "Th", "Positive utilisation threshold", GH_ParamAccess.item, 1);
+        p.AddNumberParameter("Threshold", "Th", "Nonnegative threshold; zero for signed deltas", GH_ParamAccess.item, 1);
         p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[5].Optional = true;
+        p.AddColourParameter("Colors", "C", "Optional per-bar colors; default compares values to Threshold", GH_ParamAccess.list); p[6].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var values = new List<double>(); var labels = new List<string>(); var keys = new List<string>(); string title = "Member utilisation"; double threshold = 1;
         if (!da.GetDataList(0, values)) return; da.GetDataList(1, labels); da.GetDataList(2, keys); da.GetData(3, ref title); da.GetData(4, ref threshold);
+        var colors = new List<Color>(); da.GetDataList(6, colors);
         if (labels.Count == 0) labels = Enumerable.Range(1, values.Count).Select(i => $"M{i:00}").ToList(); if (keys.Count == 0) keys = [.. labels];
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Bar, Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Threshold = threshold, WiredSlot = ReadSlot(da, 5) }); }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Bar, Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, WiredSlot = ReadSlot(da, 5) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
@@ -162,6 +167,7 @@ public sealed class TableComponent : CardComponent
         p.AddTextParameter("Title", "T", "Table title", GH_ParamAccess.item, "Structural results");
         p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[4].Optional = true;
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
+        p.AddNumberParameter("Width", "W", "Table width in CSS pixels (180–1200)", GH_ParamAccess.item, 380);
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -169,9 +175,10 @@ public sealed class TableComponent : CardComponent
         if (!da.GetDataList(0, headers) || !da.GetDataTree(1, out GH_Structure<GH_String> tree)) return;
         da.GetDataList(2, keys); da.GetData(3, ref title);
         var visibleRows = TableScroll.DefaultVisibleRows; da.GetData(5, ref visibleRows);
+        double width = 380; da.GetData(6, ref width);
         if (keys.Count != 0 && keys.Count != tree.PathCount) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Key count must match row count."); return; }
         var rows = tree.Branches.Select((branch, i) => new TableRow(keys.Count == 0 ? tree.Paths[i].ToString() : keys[i], branch.Select(v => v?.Value).ToArray())).ToArray();
-        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = rows, Width = 380, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) }); }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = rows, Width = width, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
