@@ -13,6 +13,7 @@ public static partial class OverlayManager
     {
         private bool _pressed;
         public bool Pressed => _pressed;
+        public bool Interacting => _pressed || _gesture is not null;
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 34 };
         private (RhinoView View, System.Drawing.Point Point)? _pending;
         private long _lastPick;
@@ -71,6 +72,9 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
+            var underCursor = InView(e.View);
+            foreach (var s in Sessions.Values.ToArray())
+                s.Cursor(new(e.ViewportPoint.X, e.ViewportPoint.Y), underCursor.Contains(s));
             if (_gesture is not null)
             {
                 e.Cancel = true;
@@ -102,14 +106,19 @@ public static partial class OverlayManager
                     drag.Session.ScrollTo(drag.CardId, TableScroll.OffsetForThumbTop(card, drag.Session.Theme, p.Y - drag.Grab));
                 return;
             }
-            var sessions = InView(e.View);
-            var overCard = sessions.Any(s => s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) is not null);
+            MoveHover(e.View, e.ViewportPoint);
+        }
+        private void MoveHover(RhinoView view, System.Drawing.Point point)
+        {
+            var sessions = InView(view);
+            var overCard = sessions.Any(s => s.Hit(point.X, point.Y) is not null);
             foreach (var s in Sessions.Values.ToArray())
             {
-                var hit = sessions.Contains(s) ? s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) : null;
-                s.TitleHover(hit?.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
+                s.Cursor(new(point.X, point.Y), sessions.Contains(s));
+                var hit = sessions.Contains(s) ? s.Hit(point.X, point.Y) : null;
+                s.TitleHover(hit?.CardId, point.X, point.Y);
                 if (hit is { } card) s.SetHover(card.CardId, card.Key);
-                else ClearHover(s, false);
+                else { s.ClearCardHover(); ClearHover(s, false); }
             }
             if (overCard || Command.InCommand())
             {
@@ -117,12 +126,13 @@ public static partial class OverlayManager
                 foreach (var s in Sessions.Values.ToArray()) ClearHover(s, true);
                 return;
             }
-            _pending = (e.View, e.ViewportPoint);
+            _pending = (view, point);
             if (System.Diagnostics.Stopwatch.GetElapsedTime(_lastPick).TotalMilliseconds >= 34) FlushHover();
             else if (!_hoverTimer.Enabled) _hoverTimer.Start(); // keep the final cursor position even if movement stops
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
+            foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
             if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left) return;
             var sessions = InView(e.View);
@@ -133,6 +143,11 @@ public static partial class OverlayManager
                 if (hit is null) continue;
                 e.Cancel = true; _pressed = true;
                 _hoverTimer.Stop(); _pending = null;
+                if (TableSort.Column(hit.Value.Key) is { } column)
+                {
+                    s.Sort(hit.Value.CardId, column);
+                    return;
+                }
                 if (hit.Value.Key == OverlaySession.ScrollbarKey)
                 {
                     var card = s.Card(hit.Value.CardId); var local = s.Local(hit.Value.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
@@ -179,6 +194,7 @@ public static partial class OverlayManager
             }
             catch (Exception ex) { RhinoApp.WriteLine($"Conduit+ drop: {ex.Message}"); }
             finally { Cancel(); if (_pressed) { e.Cancel = true; _pressed = false; } }
+            if (!Busy) MoveHover(e.View, e.ViewportPoint);
             Enabled = Sessions.Count > 0;
         }
         [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int virtualKey);

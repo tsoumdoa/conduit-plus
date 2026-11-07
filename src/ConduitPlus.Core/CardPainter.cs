@@ -55,22 +55,34 @@ public static class CardPainter
         else
         {
             var width = (c.Width - 2 * t.Padding) / c.Headers.Length;
-            for (var col = 0; col < c.Headers.Length; col++) Cell(c.Headers[col], col, 36, t.Muted);
+            foreach (var header in TableSort.Headers(c, t))
+                if (c.HoverKey == header.Key) canvas.Rect(new(header.X, header.Y, header.W, header.H), t.Track);
+            for (var col = 0; col < c.Headers.Length; col++)
+            {
+                Cell(c.Headers[col], col, CardMeasure.BodyTop, t.Muted, c.SortColumn == col ? 14 : 0);
+                if (c.SortColumn != col) continue;
+                // Glyph hugs the header text so it can't be read as belonging to the next column.
+                var textWidth = Math.Min(canvas.MeasureText(c.Headers[col], t.FontSize, t.Font).Width, width - 3 - 14 - 2);
+                var x = t.Padding + col * width + 2 + textWidth + 8; var y = CardMeasure.BodyTop + 10;
+                canvas.FillPolygon(c.SortDescending ? [new(x - 4, y - 2), new(x + 4, y - 2), new(x, y + 3)] :
+                    [new(x - 4, y + 2), new(x + 4, y + 2), new(x, y - 3)], t.Muted);
+            }
+            var rows = TableSort.Rows(c);
             var offset = TableScroll.Offset(c);
             for (var row = 0; row < hits.Length; row++)
             {
                 var h = hits[row]; Highlight(canvas, c, t, h);
                 canvas.Line(new(h.X, h.Y), new(h.X + h.W, h.Y), t.Line);
-                for (var col = 0; col < c.Headers.Length; col++) Cell(c.Rows[offset + row].Cells[col] ?? "—", col, h.Y, t.Ink);
+                for (var col = 0; col < c.Headers.Length; col++) Cell(rows[offset + row].Cells[col] ?? "—", col, h.Y, t.Ink);
             }
             if (TableScroll.Bar(c, t) is { } bar)
             {
                 canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
                 canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
             }
-            void Cell(string text, int col, double y, string color)
+            void Cell(string text, int col, double y, string color, double reserve = 0)
             {
-                using var cellClip = canvas.Clip(new(t.Padding + col * width, y, width - 3, t.RowHeight));
+                using var cellClip = canvas.Clip(new(t.Padding + col * width, y, width - 3 - reserve, t.RowHeight));
                 canvas.Text(text, new(t.Padding + col * width + 2, y + 2), t.FontSize, color, t.Font);
             }
         }

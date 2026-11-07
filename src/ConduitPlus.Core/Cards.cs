@@ -37,6 +37,9 @@ public sealed record CardSpec
     public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
     /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
     public int ScrollOffset { get; init; }
+    /// <summary>Table only: session-owned display sort; null preserves the incoming row order.</summary>
+    public int? SortColumn { get; init; }
+    public bool SortDescending { get; init; }
 
     public void Validate()
     {
@@ -60,7 +63,7 @@ public sealed record CardSpec
             else if (Labels.Length != Colors.Length || (Keys.Length != 0 && Keys.Length != Colors.Length)) throw new ArgumentException("Categorical colors, labels and optional keys must match.");
         }
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
-        if (keys.Any(k => string.IsNullOrWhiteSpace(k) || k == CardMeasure.ClearKey) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
+        if (keys.Any(k => string.IsNullOrWhiteSpace(k) || CardMeasure.IsReserved(k)) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
         if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }

@@ -128,7 +128,7 @@ public sealed class CoreTests
         Assert.Equal(48 + 9 * Theme.Paper.RowHeight, CardMeasure.Measure(table, Theme.Paper).Height);
 
         var scrolled = table with { ScrollOffset = 3 };
-        var hits = CardMeasure.Hits(scrolled, Theme.Paper);
+        var hits = CardMeasure.DataHits(scrolled, Theme.Paper);
         Assert.Equal(8, hits.Length);
         Assert.Equal("M04", hits[0].Key);                                   // first on-screen row is data row 3
         Assert.Equal(36 + Theme.Paper.RowHeight, hits[0].Y);                // ...drawn in the first row slot

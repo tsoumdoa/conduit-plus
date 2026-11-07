@@ -27,7 +27,9 @@ public interface ICanvas2D
 }
 public static class CardMeasure
 {
+    public const double BodyTop = 36;
     public const string ClearKey = "\u0001clear";
+    public static bool IsReserved(string key) => key.StartsWith('\u0001');
     public static HitRegion? Clear(CardSpec c, Theme t) => BrushState.Keys(c).Any() && (c.OwnerHasSelection || c.SelectedKeys.Length > 0)
         ? new(ClearKey, c.Width - t.Padding - 40, 7, 40, 22) : null;
     // Untitled Text starts at (12,12): keep its explicit grip in the unused left edge.
@@ -45,12 +47,12 @@ public static class CardMeasure
         CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
         _ => 48 + (TableScroll.Visible(c) + 1) * t.RowHeight
     });
-    public static HitRegion[] Hits(CardSpec c, Theme t) => Clear(c, t) is { } clear ? [.. DataHits(c, t), clear] : DataHits(c, t);
+    public static HitRegion[] Hits(CardSpec c, Theme t) => [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Bar => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
-        CardKind.Table => c.Rows.Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, 36 + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Table => TableSort.Rows(c).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, BodyTop + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
         CardKind.Legend when !c.Min.HasValue => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         _ => []
