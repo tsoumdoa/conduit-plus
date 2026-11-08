@@ -80,7 +80,7 @@ implementation is unchanged.
 ## Outputs
 
 All originals and logs are outside the repository, under
-`C:\Users\tomosandego\AppData\Local\Temp\ConduitPlus\`:
+`%TEMP%\ConduitPlus\`:
 
 | Folder | Artifacts |
 |---|---|

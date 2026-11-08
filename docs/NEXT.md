@@ -1,10 +1,10 @@
 # Conduit+ next steps (2026-11-08)
 
-The MVP roadmap (PRs #5–#10) and the post-MVP work (PRs #13–#20) are merged. The owner tested the MVP in Rhino 8: it works well. The post-MVP work has automated and headless RhinoCore checks only; there is no recorded test in normal Rhino yet.
+The MVP roadmap (PRs #5–#10) and the post-MVP work (PRs #13–#23) are merged. The owner tested the MVP in Rhino 8: it works well. The post-MVP work has automated and headless RhinoCore checks only; there is no recorded test in normal Rhino yet.
 This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `docs/IDEAS.md` the longer-term ideas.
 
 ## What's in main now
-Version is still 0.1.0. Last recorded result: Debug build with 0 warnings, 255 tests passing (#20).
+Version 0.2.0-beta.2, published on public Yak as a prerelease (`conduit-plus`; tick **Include pre-releases** in Package Manager). Yak is the only install path, including during development. Last recorded result: 0 warnings, 328 tests passing.
 
 | Area | What works |
 |---|---|
@@ -12,9 +12,11 @@ Version is still 0.1.0. Last recorded result: Debug build with 0 warnings, 255 t
 | Canvas Card | Shows one card live on the GH canvas, like a Panel; local sort, scrollbar, selection/Clear and tooltips; GH image export. Deferred: boards, resize, wheel scrolling, Canvas Events |
 | Themes | Auto, Paper, Night, Smoke and Blueprint; new components default to Auto, missing legacy saved themes to Paper; optional Overlay Theme input or saved, undoable menu; capture/PDF follow the resolved theme |
 | Linking | Link component; hover/click a card ↔ the member lights up in the model (both directions), with shaded faces; selection shared across cards; Clear |
+| Selection | Click replaces, Shift adds, Ctrl removes, Ctrl+Shift toggles; clicking empty viewport space clears; every selected element looks the same |
 | Group keys | Bar, categorical Legend and Metric take Members, so one click selects a whole group; partial selection shows a dash |
 | Scope | Wire one Scope into Canvas Cards and Overlays to share selection and hover between them; unwired displays stay private |
 | Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
+| Inputs | Right-click Slot, Overlay Theme or Metric Decimals to pick a value from a list |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events; Canvas Card outputs Selection |
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
 | Examples | Structural dashboard, room area check and massing/zoning with keyed demo geometry |
@@ -24,7 +26,7 @@ All three are in `examples/`. Demo numbers and limits are fictitious. The files 
 
 | File | Best for | Setup and what to try |
 |---|---|---|
-| `room-areas.gh` | Canvas Card, Scope, group keys | Metre-unit model, Top view, Zoom Extents. Click Bed 01 in the Canvas table, then its face in Rhino. Click the Bedroom swatch, deselect one room (partial dash), then Clear. Click "Rooms below minimum". Change Plan scale. Sort and scroll each table separately. Switch GH tabs, lock/unlock a display, disconnect Scope. |
+| `room-areas.gh` | Canvas Card, Scope, group keys | Metre-unit model, Top view, Zoom Extents. Click Bed 01 in the Canvas table, then its face in Rhino. Shift+click a second room, Ctrl+click to remove it, then click empty space to clear. Click the Bedroom swatch, Ctrl+click one room (partial dash), then Clear. Click "Rooms below minimum". Change Plan scale. Sort and scroll each table separately. Switch GH tabs, lock/unlock a display, disconnect Scope. |
 | `massing.gh` | Group keys on 3D blocks, themes | Perspective view, Zoom Extents. Click Residential in the legend or "GFA by use". Click "Blocks above 30 m". Change Extra floors. Click block roofs. Try each theme from Overlay's right-click menu. |
 | `structural-dashboard.gh` | Overlay basics, capture/PDF, legacy files | Change Span and Load. Click a bar or truss member. Sort/scroll the member table and drag cards. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. Last saved before themes existed, so it should open in Paper. |
 
@@ -36,7 +38,7 @@ For the full Canvas Card checks, wire each card kind from these files into its o
 3. **Small fixes the testing will probably ask for** (open findings: [ux-notes.md](ux-notes.md))
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
-5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
+5. **Release 0.2.0 (stable), after the live checks.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
 
 ## Later (v1 interactive, from PLAN.md)
 - **Inputs.** Viewport controls bound to GH sliders/toggles (commit on release, one undo step).
