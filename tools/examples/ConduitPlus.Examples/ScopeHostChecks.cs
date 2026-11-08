@@ -28,14 +28,14 @@ internal static class ScopeHostChecks
         var original = state.Spec!;
         var completed = new List<string>();
         var solves = 0; gh.SolutionEnd += (_, _) => solves++;
-        state.Activate(CardMeasure.ClearKey); gh.NewSolution(false);
+        state.Activate(CardMeasure.ClearKey, BrushSelectMode.Toggle); gh.NewSolution(false);
         var before = solves;
-        state.Hover("R01"); state.Scroll(2); state.Activate(TableSort.Key(0));
+        state.Hover("R01"); state.Scroll(2); state.Activate(TableSort.Key(0), BrushSelectMode.Toggle);
         Require(solves == before, "Hover/sort/scroll solved synchronously.");
         Require(binding.Current.HoverOrigin?.Surface == "canvas", "Canvas hover origin missing.");
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).HoveredKeys.Contains("R01"), "Canvas hover did not reach Overlay.");
         state.CancelHover();
-        state.Activate("R01");
+        state.Activate("R01", BrushSelectMode.Toggle);
         Require(solves == before && binding.Current.SelectedKeys.SequenceEqual(["R01"]), "Canvas action did not commit without solving.");
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).SelectedKeys.SequenceEqual(["R01"]), "Canvas selection did not repaint Overlay.");
         gh.NewSolution(false);
@@ -49,7 +49,7 @@ internal static class ScopeHostChecks
         foreach (var source in overlay.Params.Input[1].Sources) second.Params.Input[1].AddSource(source);
         second.Params.Input[3].AddSource(scope.Params.Output[0]); gh.NewSolution(false);
         var events = binding.Current.EventRevision;
-        Call(Session(second), "Select", "model", "R02");
+        Call(Session(second), "Select", "model", "R02", BrushSelectMode.Toggle);
         Require(binding.Current.EventRevision == events + 1, "Winning model owner emitted more than one action.");
         Require(state.Spec!.SelectedKeys.Order().SequenceEqual(new[] { "R01", "R02" }), "Model action did not project onto Canvas.");
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).SelectedKeys.Order().SequenceEqual(new[] { "R01", "R02" }), "Second Overlay did not share state.");
@@ -61,7 +61,7 @@ internal static class ScopeHostChecks
         var privateOwner = Guid.NewGuid();
         OverlayManager.Set(doc, view, privateOwner, [original]);
         var privateSession = Sessions().Single(s => (Guid)Get(s, "Owner") == privateOwner);
-        Call(privateSession, "Select", original.Id, "R03");
+        Call(privateSession, "Select", original.Id, "R03", BrushSelectMode.Toggle);
         Require(OverlayManager.Snapshot(privateOwner).SelectedKeys.SequenceEqual(["R03"]) && !binding.Current.SelectedKeys.Contains("R03"), "Unscoped owner leaked selection.");
         OverlayManager.Remove(privateOwner);
         completed.Add("Identical unscoped Overlay owner remains isolated (private Canvas also checked by existing architecture harness)");
@@ -76,12 +76,12 @@ internal static class ScopeHostChecks
         completed.Add("Origin-safe remote misses and local-only Overlay tooltip target");
 
         canvas.Locked = true;
-        var locked = binding.Current.EventRevision; state.Activate("R03");
+        var locked = binding.Current.EventRevision; state.Activate("R03", BrushSelectMode.Toggle);
         Require(binding.Current.EventRevision == locked, "Locked Canvas originated an action.");
-        Call(Session(second), "Select", "model", "R03");
+        Call(Session(second), "Select", "model", "R03", BrushSelectMode.Toggle);
         canvas.Locked = false;
         Require(state.Spec!.SelectedKeys.Contains("R03"), "Unlock did not project latest snapshot without solving.");
-        overlay.Locked = true; locked = binding.Current.EventRevision; Call(Session(overlay), "Select", "model", "R04");
+        overlay.Locked = true; locked = binding.Current.EventRevision; Call(Session(overlay), "Select", "model", "R04", BrushSelectMode.Toggle);
         Require(binding.Current.EventRevision == locked, "Locked Overlay originated an action."); overlay.Locked = false;
         gh.NewSolution(false); completed.Add("Component lock blocks origins; unlock reprojects without data solve");
 
@@ -93,7 +93,7 @@ internal static class ScopeHostChecks
         completed.Add("GH Unloaded/Loaded retains membership/selection and recreates Overlay rendering without solving");
 
         GH_Document.EnableSolutions = false;
-        state.Activate("R04"); Require(binding.Current.SelectedKeys.Contains("R04"), "Paused solver lost committed selection.");
+        state.Activate("R04", BrushSelectMode.Toggle); Require(binding.Current.SelectedKeys.Contains("R04"), "Paused solver lost committed selection.");
         Require(solves == before, "Paused solver evaluated outputs.");
         GH_Document.EnableSolutions = true; gh.NewSolution(false);
         Require(Output(canvas, 0).Contains("R04"), "Paused output callback did not publish on resume.");
@@ -128,7 +128,7 @@ internal static class ScopeHostChecks
         canvas.Params.Input[1].RemoveAllSources(); canvas.Params.Input[1].AddSource(alternate.Params.Output[0]);
         canvas.ExpireSolution(false); gh.NewSolution(false);
         Require(state.CanInteract && state.Current.SelectedKeys.Count == 0, "Changing Scope copied old selection or disabled valid new scope.");
-        state.Activate("R05"); Require(!OverlayManager.Snapshot(overlay.InstanceGuid).SelectedKeys.Contains("R05"), "Distinct Scope tokens coupled selection.");
+        state.Activate("R05", BrushSelectMode.Toggle); Require(!OverlayManager.Snapshot(overlay.InstanceGuid).SelectedKeys.Contains("R05"), "Distinct Scope tokens coupled selection.");
         canvas.Params.Input[1].RemoveAllSources(); canvas.Params.Input[1].AddSource(scope.Params.Output[0]);
         canvas.ExpireSolution(false); gh.RemoveObject(alternate, false); gh.NewSolution(false);
         Require(state.Current.SelectedKeys.Contains("R04") && !state.Current.SelectedKeys.Contains("R05"), "Reattachment did not use original domain authority.");
@@ -147,13 +147,13 @@ internal static class ScopeHostChecks
         doc.Views.ActiveView = temporaryView; overlay.ExpireSolution(false); gh.NewSolution(false);
         Require(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId == temporaryView.MainViewport.Id, "Normal solve did not bind test view.");
         temporaryView.Close();
-        state.Activate("R01"); gh.NewSolution(false);
+        state.Activate("R01", BrushSelectMode.Toggle); gh.NewSolution(false);
         Require(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId is null, "Interaction rebound closed view to another active view.");
         doc.Views.ActiveView = view; overlay.ExpireSolution(false); gh.NewSolution(false);
         Require(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId == view.MainViewport.Id, "Normal data solve did not restore view binding.");
         completed.Add("Closing an owned Rhino view drops rendering; shared interaction cannot redirect it; normal data solve rebinds");
         gh.RemoveObject(second, false); gh.NewSolution(false);
-        state.Activate(CardMeasure.ClearKey); state.Activate("R01"); gh.NewSolution(false);
+        state.Activate(CardMeasure.ClearKey, BrushSelectMode.Toggle); state.Activate("R01", BrushSelectMode.Toggle); gh.NewSolution(false);
         ScopeFeedbackChecks.Run(output);
         if (capture)
         {

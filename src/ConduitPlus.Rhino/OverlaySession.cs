@@ -161,7 +161,7 @@ internal sealed partial class OverlaySession : IDisposable
         if (_headerHover is null) return;
         _headerHover = null; UpdateInteraction(Cards);
     }
-    public void Select(string card, string key) => OverlayManager.Select(this, card, key);
+    public void Select(string card, string key, BrushSelectMode mode = BrushSelectMode.Replace) => OverlayManager.Select(this, card, key, mode);
     internal void RefreshInteraction() => UpdateInteraction(Cards);
     internal void SetLinks(Link[] links)
     {
@@ -233,12 +233,19 @@ internal sealed partial class OverlaySession : IDisposable
             display.PushDepthWriting(false);
             try
             {
+                // Composite every face before any accent wire, independent of selection order.
                 if (includeHover)
                     foreach (var hover in _hoveredMembers)
                         if (!_selectedMembers.Contains(hover))
-                            foreach (var link in _links) link.Draw(display, hover, color, 2, false);
+                            foreach (var link in _links) link.DrawFaces(display, hover, color, false);
                 foreach (var key in _selectedMembers)
-                    foreach (var link in _links) link.Draw(display, key, color, 4, true);
+                    foreach (var link in _links) link.DrawFaces(display, key, color, true);
+                if (includeHover)
+                    foreach (var hover in _hoveredMembers)
+                        if (!_selectedMembers.Contains(hover))
+                            foreach (var link in _links) link.Draw(display, hover, color, 2, false, false);
+                foreach (var key in _selectedMembers)
+                    foreach (var link in _links) link.Draw(display, key, color, 4, true, false);
             }
             finally { display.PopDepthWriting(); }
         }

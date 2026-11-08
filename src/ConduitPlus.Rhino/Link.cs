@@ -8,7 +8,7 @@ namespace ConduitPlus.Rhino;
 /// <summary>Shared, privately owned geometry snapshot. Sessions borrow it and never dispose it.</summary>
 public sealed partial class Link
 {
-    private sealed record Wires(Curve[] Curves, Line[] Lines, Point3d[] Points, Point3d[] Markers);
+    private sealed record Wires(Curve[] Curves, Line[] Lines, Point3d[] Points);
     private readonly GeometryBase[] _geometry;
     private readonly Dictionary<string, Wires[]> _wires;
     private readonly Dictionary<string, Mesh[]> _faces;
@@ -78,14 +78,14 @@ public sealed partial class Link
     {
         switch (geometry)
         {
-            case Point p: return new([], [], [p.Location], [p.Location]);
+            case Point p: return new([], [], [p.Location]);
             case Curve c:
                 var curve = c.DuplicateCurve();
-                return new([curve], [], [], [curve.PointAtStart, curve.PointAtEnd]);
+                return new([curve], [], []);
             case Mesh m:
                 var edges = m.TopologyEdges;
                 var lines = Enumerable.Range(0, edges.Count).Select(edges.EdgeLine).ToArray();
-                return new([], lines, [], lines.SelectMany(l => new[] { l.From, l.To }).Distinct().ToArray());
+                return new([], lines, []);
             case Extrusion e:
                 using (var brep = e.ToBrep()) return BrepWires(brep);
             case Surface s:
@@ -97,7 +97,7 @@ public sealed partial class Link
     private static Wires BrepWires(Brep? brep)
     {
         var curves = brep?.DuplicateEdgeCurves() ?? throw new ArgumentException("Cannot extract brep edge curves.");
-        return new(curves, [], [], curves.SelectMany(c => new[] { c.PointAtStart, c.PointAtEnd }).Distinct().ToArray());
+        return new(curves, [], []);
     }
     private DisplayMaterial Material(Color color, bool selected)
     {
@@ -105,19 +105,23 @@ public sealed partial class Link
         if (!_materials.TryGetValue(key, out var material)) _materials.Add(key, material = new(Color.FromArgb(255, color), selected ? .40 : .72));
         return material;
     }
-    internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected, bool shade = true)
+    internal void DrawFaces(DisplayPipeline display, string key, Color color, bool selected)
     {
-        if (!_wires.TryGetValue(key, out var wires)) return;
-        if (shade && _faces.TryGetValue(key, out var meshes))
+        if (_faces.TryGetValue(key, out var meshes))
         {
             var material = Material(color, selected);
             foreach (var mesh in meshes) display.DrawMeshShaded(mesh, material);
         }
+    }
+    internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected, bool shade = true)
+    {
+        if (!_wires.TryGetValue(key, out var wires)) return;
+        if (shade) DrawFaces(display, key, color, selected);
         foreach (var w in wires)
         {
             foreach (var c in w.Curves) display.DrawCurve(c, color, width);
             foreach (var line in w.Lines) display.DrawLine(line, color, width);
-            foreach (var p in selected ? w.Markers : w.Points) display.DrawPoint(p, PointStyle.RoundSimple, selected ? 5 : 3, color);
+            foreach (var p in w.Points) display.DrawPoint(p, PointStyle.RoundSimple, selected ? 5 : 3, color);
         }
         GC.KeepAlive(_geometry);
     }

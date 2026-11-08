@@ -22,7 +22,7 @@ internal static class ScopeFeedbackChecks
         gh.NewSolution(false);
         var state = (CanvasCardState)typeof(CanvasCardComponent).GetProperty("State", Internal)!.GetValue(canvas)!;
         Require(state.Spec is not null, "Feedback fixture did not produce a card.");
-        state.Activate("a"); state.Activate("b");
+        state.Activate("a", BrushSelectMode.Toggle); state.Activate("b", BrushSelectMode.Toggle);
         var before = solutions;
         gh.NewSolution(false); // Committed user outputs feed the filter; first union prune leaves b.
         Require(state.Current.SelectedKeys.SequenceEqual(["b"]), "First feedback reconciliation should retain b.");

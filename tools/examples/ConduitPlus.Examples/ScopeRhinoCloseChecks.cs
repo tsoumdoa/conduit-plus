@@ -30,13 +30,13 @@ internal static class ScopeRhinoCloseChecks
             var canvasBinding = (ScopeBinding)canvas.GetType().GetField("_scope", Internal)!.GetValue(canvas)!;
             var overlayBinding = (ScopeBinding)overlay.GetType().GetField("_scope", Internal)!.GetValue(overlay)!;
             Require(OverlayManager.Binding(overlay.InstanceGuid)?.DocumentSerial == doc.RuntimeSerialNumber, "Overlay did not bind owned Rhino document.");
-            overlayBinding.Toggle("overlay-only", BrushTargetKind.Member, new(overlay.InstanceGuid, "model", "model"));
+            overlayBinding.Select("overlay-only", BrushSelectMode.Toggle, BrushTargetKind.Member, new(overlay.InstanceGuid, "model", "model"));
             doc.Dispose(); // Own headless Rhino document only; never touches the user's Rhino process.
             RhinoDoc.ActiveDoc = original;
             gh.NewSolution(false);
             Require(!canvasBinding.Current.Membership.MemberKeys.Contains("overlay-only") && canvasBinding.Current.Membership.MemberKeys.Contains("canvas-only"), "Closed Rhino contribution was republished by an output refresh.");
             Require(OverlayManager.Binding(overlay.InstanceGuid) is null && !overlayBinding.IsActive, $"Closed Rhino owner retained runtime interaction: binding={OverlayManager.Binding(overlay.InstanceGuid)}, active={overlayBinding.IsActive}, suspended={overlay.GetType().GetField("_rhinoSuspended", Internal)!.GetValue(overlay)}, interactionSolve={overlay.GetType().GetField("_interactionSolve", Internal)!.GetValue(overlay)}.");
-            canvasBinding.Toggle("canvas-only", BrushTargetKind.Member, new(canvas.InstanceGuid, "canvas-only", "canvas")); gh.NewSolution(false);
+            canvasBinding.Select("canvas-only", BrushSelectMode.Toggle, BrushTargetKind.Member, new(canvas.InstanceGuid, "canvas-only", "canvas")); gh.NewSolution(false);
             Require(OverlayManager.Binding(overlay.InstanceGuid) is null, "Queued Canvas interaction rebound closed Rhino owner.");
             overlay.ExpireSolution(false); gh.NewSolution(false);
             Require(OverlayManager.Binding(overlay.InstanceGuid)?.DocumentSerial == original.RuntimeSerialNumber, "Normal external data solve did not rebind Overlay.");

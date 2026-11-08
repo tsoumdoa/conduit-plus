@@ -85,19 +85,19 @@ internal static class ArchitectureDashboard
                 // Last row starts outside the room table's visible range. Selection must reveal it after a sort too.
                 var table = cards.Single(c => c.Kind == CardKind.Table);
                 var key = centres[^1].Key;
-                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key]);
+                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]);
                 var selectedTable = ((CardSpec[])Get(session, "Cards")).Single(c => c.Id == table.Id);
                 Require(TableSort.Rows(selectedTable).Skip(TableScroll.Offset(selectedTable)).Take(TableScroll.Visible(selectedTable)).Any(r => r.Key == key), "Model selection did not reveal table row.");
                 session.GetType().GetMethod("Sort", Instance)!.Invoke(session, [table.Id, 0]);
-                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key]); // deselect
+                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]); // deselect
                 session.GetType().GetMethod("ScrollTo", Instance)!.Invoke(session, [table.Id, 0]);
-                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key]);
+                session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]);
                 selectedTable = ((CardSpec[])Get(session, "Cards")).Single(c => c.Id == table.Id);
                 Require(TableSort.Rows(selectedTable).Skip(TableScroll.Offset(selectedTable)).Take(TableScroll.Visible(selectedTable)).Any(r => r.Key == key), "Sorted table did not reveal selection.");
                 // Exercise the reverse direction too: a table row toggles the same model key.
-                session.GetType().GetMethod("Select", Instance)!.Invoke(session, [table.Id, key]);
+                session.GetType().GetMethod("Select", Instance)!.Invoke(session, [table.Id, key, BrushSelectMode.Toggle]);
                 Require(!OverlayManager.Snapshot(overlay.InstanceGuid).SelectedKeys.Contains(key), "Table row did not toggle model selection off.");
-                session.GetType().GetMethod("Select", Instance)!.Invoke(session, [table.Id, key]);
+                session.GetType().GetMethod("Select", Instance)!.Invoke(session, [table.Id, key, BrushSelectMode.Toggle]);
                 Require(OverlayManager.Snapshot(overlay.InstanceGuid).SelectedKeys.Contains(key), "Table row did not select model key.");
                 if (!rooms)
                 {

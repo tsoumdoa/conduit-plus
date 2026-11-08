@@ -52,7 +52,7 @@ sets the ready state directly. Comparisons with the baseline found:
 - **0 changed pixels** with the drag active.
 - **0 changed pixels** with the tooltip ready.
 - **804 new accent-colored pixels** after selecting `M04`, from the linked wire
-  and endpoint markers. The keyless metric contributes no selection graphics.
+  and point dots only for real point geometry. The keyless metric contributes no selection graphics.
 
 ## PDF checks and fix
 

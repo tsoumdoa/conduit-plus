@@ -132,7 +132,7 @@ public sealed class CanvasCardState
             : clear ? _brush.ClearHover(origin) : _brush.Hover(origin, key, kind);
         if (changed) Reconcile();
     }
-    public void Activate(string key)
+    public void Activate(string key, BrushSelectMode mode = BrushSelectMode.Replace)
     {
         if (Spec is null || !CanInteract) return;
         var previous = Current.SelectionRevision;
@@ -140,8 +140,8 @@ public sealed class CanvasCardState
         if (key == CardMeasure.ClearKey) { if (_binding is { } binding) binding.Clear(source); else _brush.Clear(source); }
         else if (TableSort.Column(key) is { } column && Spec.Kind == CardKind.Table && column >= 0 && column < Spec.Headers.Length)
         { var sorted = TableSort.Cycle(Spec, column); _column = sorted.SortColumn; _descending = sorted.SortDescending; }
-        else if (_binding is { } binding) binding.Toggle(key, BrushPresentation.TargetKind(Spec, key), source);
-        else _brush.Toggle(key, BrushPresentation.TargetKind(Spec, key), source);
+        else if (_binding is { } binding) binding.Select(key, mode, BrushPresentation.TargetKind(Spec, key), source);
+        else _brush.Select(key, mode, source, BrushPresentation.TargetKind(Spec, key));
         Reconcile();
         if (_binding is null && previous != Current.SelectionRevision) Changed?.Invoke(new(Current, InteractionChangeKind.Selection));
     }

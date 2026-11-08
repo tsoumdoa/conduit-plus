@@ -46,6 +46,14 @@ public sealed record BrushDomainSnapshot(long Version, long SelectionRevision, l
     }).ToArray();
 }
 
+public enum BrushSelectMode { Replace, Add, Remove, Toggle }
+
+public static class BrushSelection
+{
+    public static BrushSelectMode FromModifiers(bool shift, bool ctrl) =>
+        ctrl ? shift ? BrushSelectMode.Toggle : BrushSelectMode.Remove : shift ? BrushSelectMode.Add : BrushSelectMode.Replace;
+}
+
 /// <summary>
 /// Canonical member selection and indexed group interaction. The host supplies synchronization/lifetime.
 /// ReplaceRegistrations is a complete, atomic union transaction: B1 stages participants externally and commits once.
@@ -114,17 +122,24 @@ public sealed class BrushState
     public bool Toggle(string key) => Toggle(key, LegacySource);
     public bool Toggle(string key, BrushActionSource source) => Toggle(key, source, null);
     public bool Toggle(string key, BrushTargetKind targetKind, BrushActionSource? source = null) => Toggle(key, source ?? LegacySource, targetKind);
-    private bool Toggle(string key, BrushActionSource source, BrushTargetKind? expectedKind)
+    private bool Toggle(string key, BrushActionSource source, BrushTargetKind? expectedKind) => Select(key, BrushSelectMode.Toggle, source, expectedKind);
+    public bool Select(string key, BrushSelectMode mode, BrushActionSource? source = null, BrushTargetKind? expectedKind = null)
     {
+        source ??= LegacySource;
         var target = _membership.Resolve(key, expectedKind);
         if (target is null || target.Members.Length == 0) return false;
-        var remove = target.Members.All(_selected.Contains);
-        var affected = target.Members.Where(k => remove || !_selected.Contains(k)).ToImmutableArray();
+        var next = new HashSet<string>(_selected, StringComparer.Ordinal);
+        var remove = mode == BrushSelectMode.Remove || mode == BrushSelectMode.Toggle && target.Members.All(_selected.Contains);
+        if (mode == BrushSelectMode.Replace) next.Clear();
+        if (remove) next.ExceptWith(target.Members); else next.UnionWith(target.Members);
+        var affected = _selected.Except(next).Concat(next.Except(_selected)).Order(StringComparer.Ordinal).ToImmutableArray();
+        if (affected.Length == 0) return false;
         var touched = new HashSet<string>(StringComparer.Ordinal);
         foreach (var member in affected)
         {
-            if (remove) _selected.Remove(member); else _selected.Add(member);
-            CountMember(member, _selectedCounts, remove ? -1 : 1, touched);
+            var added = next.Contains(member);
+            if (added) _selected.Add(member); else _selected.Remove(member);
+            CountMember(member, _selectedCounts, added ? 1 : -1, touched);
         }
         RefreshGroups(touched);
         _selectionRevision++;
