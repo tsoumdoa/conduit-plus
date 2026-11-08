@@ -76,10 +76,8 @@ damaged copies (missing/extra/changed/empty payload, wrong metadata and wrong ta
 
 ## Try the exact archive
 
-Close Rhino. Avoid duplicate developer and Yak installations: move the three
-ConduitPlus files out of `%APPDATA%\Grasshopper\Libraries\ConduitPlus` if a
-developer install is present. Drop the candidate onto Rhino, accept installation,
-restart Rhino and select .NET 8 with `SetDotNetRuntime` if needed.
+Drop the candidate onto Rhino, accept installation, restart Rhino and select
+.NET 8 with `SetDotNetRuntime` if needed.
 
 Record Rhino version/runtime and the candidate checksum with these results:
 
