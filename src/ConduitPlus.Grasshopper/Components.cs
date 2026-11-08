@@ -58,8 +58,9 @@ public sealed class MetricComponent : CardComponent
         p.AddTextParameter("Value", "V", "Formatted value; missing displays an em dash", GH_ParamAccess.item); p[0].Optional = true;
         p.AddTextParameter("Title", "T", "Metric title", GH_ParamAccess.item, "Metric");
         p.AddTextParameter("Unit", "U", "Unit suffix", GH_ParamAccess.item, "");
-        p.AddTextParameter("Slot", "S", "Optional wired slot: tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[3].Optional = true;
-        p.AddIntegerParameter("Decimals", "D", "Optional numeric precision (0–12); unwired preserves text", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[3].Optional = true;
+        p.AddIntegerParameter("Decimals", "D", "Optional numeric precision (0–12); right-click for 0–6, clear persistent data for automatic", GH_ParamAccess.item); p[4].Optional = true;
+        for (var precision = 0; precision <= 6; precision++) ((global::Grasshopper.Kernel.Parameters.Param_Integer)p[4]).AddNamedValue(precision.ToString(), precision);
         p.AddTextParameter("Key", "K", "Optional stable member or group key", GH_ParamAccess.item); p[5].Optional = true;
         p.AddTextParameter("Members", "M", "Optional group members in exactly one branch; requires Key", GH_ParamAccess.tree); p[6].Optional = true;
     }
@@ -84,7 +85,7 @@ public sealed class BarComponent : CardComponent
         p.AddTextParameter("Keys", "K", "Unique stable member keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Member utilisation");
         p.AddNumberParameter("Threshold", "Th", "Nonnegative threshold; zero for signed deltas", GH_ParamAccess.item, 1);
-        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[5].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[5].Optional = true;
         p.AddColourParameter("Colors", "C", "Optional per-bar colors; default compares values to Threshold", GH_ParamAccess.list); p[6].Optional = true;
         p.AddTextParameter("Members", "M", "One path-ordered branch per bar, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[7].Optional = true;
     }
@@ -111,7 +112,7 @@ public sealed class LineComponent : CardComponent
         p.AddTextParameter("Keys", "K", "Unique stable keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Structural results");
         p.AddNumberParameter("Threshold", "Th", "Optional positive threshold; unwired or nonpositive hides the band", GH_ParamAccess.item); p[4].Optional = true;
-        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[5].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[5].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -133,7 +134,7 @@ public sealed class TextComponent : CardComponent
         p.AddTextParameter("Title", "T", "Optional note title", GH_ParamAccess.item); p[0].Optional = true;
         p.AddTextParameter("Text", "N", "Note text; newlines are preserved", GH_ParamAccess.item);
         p.AddNumberParameter("Width", "W", "Card width in CSS pixels (180–1200)", GH_ParamAccess.item, 280);
-        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[3].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[3].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -157,7 +158,7 @@ public sealed class LegendComponent : CardComponent
         p.AddTextParameter("Unit", "U", "Optional gradient unit", GH_ParamAccess.item, "");
         p.AddTextParameter("Keys", "K", "Optional unique categorical selection keys", GH_ParamAccess.list); p[5].Optional = true;
         p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
-        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[7].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[7].Optional = true;
         p.AddTextParameter("Members", "M", "One path-ordered branch per category, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[8].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
@@ -181,7 +182,7 @@ public sealed class TableComponent : CardComponent
         p.AddTextParameter("Rows", "R", "One branch per row, one item per column", GH_ParamAccess.tree);
         p.AddTextParameter("Keys", "K", "Optional stable row keys; default branch paths", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Table title", GH_ParamAccess.item, "Structural results");
-        p.AddTextParameter("Slot", "S", "tl,tr,bl,br,lc,rc", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[4].Optional = true;
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
         p.AddNumberParameter("Width", "W", "Table width in CSS pixels (180–1200)", GH_ParamAccess.item, 380);
     }
@@ -422,7 +423,7 @@ public sealed class OverlayComponent : GH_Component
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Text or Legend cards", GH_ParamAccess.list);
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
-        p.AddTextParameter("Theme", "T", "Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A wired input overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
+        p.AddParameter(new Param_TextOption { Options = InputOptions.Themes }, "Theme", "T", "Right-click to choose, or wire Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A set value overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)

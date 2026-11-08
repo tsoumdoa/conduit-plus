@@ -192,7 +192,12 @@ paths, so they do **not** auto-match. Keys are case-sensitive. Link supports poi
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
 geometry and caches its wires and shared pick/highlight meshes when solved.
 
-Slots are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
+Right-click a card's **Slot** input to pick Automatic or a viewport position,
+Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pick
+0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
+connected wire always takes priority.
+
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
 a stored manual slot, followed by automatic placement. Cards stack within slots;
 small viewports can overflow. Different Overlay components have separate owner
 sessions and do not currently reserve space around one another.
