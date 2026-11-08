@@ -61,20 +61,9 @@ uncommitted trials or `-StageOnly` to stage without Rhino/Yak. The default
 requires a clean working tree. See [the release workflow](docs/releasing.md).
 It never publishes a package; `tools/Publish-Yak.ps1` does that after testing. Install the resulting `.yak` by dropping it onto Rhino,
 then restart Rhino and open Grasshopper. When a release is published, it can
-also be installed through Rhino's `PackageManager` using `conduit-plus`.
-
-For a developer installation, **close Rhino**, build, then run:
-
-```powershell
-./tools/Install-Dev.ps1 -Configuration Release
-```
-
-The script copies `ConduitPlus.Rhino.rhp`, `ConduitPlus.Core.dll` and
-`ConduitPlus.Grasshopper.gha` into
-`%APPDATA%\Grasshopper\Libraries\ConduitPlus`, removes the previous developer
-installation folder if present and reports its removal. It skips installation
-while Rhino is running. Load the `.rhp` through `PlugInManager` → Install once,
-then start Grasshopper. Close Rhino before rebuilding or reinstalling.
+also be installed through Rhino's `PackageManager` using `conduit-plus`; tick
+**Include pre-releases** to see beta versions. Yak is the only supported install
+path, including during development.
 
 ## Examples
 

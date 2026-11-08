@@ -7,10 +7,6 @@ Open Grasshopper and find **Conduit+** → **Cards** and **Display**. Connect a
 Metric, Bar, Table, Line, Text or Legend to Overlay. Run `ConduitPlusDemo` for a
 dashboard with linked geometry; `ConduitPlusCapture` saves PNGs.
 
-If upgrading from a developer installation, close Rhino and remove the three
-ConduitPlus assemblies from `%APPDATA%\Grasshopper\Libraries\ConduitPlus`
-before trying the Yak package. Keep only one installation of the plugin.
-
 Use Rhino's `SetDotNetRuntime` command to select .NET 8 if necessary. This
 package does not support macOS, Rhino 7 or .NET Framework. PDF export is
 experimental; high-resolution captures and mixed-monitor DPI need interactive
