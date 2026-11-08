@@ -11,6 +11,7 @@ public sealed class ScopeAdapterTests
         public string ParticipantId => Lease.ParticipantId;
         public BrushDomainSnapshot Current => domain.Current;
         public bool IsActive => domain.Contains(Lease) && !domain.IsSuspended;
+        public bool Select(string key, BrushSelectMode mode, BrushTargetKind kind, BrushActionSource source) => domain.Select(Lease, key, mode, kind, source);
         public bool Toggle(string key, BrushTargetKind kind, BrushActionSource source) => domain.Toggle(Lease, key, kind, source);
         public bool Clear(BrushActionSource source) => domain.Clear(Lease, source);
         public bool Hover(BrushOrigin origin, string? key, BrushTargetKind? kind = null) => domain.Hover(Lease, origin, key, kind);
@@ -20,6 +21,28 @@ public sealed class ScopeAdapterTests
     private static CardSpec Table(string id, params string[] keys) => new()
     { Id = id, Kind = CardKind.Table, Headers = ["Key"], Rows = keys.Select(k => new TableRow(k, [k])).ToArray(), MaxRows = 1 };
     private static InteractionDomain Domain() => new(new(1, Guid.NewGuid()));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CanvasModesAndNoOpsPublishOnlyEffectiveChanges(bool scoped)
+    {
+        using var domain = Domain(); var binding = new Binding(domain, "canvas");
+        var card = Table("selection", "a", "b"); binding.Publish(card); domain.Commit();
+        var state = new CanvasCardState(); if (scoped) state.Bind(binding, Guid.NewGuid()); state.Replace(card);
+        state.Activate("a"); state.Activate("b", BrushSelectMode.Add);
+        Assert.Equal(new[] { "a", "b" }, state.Current.SelectedKeys);
+        var revision = state.Current.SelectionRevision; var events = state.Current.EventRevision;
+        state.Activate("a", BrushSelectMode.Add); state.Activate("missing", BrushSelectMode.Remove);
+        Assert.Equal(revision, state.Current.SelectionRevision); Assert.Equal(events, state.Current.EventRevision);
+        state.Activate("a", BrushSelectMode.Remove); Assert.Equal(new[] { "b" }, state.Current.SelectedKeys);
+        state.Activate("a", BrushSelectMode.Toggle); state.Activate("b", BrushSelectMode.Toggle);
+        Assert.Equal(new[] { "a" }, state.Current.SelectedKeys);
+        state.Activate("b"); Assert.Equal(new[] { "b" }, state.Current.SelectedKeys);
+        revision = state.Current.SelectionRevision; events = state.Current.EventRevision;
+        state.Activate("b"); state.Activate("a", BrushSelectMode.Remove);
+        Assert.Equal(revision, state.Current.SelectionRevision); Assert.Equal(events, state.Current.EventRevision);
+    }
 
     [Fact]
     public void CanvasProjectsCommittedUnionAndDoesNotPruneOtherParticipants()

@@ -15,9 +15,9 @@ Reviewed by Astra (GPT-6 Astra). Split into two PRs.
 - **One selection + hover state per (document, owner)**, surviving view rebinding. Projected onto every card that has the key,
   so a bar and a table row with the same key brush together. Pruned against the union of card and link keys on update.
   The GH Overlay mirrors the authoritative snapshot (no independent toggling).
-- **Gestures:** plain click toggles a key (unchanged). A small "Clear" control on cards with a selection. Unlinked model clicks pass through (PR B adds linked model clicks).
+- **Gestures:** plain click replaces selection; Shift adds, Ctrl removes, Ctrl+Shift toggles. A small "Clear" control on cards with a selection. Unlinked model clicks pass through (PR B adds linked model clicks).
 - **Highlight:** drawn in the existing session conduit, in the same viewport as the HUD, x-ray (no depth test) before the card bitmaps:
-  hover = thin accent wire, selected = thick accent wire + point markers. Geometry bounds feed `CalculateBoundingBox`.
+  hover = thin accent wire, selected = thick accent wire + translucent faces (dots only for real points). Geometry bounds feed `CalculateBoundingBox`.
 - **Solve lifecycle:** hover never triggers a GH solve. Selection/clear schedule one coalesced, non-recursive solve.
   Publish targets the bound doc/view, not whatever is active when the callback runs.
 - Selection is transient (no undo, not saved in `.gh`).

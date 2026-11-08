@@ -34,7 +34,15 @@ internal static class ArchitectureGroupChecks
         var metric = Cards().Single(c => c.Title == (rooms ? "Rooms below minimum" : "Blocks above 30 m"));
         Require(members.Length == (rooms ? 5 : 2), "Unexpected category membership.");
         Require(metric.Groups.Single().Value.Members.Length == (rooms ? 8 : 2), "Unexpected failure membership.");
-        Call(session, "Select", target.Id, CardMeasure.ClearKey);
+        Call(session, "Select", target.Id, CardMeasure.ClearKey, BrushSelectMode.Toggle);
+        if (rooms)
+        {
+            Call(session, "Select", "model", members[0], BrushSelectMode.Replace);
+            Call(session, "Select", "model", members[1], BrushSelectMode.Add);
+            Require(OverlayManager.Snapshot(owner).SelectedKeys.Order(StringComparer.Ordinal).SequenceEqual(members.Take(2).Order(StringComparer.Ordinal)), "Sequential replace/add failed.");
+            Capture("two-rooms-selected"); CheckFaces(members.Take(2), "two-rooms-selected");
+            Call(session, "Select", "model", CardMeasure.ClearKey, BrushSelectMode.Replace);
+        }
         Call(session, "Sort", table.Id, 1); // contiguous category rows; keep display-order reveal meaningful
         var events = new List<OverlayInteraction>();
         void OnAction(OverlayInteraction action) { if (action.Owner == owner) events.Add(action); }
@@ -42,7 +50,7 @@ internal static class ArchitectureGroupChecks
         try
         {
             Console.WriteLine("Selecting category group.");
-            Call(session, "Select", target.Id, groupKey);
+            Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle);
             Require(events.Count == 1 && events[0].TargetKind == BrushTargetKind.Group && events[0].AffectedKeys.SequenceEqual(members), "Group must emit exactly one member-based event.");
             Require(OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual(members), "Group Selection contains tokens or misses members.");
             var selectedTable = Cards().Single(c => c.Id == table.Id);
@@ -63,16 +71,16 @@ internal static class ArchitectureGroupChecks
                 Capture(name); CheckFaces(members, name);
                 Call(session, "SetHover", null, null);
             }
-            Call(session, "Select", table.Id, members[0]);
+            Call(session, "Select", table.Id, members[0], BrushSelectMode.Toggle);
             Require(Cards().Single(c => c.Id == target.Id).GroupStates[groupKey].IsPartiallySelected, "Partial state missing.");
             if (captureState == "grouppartial") Capture(rooms ? "bedroom-partial" : "residential-partial");
-            Call(session, "Select", target.Id, groupKey); // partial -> full
+            Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle); // partial -> full
             Require(OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual(members), "Partial group click must select all members.");
-            Call(session, "Select", target.Id, groupKey); // full -> empty
+            Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle); // full -> empty
             Require(OverlayManager.Snapshot(owner).SelectedKeys.Length == 0, "Full group click must remove its members.");
-            Call(session, "Select", metric.Id, metric.Keys.Single());
+            Call(session, "Select", metric.Id, metric.Keys.Single(), BrushSelectMode.Toggle);
             Require(OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual(metric.Groups.Single().Value.Members), "Metric body selection did not expand group.");
-            Call(session, "Select", metric.Id, CardMeasure.ClearKey);
+            Call(session, "Select", metric.Id, CardMeasure.ClearKey, BrushSelectMode.Toggle);
             Require(OverlayManager.Snapshot(owner).SelectedKeys.Length == 0, "Metric Clear failed.");
             // Real Canvas host consumes the same incoming grouped CardSpec, while retaining private selection.
             Console.WriteLine("Checking private Canvas host.");
@@ -81,9 +89,9 @@ internal static class ArchitectureGroupChecks
             canvas.Params.Input[0].AddSource(source.Params.Output[0]); gh.NewSolution(false);
             var state = (CanvasCardState)Get(canvas, "State");
             Require(state.Spec?.Groups.ContainsKey(groupKey) == true, "Canvas lost incoming group membership.");
-            state.Activate(groupKey); Require(state.Spec!.GroupStates[groupKey].IsFullySelected, "Canvas group action failed.");
+            state.Activate(groupKey, BrushSelectMode.Toggle); Require(state.Spec!.GroupStates[groupKey].IsFullySelected, "Canvas group action failed.");
             Require(OverlayManager.Snapshot(owner).SelectedKeys.Length == 0, "Local Canvas selection leaked into Overlay.");
-            state.Activate(CardMeasure.ClearKey); gh.RemoveObject(canvas, false);
+            state.Activate(CardMeasure.ClearKey, BrushSelectMode.Toggle); gh.RemoveObject(canvas, false);
             // Update fixture geometry inputs: empty single-branch memberships must survive real GH data access.
             Console.WriteLine("Checking dynamic failure membership.");
             var slider = gh.Objects.OfType<GH_NumberSlider>().Single();

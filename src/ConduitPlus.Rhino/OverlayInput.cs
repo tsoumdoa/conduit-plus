@@ -12,6 +12,7 @@ public static partial class OverlayManager
     private sealed class OverlayMouse : MouseCallback
     {
         private bool _pressed;
+        private (RhinoView View, System.Drawing.Point Point)? _emptyPress;
         public bool Pressed => _pressed;
         public bool Interacting => _pressed || _gesture is not null;
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 34 };
@@ -33,6 +34,7 @@ public static partial class OverlayManager
         public void Reset() { _hoverTimer.Stop(); _pending = null; Cancel(); _pressed = false; }
         private void Cancel()
         {
+            _emptyPress = null;
             var previous = _gesture; _gesture = null;
             previous?.Session.EndLayoutDrag();
             if (previous is not null) CancelBrushHover(previous.Session);
@@ -73,6 +75,7 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
+            if (_emptyPress is { } press && (press.View != e.View || !CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))) _emptyPress = null;
             var underCursor = InView(e.View);
             foreach (var s in Sessions.Values.ToArray())
                 s.Cursor(new(e.ViewportPoint.X, e.ViewportPoint.Y), underCursor.Contains(s));
@@ -133,6 +136,7 @@ public static partial class OverlayManager
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
+            _emptyPress = null;
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
             if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left)
@@ -141,6 +145,7 @@ public static partial class OverlayManager
                 foreach (var session in InView(e.View)) CancelBrushHover(session);
                 return;
             }
+            var mode = BrushSelection.FromModifiers(e.ShiftKeyDown, e.CtrlKeyDown);
             var sessions = InView(e.View);
             var hits = sessions.Select(s => (Session: s, Hit: s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y))).Where(h => h.Hit.HasValue).ToArray();
             foreach (var s in sessions)
@@ -174,22 +179,34 @@ public static partial class OverlayManager
                 }
                 if (!string.IsNullOrEmpty(hit.Value.Key))
                 {
-                    s.Select(hit.Value.CardId, hit.Value.Key);
+                    s.Select(hit.Value.CardId, hit.Value.Key, mode);
                 }
                 return;
             }
             if (Command.InCommand()) return;
             // Clicks always re-pick; the throttled hover may still describe a previous cursor position.
-            if (ModelPicking.Pick(e.View, InView(e.View), e.ViewportPoint) is not { } picked) return;
+            if (ModelPicking.Pick(e.View, sessions, e.ViewportPoint) is not { } picked)
+            {
+                if (!e.ShiftKeyDown && !e.CtrlKeyDown) _emptyPress = (e.View, e.ViewportPoint);
+                return;
+            }
             e.Cancel = true; _pressed = true;
             _hoverTimer.Stop(); _pending = null;
             foreach (var s in Sessions.Values.ToArray())
                 if (s == picked.Session) Hover(s, picked.Hit.Key, true); else ClearHover(s, true);
-            picked.Session.Select("model", picked.Hit.Key);
+            picked.Session.Select("model", picked.Hit.Key, mode);
         }
         protected override void OnMouseUp(MouseCallbackEventArgs e)
         {
             if (e.Button != System.Windows.Forms.MouseButtons.Left) return;
+            var empty = _emptyPress; _emptyPress = null;
+            if (empty is { } press && !Busy && !Command.InCommand() && !e.ShiftKeyDown && !e.CtrlKeyDown &&
+                press.View == e.View && CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))
+            {
+                var sessions = InView(e.View);
+                if (!sessions.Any(s => s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) is not null) && ModelPicking.Pick(e.View, sessions, e.ViewportPoint) is null)
+                    foreach (var session in sessions) session.Select("model", CardMeasure.ClearKey);
+            }
             try
             {
                 if (Valid(e) && _gesture is CardDrag drag)

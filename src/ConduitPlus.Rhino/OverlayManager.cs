@@ -224,14 +224,14 @@ public static partial class OverlayManager
         Change(session, b => b.ClearHover(Origin(session, model)), b => b.ClearHover(Origin(session, model)), clearing: true);
         session.SyncTooltip();
     }
-    internal static void Select(OverlaySession session, string card, string key)
+    internal static void Select(OverlaySession session, string card, string key, BrushSelectMode mode)
     {
         var clear = key == CardMeasure.ClearKey;
         if (!clear && CardMeasure.IsReserved(key)) return;
         var source = new BrushActionSource(session.Owner, card, card == "model" ? "model" : "card");
         var kind = session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
-        if (Change(session, b => clear ? b.Clear(source) : b.Toggle(key, kind, source),
-            b => clear ? b.Clear(source) : b.Toggle(key, kind, source)))
+        if (Change(session, b => clear ? b.Clear(source) : b.Select(key, mode, source, kind),
+            b => clear ? b.Clear(source) : b.Select(key, mode, kind, source)))
         {
             if (DomainSnapshot(session)?.Events.LastOrDefault() is { } action) Interaction?.Invoke(OverlayInteraction.From(action));
         }

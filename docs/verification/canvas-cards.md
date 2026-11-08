@@ -88,9 +88,10 @@ sort/scroll clamping. All six card kinds are rendered through the bounded plan.
    separate branches: the previous image must disappear and only the latter two
    cases should report an error.
 2. On a keyed card, click/release to select and Clear. Drag more than four screen
-   pixels then return and release: no selection should commit. Shift/Ctrl/Alt clicks,
-   middle-button pan, wheel zoom and inactive body/title dragging must remain GH
-   gestures. Two displays of the same source and an Overlay must stay independent.
+   pixels then return and release: no selection should commit. On keyed regions, plain
+   click replaces, Shift adds, Ctrl removes, Ctrl+Shift toggles; repeated Replace/Add/Remove
+   no-ops must not solve. Alt clicks and modified clicks on titles, inactive bodies,
+   sort headers and scrollbars remain GH gestures, as do middle pan and wheel zoom. Two displays of the same source and an Overlay must stay independent.
 3. On a long table, cycle sort, page by clicking the track, and drag its thumb.
    Escape, focus/capture loss, incoming data and document switching must cancel a
    drag and restore its original offset. Check hover details again after sort/page.

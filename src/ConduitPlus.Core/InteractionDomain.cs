@@ -102,6 +102,8 @@ public sealed class InteractionDomain(ScopeToken token) : IDisposable
         return true;
     }
 
+    public bool Select(ParticipantLease lease, string key, BrushSelectMode mode, BrushTargetKind kind, BrushActionSource source) =>
+        Interact(lease, () => _brush.Select(key, mode, source, kind), InteractionChangeKind.Selection);
     public bool Toggle(ParticipantLease lease, string key, BrushTargetKind kind, BrushActionSource source) =>
         Interact(lease, () => _brush.Toggle(key, kind, source), InteractionChangeKind.Selection);
     public bool Clear(ParticipantLease lease, BrushActionSource source) =>

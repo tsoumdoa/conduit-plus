@@ -200,13 +200,13 @@ cards show an error and clear the previous image. Use separate Canvas Cards to
 arrange a dashboard with Grasshopper's normal component layout and groups.
 
 Drag/select the component by its **Canvas Card** title strip, margins or inactive
-body areas. Plain left-click on a keyed Metric body, row/bar/sample/swatch toggles local
-member/group selection; **Clear** removes it. Table column headers cycle ascending, descending
+body areas. Plain left-click on a keyed Metric body, row/bar/sample/swatch replaces
+member/group selection; Shift adds, Ctrl removes, and Ctrl+Shift toggles; **Clear** removes it. Table column headers cycle ascending, descending
 and original order. Drag the scrollbar thumb or click the track to page; the
 **mouse wheel always zooms Grasshopper**. Clicks commit on release within four
 screen pixels. Escape or lost capture cancels a scrollbar drag. GH tooltips show
-the hovered item's details. Modified clicks and middle-button navigation retain
-their normal GH behavior.
+the hovered item's details. Alt clicks, modified clicks outside actionable keyed regions,
+and middle-button navigation retain their normal GH behavior.
 
 Unwired Canvas Cards have private, transient selection, sort and scroll state.
 State survives data updates (with keys pruned and offsets clamped), resets when
@@ -310,9 +310,11 @@ unless explicitly connected to the same Scope.
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
   same key and draw linked geometry in a thin
-  accent wire with translucent faces for surface geometry. Click toggles selection,
-  drawing stronger translucent faces, thicker x-ray wires and point
-  markers, also in captures. **Clear** in a keyed card's header clears that
+  accent wire with translucent faces for surface geometry. Plain click replaces selection;
+  Shift adds, Ctrl removes, and Ctrl+Shift toggles. Selected geometry draws stronger
+  translucent faces and thicker x-ray wires, also in captures. Only real point geometry
+  draws point dots. Alt does not change viewport selection mode. Plain empty viewport
+  clicks clear selection on release within four pixels; drags and Shift/Ctrl clicks retain it. **Clear** in a keyed card's header clears that
   owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.
   Cards take priority; other model clicks pass through to Rhino. Model picking
   pauses during Rhino commands and uses a six-pixel tolerance with hover near 30 Hz.

@@ -62,7 +62,7 @@ internal static class ExportChecks
                 var tooltip = RasterDrawing.RenderTooltip(["M04", "Tooltip export sentinel"], theme, dpi);
                 Field(session, "_tooltipBitmap", tooltip); Field(session, "_tooltipDisplay", new DisplayBitmap(tooltip)); Field(session, "_tooltipReady", true);
             }
-            if (state == "selected") Call(session, "Select", "model", "M04");
+            if (state == "selected") Call(session, "Select", "model", "M04", BrushSelectMode.Toggle);
             Console.WriteLine($"Capturing {state} state.");
             var capture = Capture(doc, view, session, cards, scale, compactOutput);
             File.WriteAllText(Path.Combine(output, "compact-capture-check.json"), CardJson.Serialize(new { state, capture, selected = OverlayManager.Snapshot(owner).SelectedKeys }));
