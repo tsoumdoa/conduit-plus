@@ -19,4 +19,3 @@ public class InputOptionsTests
         Assert.All(InputOptions.Themes.Skip(1), o => Assert.True(o.Matches(o.Value!.ToLowerInvariant())));
     }
 }
-
