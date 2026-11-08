@@ -1,69 +1,40 @@
-# Conduit+ next steps (2026-11-07)
+# Conduit+ next steps (2026-11-08)
 
-The MVP roadmap is done and merged (PRs #5–#10), and the owner tested it in Rhino 8: it works well.
+The MVP roadmap (PRs #5–#10) and the post-MVP work (PRs #13–#20) are merged. The owner tested the MVP in Rhino 8: it works well. The post-MVP work has automated and headless RhinoCore checks only; there is no recorded test in normal Rhino yet.
 This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `docs/IDEAS.md` the longer-term ideas.
 
-## Canvas Card PR1 (implemented in this worktree; awaiting review/integration)
-- One measured card per GH canvas component, six existing kinds, custom attributes,
-  bounded raster cache, shared zoom-settle scheduler and synchronous GH image export.
-- Local keyed selection/Clear, table sorting/scrollbar and GH hover tooltips; no
-  interaction solves, wheel interception or implicit sharing with Overlay.
-- Persisted per-component theme menu with undo, using the shared Core presets.
-  Auto (new-component default) follows Rhino's light/dark UI as Paper/Night without
-  a solve; explicit Paper/Smoke/Blueprint choices and legacy no-theme files are preserved.
-- Build and Core/source-linked GDI tests cover transforms, actual allocation bounds,
-  budget sharing/LRU, revision/theme invalidation and local state reconciliation.
-- Before merge, reviewing agent installs from the integration checkout and runs the
-  [live verification checklist](verification/canvas-cards.md): GH drag/select
-  precedence, DPI/zoom, disabled/hidden states, undo/reload, export and cache/GDI
-  lifetime. These GUI checks are still pending.
-- Deferred: boards, resize and wheel interception. B2 now implements explicit
-  cross-host Scope and the appended Canvas Selection output; Canvas Events remain deferred.
-
 ## What's in main now
+Version is still 0.1.0. Last recorded result: Debug build with 0 warnings, 255 tests passing (#20).
+
 | Area | What works |
 |---|---|
-| Cards | Metric, Bar, Table (scroll, sortable columns), Line, Text, Legend (categorical or gradient) |
+| Cards | Metric (Decimals), Bar (per-bar Colors), Table (scroll, sortable columns, Width, reveals a newly selected row), Line, Text, Legend (categorical or gradient) |
+| Canvas Card | Shows one card live on the GH canvas, like a Panel; local sort, scrollbar, selection/Clear and tooltips; GH image export. Deferred: boards, resize, wheel scrolling, Canvas Events |
 | Themes | Auto, Paper, Night, Smoke and Blueprint; new components default to Auto, missing legacy saved themes to Paper; optional Overlay Theme input or saved, undoable menu; capture/PDF follow the resolved theme |
-| Linking | Link component; hover/click a card ↔ the member lights up in the model (both directions); selection shared across cards; Clear |
+| Linking | Link component; hover/click a card ↔ the member lights up in the model (both directions), with shaded faces; selection shared across cards; Clear |
+| Group keys | Bar, categorical Legend and Metric take Members, so one click selects a whole group; partial selection shows a dash |
+| Scope | Wire one Scope into Canvas Cards and Overlays to share selection and hover between them; unwired displays stay private |
 | Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
-| Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events |
+| Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events; Canvas Card outputs Selection |
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
 | Examples | Structural dashboard, room area check and massing/zoning with keyed demo geometry |
 
-## Group keys A2 (implemented in this worktree; awaiting review)
+## Sample files for checking
+All three are in `examples/`. Demo numbers and limits are fictitious. The files save card positions but not the Rhino camera, so set the view yourself and use a large viewport.
 
-- Appended Members to Bar/categorical Legend, Key + Members to Metric. Existing
-  GUIDs and input order retained; empty branches and path/item diagnostics verified.
-- Shared painter shows effective-hover outlines, direct light fills, strong full
-  selection and partial dashes across Paper/Night/Smoke/Blueprint/Auto-resolved.
-- Overlay highlights effective member sets; one event per group action includes
-  targetKind/affectedKeys/selectedKeys. Sorted table reveal occurs once per action.
-- Room/Massing examples wire dynamic category/failure membership. Private Canvas
-  uses the same semantics. Scope/shared selection is deliberately out of scope.
-- Debug build: zero warnings/errors; 233 tests passed. Both architectural files
-  regenerated and all three examples reopened/solved without warnings/errors.
-  Group PNGs and pixel-identical hover omission checks are under
-  `artifacts/screenshots-groups/`; see [UX notes](ux-notes.md). Normal GUI
-  mouse/DPI/PDF checks remain on the reviewer's live checklist.
+| File | Best for | Setup and what to try |
+|---|---|---|
+| `room-areas.gh` | Canvas Card, Scope, group keys | Metre-unit model, Top view, Zoom Extents. Click Bed 01 in the Canvas table, then its face in Rhino. Click the Bedroom swatch, deselect one room (partial dash), then Clear. Click "Rooms below minimum". Change Plan scale. Sort and scroll each table separately. Switch GH tabs, lock/unlock a display, disconnect Scope. |
+| `massing.gh` | Group keys on 3D blocks, themes | Perspective view, Zoom Extents. Click Residential in the legend or "GFA by use". Click "Blocks above 30 m". Change Extra floors. Click block roofs. Try each theme from Overlay's right-click menu. |
+| `structural-dashboard.gh` | Overlay basics, capture/PDF, legacy files | Change Span and Load. Click a bar or truss member. Sort/scroll the member table and drag cards. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. Last saved before themes existed, so it should open in Paper. |
 
-## Shared selection Scope B2 (implemented; awaiting review)
-
-- Canvas Card and Overlay stage original cards/Link keys through ScopeBinding;
-  solution-end commit reconciles the complete domain union. Rendering remains local.
-- Snapshots repaint both hosts; only selection/event revision changes schedule
-  coalesced output solutions. One reconciliation refresh is allowed, then a warning.
-- Whole-tree token validation, origin-safe hover, local tooltips, transient lifecycle
-  and bound Rhino view/document rules are exercised in the RhinoCore harness.
-- Room example includes Scope + Canvas table. 1× GH export and viewport evidence
-  are under `artifacts/screenshots-scope/`; see the linked verification record.
-- No installation, commit or push by the implementation sub-agent.
+For the full Canvas Card checks, wire each card kind from these files into its own new Canvas Card; the samples only include a Canvas table.
 
 ## Next up (recommended order)
-1. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
-2. **Small fixes the testing will probably ask for** (architectural findings: [ux-notes.md](ux-notes.md); Decimals, row reveal and wheel-hover refresh are implemented)
+1. **Run the live checks in normal Rhino**, using the samples above and the checklists: [Canvas Card](verification/canvas-cards.md#pending-live-rhino-820-checks), [Scope](verification/selection-scope.md), [UX notes](ux-notes.md). Automated hosts ran RhinoCore 8.36, so Rhino 8.20 itself also needs a check.
+2. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
+3. **Small fixes the testing will probably ask for** (open findings: [ux-notes.md](ux-notes.md))
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
-3. **Review/integrate shared selection Scope B2.** Appended Scope inputs and Canvas Selection, broker-backed adapters, shared Events, bounded feedback, lifecycle checks and the room example are implemented. See [verification](verification/selection-scope.md). The implementation is uncommitted for Claude review; reviewer builds/tests and installs. Physical mouse/tab/DPI testing remains for normal Rhino.
 4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
 5. **Release 0.2.0.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
 
@@ -79,6 +50,8 @@ This file is the to-do list from here. `docs/PLAN.md` holds the original plan, `
 - **Export.** PDF of the whole view (model + cards) and a multi-page PDF report (see IDEAS.md).
 
 ## Still unverified / known trade-offs
+- **Mouse gestures on Canvas Cards and Scope.** Drag/select precedence, mouse capture and real GH tab switching were only exercised through API calls in RhinoCore.
+- **Long-session resources.** Whether GDI handles and bitmap memory level off during repeated zooming, replacing inputs and closing documents.
 - **Auto light/dark switching.** Uses RhinoCommon 8.20 `HostUtils.RunningInDarkMode`
   and `RhinoApp.AppSettingsChanged` (verified in the pinned NuGet DLL). Re-resolves
   on Overlay updates and Canvas Card paints too. Live mode changes, undo/reload
