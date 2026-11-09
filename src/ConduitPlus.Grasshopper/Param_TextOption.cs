@@ -11,6 +11,8 @@ public sealed class Param_TextOption : Param_String
     public override Guid ComponentGuid => new("35c52238-41f5-4e49-b891-109d41ab06a2");
     public override GH_Exposure Exposure => GH_Exposure.hidden;
     public IReadOnlyList<InputOption> Options { get; init; } = InputOptions.Slots;
+    /// <summary>True when a wire or a right-click/persistent value supplies this input.</summary>
+    public bool HasValue => SourceCount > 0 || PersistentData.DataCount > 0;
     public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalMenuItems(menu);
