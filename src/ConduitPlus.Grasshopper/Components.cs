@@ -270,12 +270,12 @@ public sealed class OverlayComponent : GH_Component
     private MembershipIndex? _membership;
     private readonly object _publishLock = new();
     private bool _publishScheduled;
-    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled);
+    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled, string? RequestedView);
     private PendingPublish? _pending;
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
     private Bitmap? _icon;
-    public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display")
+    public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active or named Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display")
     {
         ObjectChanged += (_, e) =>
         {
@@ -298,7 +298,12 @@ public sealed class OverlayComponent : GH_Component
     }
     public override bool Read(GH_IReader reader)
     {
-        var result = base.Read(reader);
+        var removed = new List<(IGH_Param Param, int Index)>();
+        for (var i = Params.Input.Count - 1; i >= 0 && !reader.ChunkExists("param_input", i); i--)
+        { var parameter = Params.Input[i]; removed.Add((parameter, i)); Params.UnregisterInputParameter(parameter, false); }
+        bool result;
+        try { result = base.Read(reader); }
+        finally { foreach (var entry in removed.OrderBy(e => e.Index)) Params.RegisterInputParam(entry.Param, entry.Index); }
         var json = ""; var found = reader.TryGetString("ConduitPlus.Layout", ref json);
         lock (_publishLock) _layout = LayoutEditing.Read(json, out _layoutWarning);
         _layoutWarning |= !found && reader.ItemExists("ConduitPlus.Layout");
@@ -426,6 +431,41 @@ public sealed class OverlayComponent : GH_Component
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
         p.AddParameter(new Param_TextOption { Options = InputOptions.Themes }, "Theme", "T", "Right-click to choose, or wire Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A set value overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;
+        p.AddParameter(new Param_TextOption { OptionsProvider = ViewOptions }, "View", "V", "Active viewport or a named standard Rhino viewport", GH_ParamAccess.item); p[4].Optional = true;
+    }
+    private readonly Dictionary<string, (GH_RuntimeMessageLevel Level, string Text)> _notices = [];
+    private readonly List<(GH_RuntimeMessageLevel Level, string Text)> _solveMessages = [];
+    private bool _replaying;
+    private GH_Document? _noticeDocument;
+    public override void AddRuntimeMessage(GH_RuntimeMessageLevel level, string text)
+    { if (!_replaying) _solveMessages.Add((level, text)); base.AddRuntimeMessage(level, text); }
+    public override void ClearData() { _solveMessages.Clear(); base.ClearData(); }
+    private void ReplayNotices()
+    {
+        _replaying = true;
+        try { ClearRuntimeMessages(); foreach (var message in _solveMessages.Concat(_notices.Values)) base.AddRuntimeMessage(message.Level, message.Text); }
+        finally { _replaying = false; }
+        global::Grasshopper.Instances.ActiveCanvas?.Invalidate();
+    }
+    private void NoticeSolutionEnd(object sender, GH_SolutionEventArgs e)
+    { if (_noticeDocument is { } doc) doc.SolutionEnd -= NoticeSolutionEnd; _noticeDocument = null; ReplayNotices(); }
+    private void SetNotice(string kind, GH_RuntimeMessageLevel level, string? text)
+    {
+        if (text is null) _notices.Remove(kind); else _notices[kind] = (level, text);
+        var doc = OnPingDocument();
+        if (doc?.SolutionState == GH_ProcessStep.Process)
+        { if (_noticeDocument is null) { _noticeDocument = doc; doc.SolutionEnd += NoticeSolutionEnd; } }
+        else ReplayNotices();
+    }
+    protected override void AfterSolveInstance() { base.AfterSolveInstance(); ReplayNotices(); }
+    private string? _requestedView;
+    private IReadOnlyList<InputOption> ViewOptions()
+    {
+        var binding = OverlayManager.Binding(InstanceGuid);
+        var doc = binding is { } b ? RhinoDoc.FromRuntimeSerialNumber(b.DocumentSerial) : RhinoDoc.ActiveDoc;
+        var names = (doc?.Views.GetStandardRhinoViews() ?? []).Select(v => v.MainViewport.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (_requestedView is { } stored && !names.Contains(stored, StringComparer.OrdinalIgnoreCase)) names.Add(stored);
+        return new[] { new InputOption("Active viewport", null) }.Concat(names.Select(n => new InputOption(n, n))).ToArray();
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     { p.AddTextParameter("Selection", "S", "Clicked member keys", GH_ParamAccess.list); p.AddTextParameter("Events", "E", "Last 32 click events as JSON", GH_ParamAccess.list); }
@@ -437,6 +477,7 @@ public sealed class OverlayComponent : GH_Component
         _active = true; _generation++;
         OverlayManager.Interaction += OnInteraction; OverlayManager.LayoutProposed += OnLayoutProposal;
         OverlayManager.BoundDocumentClosed += OnBoundDocumentClosed;
+        OverlayManager.ViewsChanged += OnViewsChanged;
         if (_scope is { IsValid: true } && _lastPublish is { } last)
         { _pending = last with { Interaction = true, Generation = _generation }; Publish(); }
     }
@@ -452,12 +493,21 @@ public sealed class OverlayComponent : GH_Component
     }
     private void Deactivate(bool clear)
     {
+        if (_noticeDocument is { } noticeDoc) noticeDoc.SolutionEnd -= NoticeSolutionEnd; _noticeDocument = null;
         _active = false; _generation++;
         lock (_publishLock) { _pending = null; _publishScheduled = false; _solveScheduled = false; _interactionSolve = false; }
         OverlayManager.Interaction -= OnInteraction; OverlayManager.LayoutProposed -= OnLayoutProposal;
         OverlayManager.BoundDocumentClosed -= OnBoundDocumentClosed;
+        OverlayManager.ViewsChanged -= OnViewsChanged;
         if (clear) { DetachScope(); _lastPublish = null; _events.Clear(); }
         OverlayManager.Remove(InstanceGuid);
+    }
+    private void OnViewsChanged()
+    {
+        if (!_active || _rhinoSuspended || Locked || _lastPublish is not { RequestedView: not null } last) return;
+        // A queued publication has newer data and resolves the name itself.
+        lock (_publishLock) { if (_pending is not null) return; _pending = last with { Interaction = true, Generation = _generation, Theme = _selectedTheme }; }
+        Publish();
     }
     private void OnBoundDocumentClosed(Guid owner)
     {
@@ -511,6 +561,8 @@ public sealed class OverlayComponent : GH_Component
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
+        string requested = ""; da.GetData(4, ref requested); _requestedView = ViewportNames.Requested(requested);
+        if (Params.Input[4].VolatileData.DataCount > 1) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Several View values supplied; using the last.");
         if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         lock (_publishLock) _solveScheduled = false;
         var theme = _menuTheme;
@@ -578,7 +630,7 @@ public sealed class OverlayComponent : GH_Component
         var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid);
+            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid, _requestedView);
             _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;
@@ -597,18 +649,27 @@ public sealed class OverlayComponent : GH_Component
         if (!_active || pending is null || pending.Generation != _generation || Locked) return;
         try
         {
-            if (pending.Cards.Length == 0) { OverlayManager.Remove(InstanceGuid); _lastPublish = null; return; }
+            if (pending.Cards.Length == 0) { SetNotice("view", GH_RuntimeMessageLevel.Warning, null); OverlayManager.Remove(InstanceGuid); _lastPublish = null; return; }
             // A closed binding must not redirect a queued interaction to another active document.
             if (pending.Interaction && (pending.DocumentSerial is null || _rhinoSuspended)) return;
             var doc = pending.DocumentSerial is { } serial ? RhinoDoc.FromRuntimeSerialNumber(serial) : RhinoDoc.ActiveDoc;
             var view = pending.Interaction ? pending.ViewId is { } id ? doc?.Views.Find(id) : null : doc?.Views.ActiveView;
+            if (doc is not null && pending.RequestedView is { } name)
+            {
+                var resolved = ViewportNames.Resolve(doc.Views.GetStandardRhinoViews().Select(v => (v.MainViewport.Id, v.MainViewport.Name)), name, pending.ViewId);
+                view = resolved.Id is { } target ? doc.Views.Find(target) : null;
+                SetNotice("view", GH_RuntimeMessageLevel.Warning, view is null ? $"View \"{name}\" isn't open, so nothing is drawn. Open it or pick another View." : resolved.Duplicate ? $"More than one viewport is named \"{name}\". Drawing in one of them." : null);
+                if (view is null) OverlayManager.Detach(doc, InstanceGuid);
+            }
+            else SetNotice("view", GH_RuntimeMessageLevel.Warning, null);
+            if (doc is not null) _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view?.MainViewport.Id };
             if (doc is not null && view is not null)
             {
                 lock (_publishLock)
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout, pending.Theme, pending.Scope, pending.BrushEnabled);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout, _selectedTheme, pending.Scope, pending.BrushEnabled);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }

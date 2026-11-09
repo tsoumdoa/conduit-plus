@@ -10,7 +10,7 @@ public static partial class OverlayManager
 {
     // One session per (document, view, owner): two Overlay components on the same view coexist instead of evicting each other.
     private static readonly Dictionary<(uint Doc, Guid View, Guid Owner), OverlaySession> Sessions = [];
-    private sealed class OwnerState(uint document, Guid view)
+    private sealed class OwnerState(uint document, Guid? view)
     {
         public uint DocumentSerial { get; } = document;
         public Guid? ViewId { get; set; } = view;
@@ -23,6 +23,19 @@ public static partial class OverlayManager
         public CardSpec[] Originals { get; set; } = [];
     }
     private static long _gestureGeneration;
+    public static event Action? ViewsChanged;
+    private static bool _viewsPending;
+    private static string _viewSnapshot = "";
+    private static string ViewSnapshot() => string.Join(";", RhinoDoc.OpenDocuments().SelectMany(d => d.Views.GetStandardRhinoViews().Select(v => $"{d.RuntimeSerialNumber}:{v.MainViewport.Id}:{v.MainViewport.Name}")).OrderBy(v => v, StringComparer.Ordinal));
+    private static void ViewChanged(object? sender, ViewEventArgs e)
+    { if (!_started || _viewsPending) return; _viewsPending = true; RhinoApp.Idle += ViewsIdle; }
+    private static void ViewsIdle(object? sender, EventArgs e)
+    {
+        RhinoApp.Idle -= ViewsIdle; _viewsPending = false;
+        if (!_started) return;
+        var snapshot = ViewSnapshot(); if (snapshot == _viewSnapshot) return;
+        _viewSnapshot = snapshot; ViewsChanged?.Invoke();
+    }
     public static event Action<Guid>? BoundDocumentClosed;
     private static readonly object StateLock = new();
     private static readonly Dictionary<(uint Doc, Guid Owner), OwnerState> States = [];
@@ -43,6 +56,8 @@ public static partial class OverlayManager
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
+        RhinoView.Create += ViewChanged; RhinoView.Rename += ViewChanged; RhinoView.Modified += ViewChanged;
+        _viewSnapshot = ViewSnapshot();
         RhinoApp.AppSettingsChanged += AppearanceChanged;
         RhinoApp.Closing += AppClosing;
         global::Rhino.Commands.Command.BeginCommand += CommandStarted;
@@ -56,6 +71,8 @@ public static partial class OverlayManager
         _started = false;
         _stopping = true;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
+        RhinoView.Create -= ViewChanged; RhinoView.Rename -= ViewChanged; RhinoView.Modified -= ViewChanged;
+        RhinoApp.Idle -= ViewsIdle; _viewsPending = false;
         RhinoApp.AppSettingsChanged -= AppearanceChanged;
         RhinoApp.Closing -= AppClosing;
         global::Rhino.Commands.Command.BeginCommand -= CommandStarted;
@@ -110,6 +127,7 @@ public static partial class OverlayManager
     }
     private static void ViewDestroyed(object? sender, ViewEventArgs e)
     {
+        ViewChanged(sender, e);
         var id = e.View.MainViewport.Id;
         RemoveWhere(k => k.View == id);
         lock (StateLock)
@@ -160,6 +178,20 @@ public static partial class OverlayManager
             session.Update(session.Cards, theme: theme);
             session.View.Redraw();
         }
+    }
+    public static void Detach(RhinoDoc doc, Guid owner)
+    {
+        UiContext.Ensure(); Start();
+        if (!_started || doc.IsClosing || RhinoDoc.FromRuntimeSerialNumber(doc.RuntimeSerialNumber) is null) return;
+        lock (StateLock)
+        {
+            var key = (doc.RuntimeSerialNumber, owner);
+            if (!States.TryGetValue(key, out var state)) States.Add(key, state = new(doc.RuntimeSerialNumber, null));
+            state.ViewId = null; Bindings[owner] = state;
+        }
+        var views = Sessions.Values.Where(s => s.Owner == owner).Select(s => s.View).Distinct().ToArray();
+        RemoveWhere(k => k.Owner == owner);
+        foreach (var view in views) view.Redraw();
     }
     public static void Remove(Guid owner)
     {

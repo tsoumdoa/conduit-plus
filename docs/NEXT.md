@@ -28,7 +28,7 @@ All three are in `examples/`. Demo numbers and limits are fictitious. The files 
 |---|---|---|
 | `room-areas.gh` | Canvas Card, Scope, group keys | Metre-unit model, Top view, Zoom Extents. Click Bed 01 in the Canvas table, then its face in Rhino. Shift+click a second room, Ctrl+click to remove it, then click empty space to clear. Click the Bedroom swatch, Ctrl+click one room (partial dash), then Clear. Click "Rooms below minimum". Change Plan scale. Sort and scroll each table separately. Switch GH tabs, lock/unlock a display, disconnect Scope. |
 | `massing.gh` | Group keys on 3D blocks, themes | Perspective view, Zoom Extents. Click Residential in the legend or "GFA by use". Click "Blocks above 30 m". Change Extra floors. Click block roofs. Try each theme from Overlay's right-click menu. |
-| `structural-dashboard.gh` | Overlay basics, capture/PDF | Change Span and Load. Click a bar or truss member. Sort/scroll the member table and drag cards. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. To check a file from before themes existed, use this file from commit `46de969`: it should open in Paper, and Grasshopper reports missing input chunks because it predates later inputs. |
+| `structural-dashboard.gh` | Overlay basics, capture/PDF | Change Span and Load. Click a bar or truss member. Sort/scroll the member table and drag cards. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. To check a file from before themes existed, use this file from commit `46de969`: it should open in Paper, with no missing-input archive errors. |
 
 For the full Canvas Card checks, wire each card kind from these files into its own new Canvas Card; the samples only include a Canvas table.
 
@@ -45,7 +45,7 @@ For the full Canvas Card checks, wire each card kind from these files into its o
 - **Inspector.** A docked panel for card settings and accessible controls.
 - **More cards.** Histogram, Scatter, Data quality.
 - **Peek and Recipes.** One-click dashboards.
-- **Multiple viewports.** Today an Overlay follows the active view only.
+- **Several viewports per Overlay.** One Overlay drawing to more than one viewport at once; View picks one today.
 - **Gradient-aware Legend.** Reads a GH Gradient wire.
 - **Card resize.**
 - **Space between owners.** Two Overlay components currently overlap in the same slot.
