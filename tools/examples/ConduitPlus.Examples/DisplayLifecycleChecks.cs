@@ -14,6 +14,12 @@ internal static class DisplayLifecycleChecks
     private static bool Started => (bool)Manager.GetField("_started", Internal)!.GetValue(null)!;
     private static void Require(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
+    /// <summary>Grasshopper shows these in its Archive Messages dialog, e.g. when a saved component predates an input.</summary>
+    internal static void ArchiveClean(GH_IO.Serialization.GH_Archive archive, string path)
+    {
+        var errors = archive.Messages.Where(m => m.Type == GH_IO.Serialization.GH_Message_Type.error).Select(m => m.Message).ToArray();
+        Require(errors.Length == 0, $"{path} opens with archive errors; regenerate it with Build-Examples.ps1:\n{string.Join("\n", errors)}");
+    }
     internal static void DefinitionSolved()
     {
         // Run before the harness's capture/PDF command checks, which legitimately load the RHP.

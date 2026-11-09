@@ -40,6 +40,7 @@ internal static class Dashboard
         using var definition = new GH_Document();
         var archive = new GH_Archive();
         Require(archive.ReadFromFile(path) && archive.ExtractObject(definition, "Definition"), "Cannot reopen definition.");
+        DisplayLifecycleChecks.ArchiveClean(archive, path);
         Instances.DocumentServer.AddDocument(definition); definition.Enabled = true; GH_Document.EnableSolutions = true;
         try
         {

@@ -26,6 +26,7 @@ internal static class ArchitectureDashboard
             if (!args.Contains("--verify-only")) Build(path, rooms);
             using var gh = new GH_Document(); var archive = new GH_Archive();
             Require(archive.ReadFromFile(path) && archive.ExtractObject(gh, "Definition"), "Cannot reopen " + path);
+            DisplayLifecycleChecks.ArchiveClean(archive, path);
             Instances.DocumentServer.AddDocument(gh); gh.Enabled = true; GH_Document.EnableSolutions = true;
             try
             {
