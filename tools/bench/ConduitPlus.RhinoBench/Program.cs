@@ -57,7 +57,7 @@ internal static class Program
         }
         finally
         {
-            assembly.GetType("ConduitPlus.Rhino.OverlayManager")!.GetMethod("Stop", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, null);
+            AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(pluginDirectory, "ConduitPlus.Display.dll")).GetType("ConduitPlus.Rhino.OverlayManager")!.GetMethod("Stop", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, null);
             view.Close();
             core.DoEvents();
             Console.WriteLine("Overlay and floating viewport disposed; shutting down RhinoCore.");

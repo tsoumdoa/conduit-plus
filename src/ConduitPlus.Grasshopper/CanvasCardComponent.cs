@@ -31,6 +31,7 @@ public sealed class CanvasCardComponent : GH_Component
     private bool _privateScheduled;
     internal bool BrushEnabled => _scopeValid && (_scope?.IsActive ?? true);
     public CanvasCardComponent() : base("Canvas Card", "Canvas Card", "Display exactly one Conduit+ card on the Grasshopper canvas", "Conduit+", "Display") {
+        // Grasshopper constructs every component while scanning plug-ins, so this must not start Display's global hooks.
         GdiCanvas.RegisterTextMetrics();
         ObjectChanged += (_, e) =>
         {
@@ -170,7 +171,11 @@ public sealed class CanvasCardComponent : GH_Component
         if (!Theme.TryGet(_themeName, out _))
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Theme '{_themeName}' is unavailable; using Paper.");
     }
-    private void MeasureBody() => BodySize = State.Spec is { } spec ? CardMeasure.Measure(spec, CardTheme) : new(280, 92);
+    private void MeasureBody()
+    {
+        OverlayManager.Start();
+        BodySize = State.Spec is { } spec ? CardMeasure.Measure(spec, CardTheme) : new(280, 92);
+    }
     public override bool Write(GH_IWriter writer) { writer.SetString("ConduitPlus.CanvasTheme", _themeName); return base.Write(writer); }
     public override bool Read(GH_IReader reader)
     {
@@ -240,6 +245,7 @@ public sealed class CanvasCardComponent : GH_Component
     private void Activate()
     {
         if (_active) return;
+        OverlayManager.Start();
         _generation++; _active = true;
         RhinoApp.AppSettingsChanged += AppearanceChanged;
         AppearanceChanged(this, EventArgs.Empty);

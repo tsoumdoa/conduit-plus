@@ -432,6 +432,7 @@ public sealed class OverlayComponent : GH_Component
     private void Activate()
     {
         if (_active) return;
+        OverlayManager.Start();
         _active = true; _generation++;
         OverlayManager.Interaction += OnInteraction; OverlayManager.LayoutProposed += OnLayoutProposal;
         OverlayManager.BoundDocumentClosed += OnBoundDocumentClosed;

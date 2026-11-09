@@ -196,7 +196,7 @@ selection stays private until the separate Scope work is integrated.
 - Grasshopper: `DemoArchitectureComponents.cs`, `Components.cs` in
   `src/ConduitPlus.Grasshopper`. New fixed component GUIDs end in `ae210` (Rooms)
   and `ae211` (Massing); existing GUIDs and input ordering are preserved.
-- Rhino: `Link.cs`, `OverlaySession.cs`, `OverlayInput.cs` in `src/ConduitPlus.Rhino`.
+- Rhino: `Link.cs`, `OverlaySession.cs`, `OverlayInput.cs` in `src/ConduitPlus.Display`.
   `ModelPicking.cs`/`LinkPicking.cs` needed no algorithm changes.
 - Generator: `tools/examples/Build-Examples.ps1` and `Dashboard.cs`,
   `ArchitectureDashboard.cs`, `ExportChecks.cs` in `tools/examples/ConduitPlus.Examples`.

@@ -28,34 +28,58 @@ public static partial class OverlayManager
     private static readonly Dictionary<(uint Doc, Guid Owner), OwnerState> States = [];
     private static readonly Dictionary<Guid, OwnerState> Bindings = [];
     private static readonly OverlayMouse Mouse = new();
-    private static bool _started;
+    private static bool _started, _stopping;
     public static event Action<OverlayInteraction>? Interaction;
     public static event Action<LayoutProposal>? LayoutProposed;
     public static bool Busy { get; internal set; }
     internal static void Start()
     {
-        if (_started) return;
+        // GH's normal solve/document callbacks are on the UI thread; other hosts may race
+        // them. Marshal synchronously before text measurement, without holding StateLock.
+        // All lifecycle mutations are then serialized on Rhino's UI thread.
+        if (RhinoApp.InvokeRequired) { RhinoApp.InvokeOnUiThread((Action)Start); return; }
+        if (_started || _stopping || RhinoApp.IsClosing) return;
         ConduitPlus.Rendering.GdiCanvas.RegisterTextMetrics();
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
         RhinoView.Destroy += ViewDestroyed;
         RhinoApp.AppSettingsChanged += AppearanceChanged;
+        RhinoApp.Closing += AppClosing;
         global::Rhino.Commands.Command.BeginCommand += CommandStarted;
         WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
     internal static void Stop()
     {
-        Mouse.Reset();
-        Mouse.Enabled = false;
+        if (RhinoApp.InvokeRequired) { RhinoApp.InvokeOnUiThread((Action)Stop); return; }
+        if (!_started) return;
         _started = false;
+        _stopping = true;
         RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
         RhinoApp.AppSettingsChanged -= AppearanceChanged;
+        RhinoApp.Closing -= AppClosing;
         global::Rhino.Commands.Command.BeginCommand -= CommandStarted;
-        WheelHook.Uninstall();
-        foreach (var s in Sessions.Values) s.Dispose(); Sessions.Clear();
-        lock (StateLock) { States.Clear(); Bindings.Clear(); }
+        try
+        {
+            // A shutdown callback must not prevent the remaining native resources being released.
+            Cleanup(Mouse.Reset);
+            Cleanup(() => Mouse.Enabled = false);
+            Cleanup(WheelHook.Uninstall);
+            var sessions = Sessions.Values.ToArray(); Sessions.Clear();
+            foreach (var s in sessions) Cleanup(s.Dispose);
+            lock (StateLock) { States.Clear(); Bindings.Clear(); }
+            Busy = false;
+        }
+        finally { _stopping = false; }
+
+        static void Cleanup(Action action)
+        {
+            try { action(); }
+            catch (Exception e) { System.Diagnostics.Debug.WriteLine($"Conduit+ shutdown: {e}"); }
+        }
     }
+    // No sticky flag: if the user cancels the close, the next first-use call restarts Display.
+    private static void AppClosing(object? sender, EventArgs e) => Stop();
     private static void CommandStarted(object? sender, global::Rhino.Commands.CommandEventArgs e)
     {
         foreach (var session in Sessions.Values.ToArray()) { session.HideTooltip(); CancelBrushHover(session); }
@@ -95,6 +119,8 @@ public static partial class OverlayManager
     {
         UiContext.Ensure();
         Start();
+        if (!_started || doc.IsClosing || RhinoDoc.FromRuntimeSerialNumber(doc.RuntimeSerialNumber) is null)
+            throw new ObjectDisposedException(nameof(doc));
         var key = (doc.RuntimeSerialNumber, view.MainViewport.Id, owner ?? Guid.Empty);
         if (!Sessions.TryGetValue(key, out var s)) Sessions.Add(key, s = new OverlaySession(doc, view, key.Item3));
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
@@ -103,6 +129,9 @@ public static partial class OverlayManager
     public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true)
     {
         UiContext.Ensure();
+        Start();
+        // Subscribe before retaining any binding, and never recreate state for a closed document.
+        if (!_started || doc.IsClosing || RhinoDoc.FromRuntimeSerialNumber(doc.RuntimeSerialNumber) is null) return;
         var specs = cards.ToArray(); var linked = links?.ToArray() ?? [];
         foreach (var c in specs) c.Validate();
         lock (StateLock)
@@ -125,6 +154,7 @@ public static partial class OverlayManager
     public static void ReplaceTheme(Guid owner, Theme theme)
     {
         UiContext.Ensure();
+        Start();
         foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
         {
             session.Update(session.Cards, theme: theme);
@@ -140,13 +170,14 @@ public static partial class OverlayManager
         foreach (var view in views) view.Redraw();
     }
     public static (uint DocumentSerial, Guid? ViewId)? Binding(Guid owner)
-    { lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? (state.DocumentSerial, state.ViewId) : null; }
+    { Start(); lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? (state.DocumentSerial, state.ViewId) : null; }
     internal static Dictionary<string, LayoutOverride> LayoutSnapshot(OverlaySession session)
     { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? new(state.Layout, StringComparer.Ordinal) : []; }
     public static void ReplaceLayout(Guid owner, IReadOnlyDictionary<string, LayoutOverride> layout) => ReplaceLayout(owner, layout, null);
     private static void ReplaceLayout(Guid owner, IReadOnlyDictionary<string, LayoutOverride> layout, uint? documentSerial)
     {
         UiContext.Ensure();
+        Start();
         lock (StateLock)
             foreach (var state in States.Where(p => p.Key.Owner == owner && (!documentSerial.HasValue || p.Key.Doc == documentSerial)).Select(p => p.Value)) state.Layout = new(layout, StringComparer.Ordinal);
         foreach (var session in Sessions.Values.Where(s => s.Owner == owner && (!documentSerial.HasValue || s.Document.RuntimeSerialNumber == documentSerial)).ToArray())
@@ -179,10 +210,11 @@ public static partial class OverlayManager
     private static BrushSnapshot Snapshot(OwnerState state) => new(state.Current.SelectedKeys.ToArray(), state.Current.HoverKey)
     { HoveredKeys = state.Current.HoveredKeys.ToArray(), HoverOrigin = state.Current.HoverOrigin, HoverTargetKind = state.Current.HoverTargetKind };
     public static BrushSnapshot Snapshot(Guid owner)
-    { lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? Snapshot(state) : new([], null); }
+    { Start(); lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? Snapshot(state) : new([], null); }
     public static void SetInteractionEnabled(Guid owner, bool enabled)
     {
         UiContext.Ensure();
+        Start();
         lock (StateLock)
             if (Bindings.TryGetValue(owner, out var state)) state.Enabled = enabled;
         if (!enabled)
@@ -192,6 +224,7 @@ public static partial class OverlayManager
     public static void RefreshDomain(Guid owner)
     {
         UiContext.Ensure();
+        Start();
         foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray()) session.RefreshInteraction();
     }
     internal static CardSpec[] Project(OverlaySession session, CardSpec[] cards)

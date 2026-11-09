@@ -51,8 +51,8 @@ Key source entry points:
 
 - [Components](../../src/ConduitPlus.Grasshopper/Components.cs): card specs and Overlay publishing.
 - [CardPainter](../../src/ConduitPlus.Core/CardPainter.cs), [LineCardPainter](../../src/ConduitPlus.Core/LineCardPainter.cs), [ICanvas2D](../../src/ConduitPlus.Core/Drawing.cs): shared artwork and geometry.
-- [RasterCardRenderer](../../src/ConduitPlus.Rhino/Rendering/RasterCardRenderer.cs), [RasterDrawing](../../src/ConduitPlus.Rhino/Rendering/RasterDrawing.cs), [GdiCanvas](../../src/ConduitPlus.Rhino/Rendering/GdiCanvas.cs): rasterization and cache.
-- [OverlaySession](../../src/ConduitPlus.Rhino/OverlaySession.cs), [OverlayManager](../../src/ConduitPlus.Rhino/OverlayManager.cs): session state, input and viewport composition.
+- [RasterCardRenderer](../../src/ConduitPlus.Display/Rendering/RasterCardRenderer.cs), [RasterDrawing](../../src/ConduitPlus.Display/Rendering/RasterDrawing.cs), [GdiCanvas](../../src/ConduitPlus.Display/Rendering/GdiCanvas.cs): rasterization and cache.
+- [OverlaySession](../../src/ConduitPlus.Display/OverlaySession.cs), [OverlayManager](../../src/ConduitPlus.Display/OverlayManager.cs): session state, input and viewport composition.
 - [PdfCommand](../../src/ConduitPlus.Rhino/PdfCommand.cs): vector export branch.
 
 ## What happened to HTML/JS?

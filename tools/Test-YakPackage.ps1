@@ -13,7 +13,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Package = (Resolve-Path -LiteralPath $Package).Path
 $expectedName = "conduit-plus-$Version-rh8_20-win.yak"
 if ([IO.Path]::GetFileName($Package) -cne $expectedName) { throw "Expected Windows/Rhino 8.20 archive name $expectedName" }
-$required = @('ConduitPlus.Core.dll', 'ConduitPlus.Grasshopper.gha', 'ConduitPlus.Rhino.rhp', 'LICENSE', 'README.md', 'icon.png', 'manifest.yml')
+$required = @('ConduitPlus.Core.dll', 'ConduitPlus.Display.dll', 'ConduitPlus.Grasshopper.gha', 'ConduitPlus.Rhino.rhp', 'LICENSE', 'README.md', 'icon.png', 'manifest.yml')
 $zip = [IO.Compression.ZipFile]::OpenRead($Package)
 try {
     $names = @($zip.Entries | ForEach-Object FullName)
@@ -35,7 +35,7 @@ try {
             }
         }
         # Yak normalizes YAML and adds platform metadata when building. Validate that
-        # manifest above; byte-compare the six payload files rather than its template.
+        # manifest above; byte-compare the seven payload files rather than its template.
         if ($SourceDirectory -and $entry.FullName -ne 'manifest.yml') {
             $source = Join-Path $SourceDirectory $entry.FullName
             $stream = $entry.Open()

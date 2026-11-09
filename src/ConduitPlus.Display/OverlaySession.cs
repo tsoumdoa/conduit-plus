@@ -37,7 +37,7 @@ internal sealed partial class OverlaySession : IDisposable
     private (string Card, string Key)? _headerHover;
     internal const string ScrollbarKey = "\u0001scrollbar";
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
-    { Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
+    { OverlayManager.Start(); Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
 
     public void Update(CardSpec[] specs, bool preserveGesture = false, Theme? theme = null)
     {

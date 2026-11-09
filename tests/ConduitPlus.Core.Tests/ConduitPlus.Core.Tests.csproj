@@ -5,8 +5,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" PrivateAssets="all" />
-    <Compile Include="../../src/ConduitPlus.Rhino/OverlayInteraction.cs" Link="OverlayInteraction.cs" />
-    <Compile Include="../../src/ConduitPlus.Rhino/Rendering/GdiCanvas.cs" Link="GdiCanvas.cs" />
-    <Compile Include="../../src/ConduitPlus.Rhino/Rendering/RasterDrawing.cs" Link="RasterDrawing.cs" />
+    <Compile Include="../../src/ConduitPlus.Display/OverlayInteraction.cs" Link="OverlayInteraction.cs" />
+    <Compile Include="../../src/ConduitPlus.Display/Rendering/GdiCanvas.cs" Link="GdiCanvas.cs" />
+    <Compile Include="../../src/ConduitPlus.Display/Rendering/RasterDrawing.cs" Link="RasterDrawing.cs" />
   </ItemGroup>
 </Project>

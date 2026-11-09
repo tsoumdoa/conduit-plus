@@ -30,6 +30,7 @@ internal static class ArchitectureDashboard
             try
             {
                 gh.NewSolution(false);
+                DisplayLifecycleChecks.DefinitionSolved();
                 var messages = gh.Objects.OfType<IGH_ActiveObject>().SelectMany(o => new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }.SelectMany(level => o.RuntimeMessages(level).Select(m => o.Name + ": " + m))).ToArray();
                 Require(messages.Length == 0, string.Join("\n", messages));
                 var overlay = gh.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();

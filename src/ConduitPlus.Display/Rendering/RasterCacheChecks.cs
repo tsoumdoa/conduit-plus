@@ -8,7 +8,7 @@ namespace ConduitPlus.Rhino;
 
 internal static class RasterCacheChecks
 {
-    public static void Run(RhinoDoc doc, RhinoView view)
+    public static void Run(RhinoDoc doc, RhinoView view, string outputRoot)
     {
         UiContext.Ensure();
         var cards = new CardStore();
@@ -30,7 +30,8 @@ internal static class RasterCacheChecks
         renderer.Prepare(cards.Snapshot.Take(1).ToArray(), Theme.Paper, 4);
         if (renderer.Prepared.Count != 1) throw new InvalidOperationException("Removed raster cards remained cached.");
         using var bitmap = RasterDrawing.Render(StructuralDemo.Line(), Theme.Paper, 2);
-        bitmap.Save(Path.Combine(OutputPaths.Captures, "raster-line-2x.png"), ImageFormat.Png);
+        var captures = Path.Combine(outputRoot, "captures"); Directory.CreateDirectory(captures);
+        bitmap.Save(Path.Combine(captures, "raster-line-2x.png"), ImageFormat.Png);
         var owner = Guid.NewGuid();
         var otherOwner = Guid.NewGuid();
         try
@@ -50,8 +51,8 @@ internal static class RasterCacheChecks
                 throw new InvalidOperationException("Removing an owner affected another session.");
         }
         finally { OverlayManager.Remove(owner); OverlayManager.Remove(otherOwner); }
-        Directory.CreateDirectory(OutputPaths.Root);
-        File.WriteAllText(Path.Combine(OutputPaths.Root, "raster-cache-check.json"), CardJson.Serialize(new
+        Directory.CreateDirectory(outputRoot);
+        File.WriteAllText(Path.Combine(outputRoot, "raster-cache-check.json"), CardJson.Serialize(new
         {
             passed = true, initial = 7, afterHover = 8, afterSelection = 9, afterClean = 9, afterScale = 16,
             remaining = renderer.Prepared.Count, independentOwners = true, scrollAndHoverSurviveSolves = true

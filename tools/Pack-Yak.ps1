@@ -67,6 +67,7 @@ $rhinoOutput = Join-Path $repo 'src/ConduitPlus.Rhino/bin/Release/net8.0-windows
 $ghOutput = Join-Path $repo 'src/ConduitPlus.Grasshopper/bin/Release/net8.0-windows'
 $payload = @{
     'ConduitPlus.Rhino.rhp' = Join-Path $rhinoOutput 'ConduitPlus.Rhino.rhp'
+    'ConduitPlus.Display.dll' = Join-Path $rhinoOutput 'ConduitPlus.Display.dll'
     'ConduitPlus.Core.dll' = Join-Path $rhinoOutput 'ConduitPlus.Core.dll'
     'ConduitPlus.Grasshopper.gha' = Join-Path $ghOutput 'ConduitPlus.Grasshopper.gha'
     'LICENSE' = Join-Path $repo 'LICENSE'

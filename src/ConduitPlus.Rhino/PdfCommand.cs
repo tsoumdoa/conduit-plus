@@ -20,6 +20,7 @@ public sealed class ConduitPlusPdf : Command
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
     {
         UiContext.Ensure();
+        OverlayManager.Start();
         RhinoApp.WriteLine("ConduitPlusPdf is experimental.");
         var sessions = OverlayManager.InView(doc, view);
         if (sessions.Length == 0)
