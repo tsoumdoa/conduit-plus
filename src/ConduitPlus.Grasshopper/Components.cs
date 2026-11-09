@@ -313,12 +313,13 @@ public sealed class OverlayComponent : GH_Component
     {
         base.AppendAdditionalComponentMenuItems(menu);
         Menu_AppendItem(menu, "Reset layout", (_, _) => ChangeLayout(new Dictionary<string, LayoutOverride>(StringComparer.Ordinal)), true, false);
-        // A wired Theme input wins, so the menu is shown but disabled while it is connected.
-        var wired = Params.Input[2].SourceCount > 0;
-        var themes = Menu_AppendItem(menu, wired ? "Theme (set by input)" : "Theme");
+        // A wired or right-click-set Theme input wins, so the menu is shown but disabled while it has a value.
+        var setByInput = ThemeInputSet;
+        var themes = Menu_AppendItem(menu, setByInput ? "Theme (set by input)" : "Theme");
         foreach (var theme in Theme.Presets)
-            Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme), !wired, _menuTheme == theme);
+            Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme), !setByInput, _menuTheme == theme);
     }
+    private bool ThemeInputSet => Params.Input[2] is Param_TextOption { HasValue: true };
     private void ChangeTheme(Theme theme)
     {
         if (OnPingDocument() is null || _menuTheme == theme) return;
@@ -329,7 +330,7 @@ public sealed class OverlayComponent : GH_Component
     {
         Theme.TryGet(name, out _menuTheme);
         // Menu edits and undo stay in the bound view and do not trigger a data solve.
-        if (Params.Input[2].SourceCount == 0)
+        if (!ThemeInputSet)
         {
             lock (_publishLock)
             {
@@ -512,7 +513,7 @@ public sealed class OverlayComponent : GH_Component
         if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         lock (_publishLock) _solveScheduled = false;
         var theme = _menuTheme;
-        if (Params.Input[2].SourceCount > 0)
+        if (ThemeInputSet)
         {
             var name = "";
             da.GetData(2, ref name);

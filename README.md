@@ -165,8 +165,9 @@ Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the
 New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light
 UI, Night for its dark UI. Auto follows Rhino settings changes without a solve.
 Existing saved choices are retained; older files with no saved theme stay Paper.
-The selection (including Auto) is saved in the `.gh` file and supports Undo/Redo. A wired **Theme**
-text input overrides the menu (case-insensitive); unknown names warn and use Paper.
+The selection (including Auto) is saved in the `.gh` file and supports Undo/Redo. A **Theme** input
+value, wired or picked from its right-click list, overrides the menu (case-insensitive); unknown names
+warn and use Paper. Pick **Use component menu** on the input to hand control back to the menu.
 PNG captures and vector PDF exports use each Overlay's active theme. Paper and Night
 are opaque light/dark counterparts with the same geometry and no border or shadow.
 Smoke has a translucent dark surface and rounded corners; Blueprint has a translucent navy surface,
