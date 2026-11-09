@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConduitPlus.RhinoBench", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConduitPlus.Examples", "tools\examples\ConduitPlus.Examples\ConduitPlus.Examples.csproj", "{C97AF3D8-1DA6-4BC5-8E9F-27CC34187AE0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConduitPlus.Display", "src\ConduitPlus.Display\ConduitPlus.Display.csproj", "{05064D87-C5F6-41CC-A465-8D227F6BF19B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -103,6 +105,18 @@ Global
 		{C97AF3D8-1DA6-4BC5-8E9F-27CC34187AE0}.Release|x64.Build.0 = Release|Any CPU
 		{C97AF3D8-1DA6-4BC5-8E9F-27CC34187AE0}.Release|x86.ActiveCfg = Release|Any CPU
 		{C97AF3D8-1DA6-4BC5-8E9F-27CC34187AE0}.Release|x86.Build.0 = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|x64.Build.0 = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Debug|x86.Build.0 = Debug|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|x64.ActiveCfg = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|x64.Build.0 = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|x86.ActiveCfg = Release|Any CPU
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -114,5 +128,6 @@ Global
 		{F9121381-3422-4642-85F3-37E493865665} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{F767FFA5-AD73-45C2-A4C0-6CFB3D386FEE} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{C97AF3D8-1DA6-4BC5-8E9F-27CC34187AE0} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{05064D87-C5F6-41CC-A465-8D227F6BF19B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/ConduitPlus.Grasshopper/ConduitPlus.Grasshopper.csproj" Private="false" />
     <ProjectReference Include="../../../src/ConduitPlus.Core/ConduitPlus.Core.csproj" />
+    <ProjectReference Include="../../../src/ConduitPlus.Display/ConduitPlus.Display.csproj" />
     <ProjectReference Include="../../../src/ConduitPlus.Rhino/ConduitPlus.Rhino.csproj" Private="false" />
     <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />

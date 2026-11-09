@@ -7,7 +7,5 @@ namespace ConduitPlus.Rhino;
 
 public sealed class ConduitPlusPlugin : PlugIn
 {
-    protected override LoadReturnCode OnLoad(ref string errorMessage)
-    { OverlayManager.Start(); return LoadReturnCode.Success; }
-    protected override void OnShutdown() => OverlayManager.Stop();
+    // Display owns first-use initialization and RhinoApp.Closing cleanup, even without this RHP.
 }

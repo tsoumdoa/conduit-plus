@@ -17,7 +17,7 @@ internal static class Program
 #else
         const string configuration = "Release";
 #endif
-        var outputs = new[] { "ConduitPlus.Rhino", "ConduitPlus.Grasshopper" }.Select(name => Path.Combine(root.FullName, "src", name, "bin", configuration, "net8.0-windows")).ToArray();
+        var outputs = new[] { "ConduitPlus.Display", "ConduitPlus.Grasshopper", "ConduitPlus.Rhino" }.Select(name => Path.Combine(root.FullName, "src", name, "bin", configuration, "net8.0-windows")).ToArray();
         SetDllDirectory(RhinoSystem);
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
@@ -46,7 +46,7 @@ internal static class Program
         Console.WriteLine("Perspective viewport created.");
         try
         {
-            core.InvokeInHostContext(() => { Dashboard.Run(doc, view, args); return true; });
+            core.InvokeInHostContext(() => { DisplayLifecycleChecks.Run(doc, view); Dashboard.Run(doc, view, args); return true; });
             Console.WriteLine("Example workload completed successfully.");
             return 0;
         }

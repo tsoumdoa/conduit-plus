@@ -35,10 +35,10 @@ Such a candidate is for trying locally, not publishing, and goes into
 `artifacts/yak/trials/` so it cannot replace a clean candidate in `artifacts/yak/`.
 
 The script runs the Release solution build (warnings are errors) and tests,
-checks all three assemblies' product versions, replaces only the generated
-`artifacts/yak/stage` directory, and stages an explicit list of seven files.
+checks all four assemblies' product versions, replaces only the generated
+`artifacts/yak/stage` directory, and stages an explicit list of eight files.
 Yak builds for **Windows / Rhino 8.20+**. The archive validator checks the exact
-inventory, manifest, distribution filename and all six payload hashes against staging.
+inventory, manifest, distribution filename and all seven payload hashes against staging.
 Yak normalizes the manifest during build, so metadata is checked separately.
 Host DLLs, PDBs, build folders and unrelated dependencies cannot silently ship.
 The two stable assembly GUIDs are included as package-restore keywords.
@@ -62,7 +62,7 @@ it does not claim archive validation. To check an existing package again:
 ./tools/Test-YakPackage.ps1 -Package './artifacts/yak/conduit-plus-0.1.0-rh8_20-win.yak' -Version 0.1.0
 ```
 
-Supply `-SourceDirectory ./artifacts/yak/stage` to also compare the six payload
+Supply `-SourceDirectory ./artifacts/yak/stage` to also compare the seven payload
 files to that candidate's staging contents. Without it, the command checks
 structure/metadata only, not payload provenance. Verify the sidecar SHA-256 when
 moving or downloading a candidate.
@@ -81,6 +81,8 @@ Drop the candidate onto Rhino, accept installation, restart Rhino and select
 
 Record Rhino version/runtime and the candidate checksum with these results:
 
+- In a fresh Rhino session, open an example .gh directly without running any Conduit+ command first; it must load with no assembly error.
+- Also check command-first loading, the RHP blocked in PlugInManager, Canvas Card/Scope interactions, document close/reopen and Rhino shutdown.
 - `ConduitPlusDemo` and `examples/structural-dashboard.gh`: every card loads.
 - Hover/click a card and linked member; shared highlighting and Clear work.
 - Scroll/sort the table; drag a card; save/reopen and Undo/Redo the layout.

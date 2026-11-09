@@ -44,6 +44,7 @@ internal static class Dashboard
         try
         {
             definition.NewSolution(false);
+            DisplayLifecycleChecks.DefinitionSolved();
             var messages = definition.Objects.OfType<IGH_ActiveObject>().SelectMany(o =>
                 new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }.SelectMany(level => o.RuntimeMessages(level).Select(message => $"{o.Name}: {level}: {message}"))).ToArray();
             foreach (var message in messages) Console.WriteLine(message);

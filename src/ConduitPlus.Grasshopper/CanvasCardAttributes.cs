@@ -122,6 +122,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     protected override void Render(GH_Canvas canvas, Graphics graphics, GH_CanvasChannel channel)
     {
         if (channel != GH_CanvasChannel.Objects) { base.Render(canvas, graphics, channel); return; }
+        ConduitPlus.Rhino.OverlayManager.Start();
         var export = canvas.DrawingMode != GH_CanvasMode.Control;
         if (!export) { Attach(canvas); if (!Visible) return; LastVisible = Environment.TickCount64; }
         var saved = graphics.Save();
@@ -193,6 +194,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         ? new(spec.Id, spec.Rev, Component.CardTheme, Component.BodySize, CanvasRasterPlan.Create(Component.BodySize, _scale, CanvasCardCache.BitmapBudget(this))) : null;
     internal void Regenerate()
     {
+        ConduitPlus.Rhino.OverlayManager.Start();
         Pending = false;
         if (Disabled || Component.State.Spec is not { } spec || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
         try

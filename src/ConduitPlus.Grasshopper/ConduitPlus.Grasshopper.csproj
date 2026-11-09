@@ -2,7 +2,7 @@
   <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><TargetExt>.gha</TargetExt></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
-    <ProjectReference Include="../ConduitPlus.Rhino/ConduitPlus.Rhino.csproj" Private="false" />
+    <ProjectReference Include="../ConduitPlus.Display/ConduitPlus.Display.csproj" />
     <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <Reference Update="Grasshopper;GH_IO;RhinoCommon"><Private>false</Private></Reference>

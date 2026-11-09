@@ -20,8 +20,9 @@ public sealed class ConduitPlusBench : Command
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
     {
         UiContext.Ensure();
+        OverlayManager.Start();
         Directory.CreateDirectory(OutputPaths.Root);
-        RasterCacheChecks.Run(doc, view);
+        RasterCacheChecks.Run(doc, view, OutputPaths.Root);
         RasterBenchmark.Run(OutputPaths.Root);
         var picking = PickBenchmark.Run(doc, view);
         // Use a separate owner so benchmarking never overwrites a live overlay's data or view state.

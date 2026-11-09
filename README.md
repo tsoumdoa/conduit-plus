@@ -375,8 +375,11 @@ export checks and may time out in this host.
 
 - `src/ConduitPlus.Core`: card specs, store/revisions, layout, scrolling, ticks,
   `ICanvas2D` and `CardPainter`.
-- `src/ConduitPlus.Rhino`: plugin, owner sessions, input/wheel hook, GDI canvas,
-  Raster cache, capture/PDF adapters and commands.
+- `src/ConduitPlus.Display`: shared DLL with owner sessions, input/wheel hook,
+  GDI canvas, raster cache and PDF adapters. Starts on first use and stops when Rhino closes.
+- `src/ConduitPlus.Rhino`: load-on-demand RHP with plugin identity and commands.
+  Both the RHP and GHA reference Display and Core; the GHA never references the RHP.
+  Build outputs copy Display.dll and Core.dll alongside each host; Yak includes each DLL once.
 - `src/ConduitPlus.Grasshopper`: card and Overlay components.
 - `tests/ConduitPlus.Core.Tests`: pure Core and Windows GDI alpha/clip/painter tests.
 - `tools/bench`: RhinoCore host and bounded benchmark entry point.

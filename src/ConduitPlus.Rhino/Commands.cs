@@ -21,6 +21,7 @@ internal static class CommandRunner
     {
         if (OverlayManager.Busy) { RhinoApp.WriteLine("Conduit+ is already preparing cards."); return Result.Cancel; }
         UiContext.Ensure();
+        OverlayManager.Start();
         OverlayManager.Busy = true;
         try { action(); return Result.Success; }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+: {e}"); return Result.Failure; }
@@ -71,6 +72,7 @@ public sealed class ConduitPlusCapture : Command
     public static void RunAutomated(RhinoDoc doc, RhinoView view, int scale, bool compact = false)
     {
         UiContext.Ensure();
+        OverlayManager.Start();
         var fixture = StructuralDemo.Create();
         if (compact) fixture = [fixture[0] with { Width = 180 }];
         OverlayManager.Set(doc, view, Guid.Empty, fixture);
@@ -80,6 +82,7 @@ public sealed class ConduitPlusCapture : Command
     private static void Capture(RhinoDoc doc, RhinoView view, int multiplier)
     {
         UiContext.Ensure();
+        OverlayManager.Start();
         if (multiplier is not (1 or 2 or 4)) throw new ArgumentOutOfRangeException(nameof(multiplier));
         var sessions = OverlayManager.InView(doc, view);
         if (sessions.Length == 0)

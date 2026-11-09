@@ -30,6 +30,7 @@ public sealed class ScopeBroker : IDisposable
     public static ScopeBroker ForDocument(GH_Document document)
     {
         if (document.Context == GH_DocumentContext.Close) throw new ObjectDisposedException(nameof(document));
+        ConduitPlus.Rhino.OverlayManager.Start();
         return Brokers.GetValue(document, d => new(d));
     }
     private ScopeBroker(GH_Document document)
