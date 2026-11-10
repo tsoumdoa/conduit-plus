@@ -619,7 +619,7 @@ public sealed class OverlayComponent : GH_Component
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size, NickName);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }

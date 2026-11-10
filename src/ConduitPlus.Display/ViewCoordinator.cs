@@ -6,6 +6,10 @@ public static partial class OverlayManager
 {
     private sealed class ViewCoordinator : IDisposable
     {
+        internal bool ListOpen;
+        internal (Guid Owner, string CardId)? Choice;
+        // Next step: float the chosen card without changing the authored layout.
+        internal void ShowHidden(Guid owner, string cardId) => Choice = (owner, cardId);
         internal ViewportSolution? Frame;
         internal readonly Dictionary<Guid, string?> Reports = [];
         internal long Generation;
@@ -45,7 +49,8 @@ public static partial class OverlayManager
         var signature = ViewportLayout.Signature(request);
         if (c.Frame is null || c.Signature != signature)
         {
-            c.Frame = ViewportLayout.Solve(request); c.Generation++;
+            c.Frame = ViewportLayout.Solve(request);
+            if (c.Frame.Hidden.Count == 0) c.ListOpen = false; c.Generation++;
             foreach (var owner in c.Reports.Keys.Except(request.Participants.Select(p => p.Owner)).ToArray())
             { c.Reports.Remove(owner); OverflowChanged?.Invoke(owner, null); }
             foreach (var session in sessions.Where(s => s.Visible))

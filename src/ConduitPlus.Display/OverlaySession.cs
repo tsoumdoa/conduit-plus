@@ -15,6 +15,7 @@ internal sealed partial class OverlaySession : IDisposable
     public RhinoDoc Document { get; }
     public RhinoView View { get; }
     public CardSpec[] Cards { get; private set; } = [];
+    internal string Label { get; set; } = "Overlay";
     internal double Size { get; set; } = 1;
     public Theme Theme { get; private set; } = Theme.Paper;
     private Theme _themeSelection = Theme.Paper;
