@@ -22,10 +22,10 @@ public static class LegendCardPainter
                 var labelX = Math.Clamp(x - labelWidth / 2, t.Padding, Math.Max(t.Padding, c.Width - t.Padding - labelWidth));
                 if (tick != min && tick != max && (labelX < previousRight + 4 || labelX + labelWidth + 4 > left + width - LabelWidth(max) / 2)) continue;
                 canvas.Line(new(x, 54), new(x, 59), t.Muted);
-                canvas.Text(Label(tick), new(labelX, 63), 10, t.Muted, t.Font);
+                canvas.Text(Label(tick), new(labelX, c.Form.Compact ? 57 : 63), 10, t.Muted, t.Font);
                 previousRight = labelX + labelWidth;
             }
-            canvas.Text(c.Unit, new(left, 85), t.FontSize, t.Muted, t.Font);
+            if (!c.Form.Compact) canvas.Text(c.Unit, new(left, 85), t.FontSize, t.Muted, t.Font);
             return;
         }
         var hits = CardMeasure.DataHits(c, t);

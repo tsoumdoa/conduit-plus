@@ -65,7 +65,11 @@ internal static class Dashboard
             var messages = definition.Objects.OfType<IGH_ActiveObject>().SelectMany(o =>
                 new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }.SelectMany(level => o.RuntimeMessages(level).Select(message => $"{o.Name}: {level}: {message}"))).ToArray();
             foreach (var message in messages) Console.WriteLine(message);
-            Require(messages.Length == 0, "Definition has runtime warnings/errors.");
+            // The small compact window can't hold all nine cards: Overlay must say so, and nothing else may warn.
+            var overflow = messages.Where(m => m.StartsWith("Overlay: Warning: ", StringComparison.Ordinal) && m.Contains(" cards hidden in ", StringComparison.Ordinal)).ToArray();
+            Require(messages.Length == overflow.Length, "Definition has runtime warnings/errors.");
+            Require(args.Contains("--compact") ? overflow.Length == 1 : overflow.Length == 0,
+                args.Contains("--compact") ? "The compact viewport must report its hidden cards." : "The full-size viewport must not hide cards.");
             var overlay = definition.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
             var sessions = (Array)Manager.GetMethod("InView", Internal)!.Invoke(null, [doc, view])!;
             var session = sessions.Cast<object>().SingleOrDefault(s => (Guid)Property(s, "Owner") == overlay.InstanceGuid);

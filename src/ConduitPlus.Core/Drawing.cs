@@ -39,20 +39,13 @@ public static class CardMeasure
         x >= 0 && x < c.Width && y >= 0 && y < 32 &&
         !Hits(c, t).Any(h => h.Contains(x, y)) &&
         (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
-    public static Size2 Measure(CardSpec c, Theme t) => new(c.Width, c.Kind switch
-    {
-        CardKind.Metric => 92,
-        CardKind.Line => 220,
-        CardKind.Text => TextMetrics.Layout(c, t).Height,
-        CardKind.Legend => c.Min.HasValue ? 112 : 48 + c.Colors.Length * t.RowHeight,
-        CardKind.Bar => 48 + c.Values.Length * t.RowHeight,
-        _ => 48 + (TableScroll.Visible(c) + 1) * t.RowHeight
-    });
+    public static Size2 Measure(CardSpec c, Theme t) => FormMeasure.Size(c, t, c.Form, TextMetrics.Measurer);
     public static HitRegion[] Hits(CardSpec c, Theme t) => [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
+        CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],
         CardKind.Metric when c.Keys.Length == 1 => [new(c.Keys[0], t.Padding, BodyTop, c.Width - 2 * t.Padding, Measure(c, t).Height - BodyTop - t.Padding)],
-        CardKind.Bar => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Bar => c.Keys.Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
         CardKind.Table => TableSort.Rows(c).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, BodyTop + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
