@@ -9,8 +9,8 @@ public class LayoutTests
         var cards = Enumerable.Range(0, 8).Select(i => new CardSpec { Id = $"c{i}", Kind = CardKind.Metric, WiredSlot = Slot.Tl }).ToArray();
         Assert.Equal(Slot.Tl, SlotLayout.Resolve(cards[0], 5));
         for (var i = 0; i < 12; i++) Assert.Equal((Slot)(i % 6), SlotLayout.Resolve(cards[0] with { WiredSlot = null }, i));
-        var placed = SlotLayout.Place(cards, Theme.Paper, new(1600, 1600));
-        Assert.Equal(cards.Select(c => c.Id), placed.Select(c => c.Id));
-        for (var i = 1; i < placed.Length; i++) Assert.True(placed[i].Y >= placed[i - 1].Y + placed[i - 1].H);
+        var placed = ViewportLayout.Solve(new(new(1600, 1600), 1, [new(Guid.Empty, 1, Theme.Paper, cards)], TextMetrics.Measurer, new LayoutOptions { EnableCompact = false })).Placements.ToArray();
+        Assert.Equal(cards.Select(c => c.Id), placed.Select(c => c.CardId));
+        for (var i = 1; i < placed.Length; i++) Assert.True(placed[i].Y >= placed[i - 1].Y + placed[i - 1].Height);
     }
 }

@@ -220,8 +220,8 @@ Small stacked PRs. Each ends with a Yak package.
 1. **View input:** Core name resolution and tests, binding intent, `Detach`, `ViewsChanged`, notices, the Overlay read fix and frozen fixture. Gate: `Build-Examples.ps1`, and a hand check that `_SetView` keeps a named Overlay on the right viewport.
 2. **Pure Core solver:** rungs, hide, signature. No host change and nothing visible, so no Yak package (user, 2026-11-10).
 2b. **Remove drag editing** (see Drag editing removed), before the cutover so PR 3 doesn't carry it.
-3. **Cutover:** coordinator, authored/presented split, frames, `unit` raster, all `Place` callers, PDF, Size, hide with passive count chip and warning. Hide never ships without its notice. The Compact rung stays switched off until PR 4, because cards can't yet draw their compact forms; the solver goes straight from Shrink to Hide.
-4. **Compact forms and Bar scrolling.**
+3. **Cutover:** coordinator, frames, `unit` raster, all `Place` callers, PDF, Size, hide with passive count chip and warning. Hide never ships without its notice. The Compact rung stays switched off until PR 4, because cards can't yet draw their compact forms; the solver goes straight from Shrink to Hide. While a viewport is resizing, the last settled frame is drawn unchanged until the size settles; repositioning with frozen zoom is deferred.
+4. **Compact forms and Bar scrolling**, including the authored/presented split and `CardSpec.Form`, which only matter once forms change card sizes.
 5. **Hidden-card list and shown card.**
 6. **Title component**, including `Tc`/`Bc` and the per-card allowed-slot list, so the slot enum and `InputOptions.Slots` tests don't change earlier.
 

@@ -28,8 +28,12 @@ public sealed class ConduitPlusPdf : Command
             OverlayManager.Set(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line()]);
             sessions = OverlayManager.InView(doc, view);
         }
+        OverlayManager.Settle(doc, view);
+        var snapshots = sessions.Select(s => (Layouts: OverlayManager.Placements(s), Unit: s.Unit)).ToArray();
+        var omitted = sessions.Where(s => s.Visible).Select((s) => s.Cards.Length - snapshots[Array.IndexOf(sessions, s)].Layouts.Length).Sum();
+        if (omitted > 0) RhinoApp.WriteLine($"Conduit+ PDF: {omitted} hidden cards omitted.");
         var visible = sessions.Select(s => s.Visible).ToArray();
-        var size = view.ActiveViewport.Size;
+        var size = view.MainViewport.Size;
         var dpi = UiContext.Dpi(view);
         // A screen physical pixel is 1/(96*dpi) inches; a PDF point is 1/72 inches.
         // Use the same physical page size and slot positions as the viewport.
@@ -51,10 +55,10 @@ public sealed class ConduitPlusPdf : Command
             {
                 if (!visible[i]) continue;
                 var session = sessions[i];
-                foreach (var layout in SlotLayout.Place(session.Cards, session.Theme, new(size.Width / dpi, size.Height / dpi)))
+                foreach (var layout in snapshots[i].Layouts)
                 {
                     var spec = session.Cards.Single(c => c.Id == layout.Id);
-                    using var canvas = new PdfCanvas(pdf, page, layout.X * dpi, layout.Y * dpi, dpi);
+                    using var canvas = new PdfCanvas(pdf, page, layout.X, layout.Y, snapshots[i].Unit, dpi);
                     CardPainter.Paint(canvas, BrushPresentation.WithoutHover(spec), session.Theme);
                 }
             }
@@ -70,3 +74,4 @@ public sealed class ConduitPlusPdf : Command
         }
     }
 }
+

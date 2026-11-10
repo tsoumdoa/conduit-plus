@@ -1,0 +1,2 @@
+namespace ConduitPlus.Core;
+public static class OverlaySize { public static (double Size, bool Clamped) Clamp(double? value) { if(value is null) return (1,false); if(!double.IsFinite(value.Value)) return (1,true); var size = Math.Clamp(value.Value,0.75,1.5); return (size,size != value.Value); } }

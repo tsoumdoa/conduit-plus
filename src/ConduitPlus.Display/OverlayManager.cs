@@ -78,6 +78,7 @@ public static partial class OverlayManager
             Cleanup(Mouse.Reset);
             Cleanup(() => Mouse.Enabled = false);
             Cleanup(WheelHook.Uninstall);
+            DisposeCoordinators(_ => true);
             var sessions = Sessions.Values.ToArray(); Sessions.Clear();
             foreach (var s in sessions) Cleanup(s.Dispose);
             lock (StateLock) { States.Clear(); Bindings.Clear(); }
@@ -102,18 +103,21 @@ public static partial class OverlayManager
         if (!_started) return;
         foreach (var session in Sessions.Values.ToArray()) session.RefreshTheme();
     }));
-    private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match)
+    private static void RemoveWhere(Func<(uint Doc, Guid View, Guid Owner), bool> match, bool settle = true)
     {
+        var affected = Sessions.Where(p => match(p.Key)).Select(p => (p.Value.Document, p.Value.View)).Distinct().ToArray();
         foreach (var key in Sessions.Keys.Where(match).ToArray())
         {
             CancelBrushHover(Sessions[key]); Mouse.Forget(Sessions[key]); Sessions[key].Dispose(); Sessions.Remove(key);
         }
+        if (settle) foreach (var (doc, view) in affected) Settle(doc, view);
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
     private static void CloseDocument(object? sender, DocumentEventArgs e)
     {
         var serial = e.Document.RuntimeSerialNumber;
-        RemoveWhere(k => k.Doc == serial);
+        RemoveWhere(k => k.Doc == serial, false);
+        DisposeCoordinators(k => k.Doc == serial);
         lock (StateLock)
         {
             foreach (var key in States.Keys.Where(k => k.Doc == serial).ToArray()) States.Remove(key);
@@ -125,7 +129,8 @@ public static partial class OverlayManager
     {
         ViewChanged(sender, e);
         var id = e.View.MainViewport.Id;
-        RemoveWhere(k => k.View == id);
+        RemoveWhere(k => k.View == id, false);
+        DisposeCoordinators(k => k.View == id);
         lock (StateLock)
             foreach (var state in States.Values.Where(s => s.ViewId == id)) state.ViewId = null;
     }
@@ -140,7 +145,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1)
     {
         UiContext.Ensure();
         Start();
@@ -159,8 +164,10 @@ public static partial class OverlayManager
         // Following the active view removes this owner's previous conduit.
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
+        session.Size = size;
         session.SetLinks(linked);
         session.Update(specs, theme: theme ?? Theme.Paper);
+        Settle(doc, view);
         view.Redraw();
     }
     public static void ReplaceTheme(Guid owner, Theme theme)
@@ -170,7 +177,7 @@ public static partial class OverlayManager
         foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
         {
             session.Update(session.Cards, theme: theme);
-            session.View.Redraw();
+            Settle(session.Document, session.View);
         }
     }
     public static void Detach(RhinoDoc doc, Guid owner)
@@ -290,9 +297,19 @@ public static partial class OverlayManager
         // Standalone benchmark sessions are intentionally not registered in Sessions.
         if (!sessions.Contains(source)) sessions = [source];
         if (sessions[0] != source) return;
+        if (sessions.Contains(source) && Sessions.Values.Contains(source)) CheckFrame(source);
         foreach (var session in sessions) session.Draw(e);
+        if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && coordinator.Frame is { Chip: { } chip } frame)
+        {
+            var n = frame.Hidden.Count;
+            var unit = frame.Unit.Values.Min();
+            e.Display.DrawRoundedRectangle(new System.Drawing.PointF((float)(chip.X + chip.Width / 2), (float)(chip.Y + chip.Height / 2)), (float)chip.Width, (float)chip.Height, (float)(chip.Height / 2), System.Drawing.Color.FromArgb(229, 163, 61), 0, System.Drawing.Color.FromArgb(229, 163, 61));
+            e.Display.Draw2dText($"+{n} {(n == 1 ? "card" : "cards")}", System.Drawing.Color.FromArgb(23, 25, 30), new global::Rhino.Geometry.Point2d(chip.X + chip.Width / 2, chip.Y + chip.Height / 2), true, (int)Math.Round(11 * unit));
+        }
         if (!e.Display.IsInViewCapture)
             foreach (var session in sessions) session.DrawTooltip(e.Display);
     }
 
 }
+
+

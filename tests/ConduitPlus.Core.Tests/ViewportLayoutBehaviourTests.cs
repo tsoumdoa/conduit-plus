@@ -61,6 +61,20 @@ public class ViewportLayoutBehaviourTests
     }
 
     [Fact]
+    public void BottomLeftReserveKeepsTheCornerClear()
+    {
+        var options = new LayoutOptions { BottomLeftReserve = 100 };
+        var s = Solve(1600, 900, options, owners: Owner(1, Metric("left", Slot.Bl), Metric("right", Slot.Br)));
+        Assert.Equal(900 - 12 - 100, At(s, "left").Y + At(s, "left").Height);
+        Assert.Equal(900 - 12, At(s, "right").Y + At(s, "right").Height);
+        var tall = Solve(1600, 900, options with { EnableCompact = false }, owners: Owner(1, Enumerable.Range(0, 9).Select(i => Metric($"m{i}", Slot.Tl)).ToArray()));
+        Assert.All(tall.Placements.Where(p => p.X < 200), p => Assert.True(p.Y + p.Height <= 900 - 12 - 100 + 1e-6));
+        var portrait = Solve(600, 1200, options, owners: Owner(1, Metric("top", Slot.Tl), Metric("bottom", Slot.Tr)));
+        // 600 × 1200 sits at the 0.625 zoom floor, so the margin is 12 × 0.625.
+        Assert.Equal(1200 - 12 * .625 - 100, At(portrait, "bottom").Y + At(portrait, "bottom").Height);
+    }
+
+    [Fact]
     public void RightRailAlignsToTheRightEdge()
     {
         var s = Solve(1600, 900, owners: Owner(1, Metric("metric", Slot.Tr), Table("table", 4, Slot.Tr)));

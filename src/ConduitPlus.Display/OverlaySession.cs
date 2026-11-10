@@ -10,13 +10,16 @@ namespace ConduitPlus.Rhino;
 
 internal sealed partial class OverlaySession : IDisposable
 {
-    internal Size2 ViewSize => new(View.ActiveViewport.Size.Width, View.ActiveViewport.Size.Height);
+    internal Size2 ViewSize => new(View.MainViewport.Size.Width, View.MainViewport.Size.Height);
     public Guid Owner { get; }
     public RhinoDoc Document { get; }
     public RhinoView View { get; }
     public CardSpec[] Cards { get; private set; } = [];
+    internal double Size { get; set; } = 1;
     public Theme Theme { get; private set; } = Theme.Paper;
     private Theme _themeSelection = Theme.Paper;
+    internal double Unit { get; private set; }
+    internal void PrepareUnit(double unit) { Unit = unit; if (_raster.Scale != unit) _raster.Prepare(Cards, Theme, unit); }
     public double CaptureMultiplier { get; set; } = 1;
     public long FrameCount { get; private set; }
     public bool Visible { get => _conduit.Enabled; set => _conduit.Enabled = value; }
@@ -38,7 +41,7 @@ internal sealed partial class OverlaySession : IDisposable
     private (string Card, string Key)? _headerHover;
     internal const string ScrollbarKey = "\u0001scrollbar";
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
-    { OverlayManager.Start(); Document = doc; View = view; Owner = owner; _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
+    { OverlayManager.Start(); Document = doc; View = view; Owner = owner; Unit = UiContext.Dpi(view); _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
 
     public void Update(CardSpec[] specs, bool preserveGesture = false, Theme? theme = null)
     {
@@ -59,7 +62,7 @@ internal sealed partial class OverlaySession : IDisposable
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
-        _raster.Prepare(next, Theme, UiContext.Dpi(View), force: _rasterHasCaptureState);
+        _raster.Prepare(next, Theme, Unit, force: _rasterHasCaptureState);
         _rasterHasCaptureState = false;
         Cards = next;
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
@@ -72,7 +75,7 @@ internal sealed partial class OverlaySession : IDisposable
     {
         if (_disposed || Theme == RhinoTheme.Resolve(_themeSelection)) return;
         Update(Cards);
-        View.Redraw();
+        OverlayManager.Settle(Document, View);
     }
 
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
@@ -112,8 +115,8 @@ internal sealed partial class OverlaySession : IDisposable
     /// <summary>Viewport client pixels → card-local CSS pixels for the card's current layout.</summary>
     public Point2? Local(string cardId, double x, double y)
     {
-        var size = View.ActiveViewport.Size; var dpi = UiContext.Dpi(View);
-        var layout = SlotLayout.Place(Cards, Theme, new(size.Width, size.Height), dpi).FirstOrDefault(l => l.Id == cardId);
+        var size = View.MainViewport.Size; var dpi = Unit;
+        var layout = OverlayManager.Placements(this).FirstOrDefault(l => l.Id == cardId);
         return layout is null ? null : new Point2((x - layout.X) / dpi, (y - layout.Y) / dpi);
     }
 
@@ -129,11 +132,11 @@ internal sealed partial class OverlaySession : IDisposable
 
     public (string CardId, string Key)? Hit(double x, double y)
     {
-        var size = View.ActiveViewport.Size;
-        foreach (var layout in SlotLayout.Place(Cards, Theme, new(size.Width, size.Height), UiContext.Dpi(View)).AsEnumerable().Reverse())
+        var size = View.MainViewport.Size;
+        foreach (var layout in OverlayManager.Placements(this).AsEnumerable().Reverse())
         {
             if (!new Rect2(layout.X, layout.Y, layout.W, layout.H).Contains(x, y)) continue;
-            var dpi = UiContext.Dpi(View);
+            var dpi = Unit;
             if (Cards.FirstOrDefault(c => c.Id == layout.Id) is { } spec && TableScroll.Bar(spec, Theme) is { } bar)
             {
                 // Generous horizontal target: the bar is 6 px wide but easy to grab within the card's right padding.
@@ -142,7 +145,7 @@ internal sealed partial class OverlaySession : IDisposable
             }
             var prepared = _raster.Prepared;
             var hits = prepared.TryGetValue(layout.Id, out var p) ? p.Capture.Layout.HitRegions : layout.HitRegions;
-            var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / UiContext.Dpi(View), (y - layout.Y) / UiContext.Dpi(View)));
+            var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / Unit, (y - layout.Y) / Unit));
             return (layout.Id, hit?.Key ?? "");
         }
         return null;
@@ -184,10 +187,11 @@ internal sealed partial class OverlaySession : IDisposable
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
         DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
-        var scale = UiContext.Dpi(View) * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
+        var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.
-        var viewport = e.Display.IsInViewCapture ? new Size2(View.ActiveViewport.Size.Width * CaptureMultiplier, View.ActiveViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
-        var layouts = SlotLayout.Place(Cards, Theme, viewport, scale);
+        var viewport = e.Display.IsInViewCapture ? new Size2(View.MainViewport.Size.Width * CaptureMultiplier, View.MainViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
+        var multiplier = e.Display.IsInViewCapture ? CaptureMultiplier : 1;
+        var layouts = OverlayManager.Placements(this).Select(l => l with { X = l.X * multiplier, Y = l.Y * multiplier, W = l.W * multiplier, H = l.H * multiplier });
         // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
         // including direct captures; the next screen draw lazily restores screen resolution.
         if (_raster.Scale != scale || e.Display.IsInViewCapture || _rasterHasCaptureState)

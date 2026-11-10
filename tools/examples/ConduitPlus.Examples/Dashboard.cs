@@ -42,14 +42,14 @@ internal static class Dashboard
             Require(frozen.ReadFromFile(frozenPath) && frozen.ExtractObject(legacy, "Definition"), "Cannot read frozen fixture.");
             DisplayLifecycleChecks.ArchiveClean(frozen, frozenPath);
             var oldOverlay = legacy.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
-            Require(oldOverlay.Params.Input.Count == 5 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false }, "Legacy View must be appended and unset.");
+            Require(oldOverlay.Params.Input.Count == 6 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } && oldOverlay.Params.Input[5] is Param_Number { PersistentData.DataCount: 0 }, "Legacy View and Size must be appended and unset.");
             Require(oldOverlay.Params.Input[0].SourceCount > 0, "Legacy card wires lost.");
             var clean = new GH_Archive().CreateTopLevelNode("Overlay"); oldOverlay.Write(clean);
             Require(!((GH_IReader)clean).ItemExists("ConduitPlus.Layout"), "Legacy layout must be ignored.");
             var saved = new GH_Archive(); Require(saved.AppendObject(legacy, "Definition"), "Cannot save legacy fixture.");
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, five inputs, unset View and card wires passed.");
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, six inputs, unset View and Size and card wires passed.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);
@@ -160,3 +160,4 @@ internal static class Dashboard
     private static object Property(object obj, string name) => obj.GetType().GetProperty(name, Instance)!.GetValue(obj)!;
     private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }
+

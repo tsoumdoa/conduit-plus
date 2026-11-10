@@ -270,7 +270,7 @@ public sealed class OverlayComponent : GH_Component
     private MembershipIndex? _membership;
     private readonly object _publishLock = new();
     private bool _publishScheduled;
-    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled, string? RequestedView);
+    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled, string? RequestedView, double Size);
     private PendingPublish? _pending;
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
@@ -371,6 +371,7 @@ public sealed class OverlayComponent : GH_Component
         p.AddParameter(new Param_TextOption { Options = InputOptions.Themes }, "Theme", "T", "Right-click to choose, or wire Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A set value overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;
         p.AddParameter(new Param_TextOption { OptionsProvider = ViewOptions }, "View", "V", "Active viewport or a named standard Rhino viewport", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddParameter(new Param_SizeOption(), "Size", "Z", "Card size multiplier, 0.75 to 1.5 (default 1)", GH_ParamAccess.item); p[5].Optional = true;
     }
     private readonly Dictionary<string, (GH_RuntimeMessageLevel Level, string Text)> _notices = [];
     private readonly List<(GH_RuntimeMessageLevel Level, string Text)> _solveMessages = [];
@@ -417,6 +418,7 @@ public sealed class OverlayComponent : GH_Component
         OverlayManager.Interaction += OnInteraction;
         OverlayManager.BoundDocumentClosed += OnBoundDocumentClosed;
         OverlayManager.ViewsChanged += OnViewsChanged;
+        OverlayManager.OverflowChanged += OnOverflowChanged;
         if (_scope is { IsValid: true } && _lastPublish is { } last)
         { _pending = last with { Interaction = true, Generation = _generation }; Publish(); }
     }
@@ -438,9 +440,12 @@ public sealed class OverlayComponent : GH_Component
         OverlayManager.Interaction -= OnInteraction;
         OverlayManager.BoundDocumentClosed -= OnBoundDocumentClosed;
         OverlayManager.ViewsChanged -= OnViewsChanged;
+        OverlayManager.OverflowChanged -= OnOverflowChanged;
         if (clear) { DetachScope(); _lastPublish = null; _events.Clear(); }
         OverlayManager.Remove(InstanceGuid);
     }
+    private void OnOverflowChanged(Guid owner, string? text)
+    { if (owner == InstanceGuid) SetNotice("overflow", GH_RuntimeMessageLevel.Warning, text); }
     private void OnViewsChanged()
     {
         if (!_active || _rhinoSuspended || Locked || _lastPublish is not { RequestedView: not null } last) return;
@@ -528,6 +533,10 @@ public sealed class OverlayComponent : GH_Component
             }
             _generation++;
         }
+        double sizeValue = 1;
+        var size = OverlaySize.Clamp(da.GetData(5, ref sizeValue) ? sizeValue : null);
+        _size = size.Size;
+        if (size.Clamped) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Size must be 0.75 to 1.5; using {_size}.");
         var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
         da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
         var cards = wrapped.Select(g => g?.ScriptVariable()).OfType<CardSpec>().ToArray();
@@ -563,12 +572,13 @@ public sealed class OverlayComponent : GH_Component
         lock (_publishLock) da.SetDataList(1, _events.ToArray());
         QueuePublish(cards, links);
     }
+    private double _size = 1;
     private void QueuePublish(CardSpec[] cards, Link[] links)
     {
         var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid, _requestedView);
+            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid, _requestedView, _size);
             _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;
@@ -609,7 +619,7 @@ public sealed class OverlayComponent : GH_Component
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }
