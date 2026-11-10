@@ -35,14 +35,18 @@ internal static class DisplayLifecycleChecks
             "GHA dependencies must use Display/Core and must not reference the RHP.");
         Require(!Started, "Display started before first use.");
         Stop(); Stop(); // Safe even before first use.
-        _ = new CanvasCardComponent(); // Grasshopper does this for every component while scanning plug-ins.
+        _ = new CanvasCardComponent();
+        _ = new OverlayComponent(); // Grasshopper does this for every component while scanning plug-ins.
         Require(!Started && TextMetrics.Measurer.Method.DeclaringType?.Assembly == Manager.Assembly,
             "Constructing a component must register GDI text metrics without starting Display's global hooks.");
         Start(); Start();
         var owner = Guid.NewGuid();
         OverlayManager.Set(doc, view, owner, [new CardSpec { Id = "lifecycle", Kind = CardKind.Text, Text = "First use" }]);
         Require(OverlayManager.Binding(owner)?.DocumentSerial == doc.RuntimeSerialNumber, "First-use document binding failed.");
+        OverlayManager.Detach(doc, owner);
+        Require(OverlayManager.Binding(owner) == (doc.RuntimeSerialNumber, (Guid?)null), "Detach lost binding intent.");
         Stop(); Stop();
+        Require(!(bool)Manager.GetField("_viewsPending", Internal)!.GetValue(null)!, "Stop retained a pending rebind.");
         Require(!Started, "Stop did not stop Display.");
         // Snapshot is itself a first-use path and must restart without retaining old bindings.
         Require(OverlayManager.Snapshot(owner).SelectedKeys.Length == 0 && OverlayManager.Binding(owner) is null && Started,
