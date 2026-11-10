@@ -42,19 +42,14 @@ internal static class ExportChecks
         {
             doc.Views.ActiveView = view;
             var truss = DemoTruss.Create(bays: 4);
-            CardSpec[] cards = [fullCards[0] with { Width = 180, ManualSlot = Slot.Tl, ManualOrder = null, OrderSlot = null }];
+            CardSpec[] cards = [fullCards[0] with { Width = 180, WiredSlot = Slot.Tl }];
             var link = new Link(truss.Members.Select(m => m.Key), truss.Members.Select(m => (m.Key, (object)new Line(new Point3d(m.Start.X, 0, m.Start.Y), new Point3d(m.End.X, 0, m.End.Y))))) { ShowBase = true };
             OverlayManager.Set(doc, view, owner, cards, [link], theme: theme);
             Console.WriteLine("Compact fixture published.");
             var session = typeof(OverlayManager).GetMethod("Get", Internal)!.Invoke(null, [doc, view, (Guid?)owner])!;
             view.ActiveViewport.SetCameraLocations(new(12, 0, 1.5), new(31, -32, 17));
             view.ActiveViewport.ZoomBoundingBox(new BoundingBox(new Point3d(-8, -10, -1), new Point3d(32, 10, 18)));
-            var dpi = Dpi(view); var layout = SlotLayout.Place(cards, theme, new(view.ActiveViewport.Size.Width, view.ActiveViewport.Size.Height), dpi)[0];
-            if (state == "drag")
-            {
-                Require((bool)Call(session, "BeginLayoutDrag", cards[0].Id, new Point2(layout.X + 40, layout.Y + 20))!, "Cannot begin verification drag.");
-                Call(session, "MoveLayoutDrag", new Point2(420, 280));
-            }
+            var dpi = Dpi(view);
             if (state == "tooltip")
             {
                 // Supply a ready tooltip without depending on a hidden window's physical cursor/timer.

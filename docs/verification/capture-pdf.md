@@ -106,12 +106,12 @@ $results = Join-Path $env:TEMP 'ConduitPlus'
 foreach ($scale in 1, 2, 4) {
     ./tools/examples/Build-Examples.ps1 -VerifyOnly -Exports -Compact -Safe -Scale $scale -Output "$results/dashboard-compact-$scale"
 }
-foreach ($state in 'Drag', 'Tooltip', 'Selected') {
+foreach ($state in 'Tooltip', 'Selected') {
     ./tools/examples/Build-Examples.ps1 -VerifyOnly -Exports -Compact -Safe -State $state -Output "$results/dashboard-$($state.ToLowerInvariant())"
 }
 
 # Requires Pillow and PyMuPDF in Python; writes verification.json, PDF text and page PNG.
-python tools/examples/Verify-Exports.py --full "$results/dashboard-verification" --compact-1 "$results/dashboard-compact-1" --compact-2 "$results/dashboard-compact-2" --compact-4 "$results/dashboard-compact-4" --drag "$results/dashboard-drag" --tooltip "$results/dashboard-tooltip" --selected "$results/dashboard-selected"
+python tools/examples/Verify-Exports.py --full "$results/dashboard-verification" --compact-1 "$results/dashboard-compact-1" --compact-2 "$results/dashboard-compact-2" --compact-4 "$results/dashboard-compact-4" --tooltip "$results/dashboard-tooltip" --selected "$results/dashboard-selected"
 
 dotnet build ConduitPlus.sln -c Debug
 dotnet test ConduitPlus.sln -c Debug

@@ -1,3 +1,5 @@
+Superseded by "Drag editing removed" in [viewport-layout.md](viewport-layout.md#drag-editing-removed).
+
 # Edit layout (design, 2026-11-06)
 
 Reviewed specification by Astra (GPT-6 Astra).

@@ -15,7 +15,7 @@ Version 0.2.0-beta.2, published on public Yak as a prerelease (`conduit-plus`; t
 | Selection | Click replaces, Shift adds, Ctrl removes, Ctrl+Shift toggles; clicking empty viewport space clears; every selected element looks the same |
 | Group keys | Bar, categorical Legend and Metric take Members, so one click selects a whole group; partial selection shows a dash |
 | Scope | Wire one Scope into Canvas Cards and Overlays to share selection and hover between them; unwired displays stay private |
-| Layout | Six slots; drag cards by their title; saved in the `.gh`; undo; Reset layout; Slot input locks a card |
+| Layout | Cards input order; Slot input picks the side |
 | Inputs | Right-click Slot, Overlay Theme or Metric Decimals to pick a value from a list |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events; Canvas Card outputs Selection |
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
@@ -28,7 +28,7 @@ All three are in `examples/`. Demo numbers and limits are fictitious. The files 
 |---|---|---|
 | `room-areas.gh` | Canvas Card, Scope, group keys | Metre-unit model, Top view, Zoom Extents. Click Bed 01 in the Canvas table, then its face in Rhino. Shift+click a second room, Ctrl+click to remove it, then click empty space to clear. Click the Bedroom swatch, Ctrl+click one room (partial dash), then Clear. Click "Rooms below minimum". Change Plan scale. Sort and scroll each table separately. Switch GH tabs, lock/unlock a display, disconnect Scope. |
 | `massing.gh` | Group keys on 3D blocks, themes | Perspective view, Zoom Extents. Click Residential in the legend or "GFA by use". Click "Blocks above 30 m". Change Extra floors. Click block roofs. Try each theme from Overlay's right-click menu. |
-| `structural-dashboard.gh` | Overlay basics, capture/PDF | Change Span and Load. Click a bar or truss member. Sort/scroll the member table and drag cards. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. To check a file from before themes existed, use this file from commit `46de969`: it should open in Paper, with no missing-input archive errors. |
+| `structural-dashboard.gh` | Overlay basics, capture/PDF | Change Span and Load. Click a bar or truss member. Sort/scroll the member table. Run `ConduitPlusCapture` at 2× and 4×, and `ConduitPlusPdf` with a member selected. To check a file from before themes existed, use this file from commit `46de969`: it should open in Paper, with no missing-input archive errors. |
 
 For the full Canvas Card checks, wire each card kind from these files into its own new Canvas Card; the samples only include a Canvas table.
 
@@ -72,6 +72,6 @@ For the full Canvas Card checks, wire each card kind from these files into its o
 - **Drawing.** Each Overlay has a `DisplayConduit`. In `DrawForeground` it:
   1. draws highlighted linked geometry as 3D wires, with depth testing off;
   2. places card bitmaps by `SlotLayout` and draws them as 2D screen bitmaps;
-  3. adds the tooltip and drag ghost when present.
+  3. adds the tooltip when present.
 - **Capture and PDF.** Captures re-paint the cards at the capture scale inside the same callback. PDF export runs the same `CardPainter` through `PdfCanvas`, so the output is vectors.
 - **Cost** (200% DPI, p95): card update ≈ 3–4 ms, hover ≈ 6–7 ms, model pick < 1 ms with 2,000 members.

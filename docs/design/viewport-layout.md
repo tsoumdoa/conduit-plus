@@ -27,6 +27,7 @@ The behaviour was agreed with the user through interactive mocks. Values marked 
 7. New **Title** component: Title, Subtitle, Description, six positions.
 8. Titles default to **plain text with a soft outline**; a card background is an option.
 9. Top middle and bottom middle are **Title-only**.
+10. **No drag editing** (2026-11-10). Card order is the Cards input order and the Slot input picks the side. Saved drag layouts in old files are ignored silently.
 
 Consequence of decision 1: at Size 1, any view below about 1000 × 563 CSS px starts at the floor, even with one card, so 4-up on
 1080p at 100% draws at 7.5 px. Size above 1 raises that start point (960 × 540 at Size 1.5 starts at 0.9×), though Shrink can still pull it back.
@@ -188,12 +189,20 @@ Each form needs geometry, not only a height:
 - Bars gain `BarScroll` with view offsets, wheel and scrollbar. Rows map to data through an offset, because painting assumes data index equals row index (`CardPainter.cs:46`). Reveal works for Bars and re-runs when a form changes.
 - Visual scale stays uniform. The scrollbar gets an undrawn hit margin of at least 12 px × dpi; row targets don't expand.
 
-## Drag editing with flow
+## Drag editing removed
 
-- A drag freezes the **whole view's frame**. Any geometry-affecting change from any participant cancels it, matching layout.md's rule.
-- Drag geometry uses placed cards only; `.First` over stacks would throw on hidden cards (`LayoutEditing.cs:23`, `OverlayLayout.cs:43,123`). `Drop` ranking still includes hidden cards, with a defined mapping from visible insertion to the owner's full stack.
-- `InsertionIndex` uses reading order: nearest column then Y, or nearest row then X in portrait. One zone scale. Portrait draws zones as bands.
-- Persisted changes stay owner-local and use the existing proposal and undo path.
+Decided by the user on 2026-11-10, replacing the drag rework planned for PR 3. In a flowing layout a dragged position
+only sets a side and an order, which wiring sets more predictably. Card order is the order of the Cards input list,
+and each card's Slot input picks its side. A Merge component in front of Overlay makes the order visible and editable.
+
+- Removed: dragging titles and edge grips, drop zones, the drag ghost, the title hover grip and lock icon, the
+  **Reset layout** menu, the layout undo action, saved layout overrides and the session/manager layout state.
+- `CardSpec` loses `ManualSlot`, `OrderSlot` and `ManualOrder`. A card's slot is its wired or right-click Slot value,
+  otherwise the automatic `index % 6` rule; cards in one slot keep input order.
+- Old files keep loading. Their saved `ConduitPlus.Layout` item is ignored silently, so cards may move on first open.
+- The example generators set Slot inputs instead of saving overrides.
+- [layout.md](layout.md) is superseded.
+- Titles (PR 6) are not draggable; their Position input sets the position.
 
 ## Compatibility
 
@@ -210,7 +219,8 @@ Small stacked PRs. Each ends with a Yak package.
 
 1. **View input:** Core name resolution and tests, binding intent, `Detach`, `ViewsChanged`, notices, the Overlay read fix and frozen fixture. Gate: `Build-Examples.ps1`, and a hand check that `_SetView` keeps a named Overlay on the right viewport.
 2. **Pure Core solver:** rungs, hide, signature. No host change and nothing visible, so no Yak package (user, 2026-11-10).
-3. **Cutover:** coordinator, authored/presented split, frames, `unit` raster, all `Place` callers, PDF, drag rework, Size, hide with passive count chip and warning. Hide never ships without its notice. The Compact rung stays switched off until PR 4, because cards can't yet draw their compact forms; the solver goes straight from Shrink to Hide.
+2b. **Remove drag editing** (see Drag editing removed), before the cutover so PR 3 doesn't carry it.
+3. **Cutover:** coordinator, authored/presented split, frames, `unit` raster, all `Place` callers, PDF, Size, hide with passive count chip and warning. Hide never ships without its notice. The Compact rung stays switched off until PR 4, because cards can't yet draw their compact forms; the solver goes straight from Shrink to Hide.
 4. **Compact forms and Bar scrolling.**
 5. **Hidden-card list and shown card.**
 6. **Title component**, including `Tc`/`Bc` and the per-card allowed-slot list, so the slot enum and `InputOptions.Slots` tests don't change earlier.

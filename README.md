@@ -7,8 +7,8 @@ cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
 
 Licensed under MIT. Features include Auto, Paper, Night, Smoke and Blueprint themes,
-deterministic viewport slots, keyed geometry highlighting, saved layout editing
-and undo. A docked Inspector is future work.
+deterministic viewport slots in input order and keyed geometry highlighting.
+A docked Inspector is future work.
 
 ## Requirements
 
@@ -69,9 +69,8 @@ path, including during development.
 
 Open [examples/structural-dashboard.gh](examples/structural-dashboard.gh) in
 Grasshopper with Conduit+ loaded. Change the **Span** and **Load** sliders, click
-a utilisation bar or a truss member, sort/scroll the member table, and drag cards
-by their titles. Use a large perspective viewport; the saved manual layout keeps
-all cards draggable. The example uses four bays to fit its nine cards at 200% DPI.
+a utilisation bar or truss member, and sort or scroll the member table. Use a large
+perspective viewport. The example uses four bays to fit nine cards at 200% DPI.
 
 **Demo Truss** (Examples) defaults to eight bays and generates deterministic,
 illustrative results with fictitious capacities, stiffness and member areas.
@@ -100,8 +99,7 @@ viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click insi
 its keyed row/bar selects, and the table reveals an off-screen selected row even
 when sorted. Click a row/bar to highlight the matching geometry with translucent
 faces and x-ray wires; click again or **Clear** to deselect. Wheel-scroll the room
-table and select **Hall / R17** from the model or bar to test reveal. Drag cards
-by their titles to suit your viewport. Select **Bedroom** in the room-type legend
+table and select **Hall / R17** from the model or bar to test reveal. Select **Bedroom** in the room-type legend
 or **Residential** in the GFA-by-use
 bar/legend to select every member of that category. The **Rooms below minimum**
 and **Blocks above 30 m** Metric bodies select their current failures. Membership
@@ -130,14 +128,11 @@ loads this checkout's assemblies directly and does
 not install or update any Grasshopper libraries. Export checks, commands and
 recorded limitations: [capture/PDF verification](docs/verification/capture-pdf.md).
 
-## Edit layout
+## Card order and position
 
-Drag a card title (or the small edge grip shown when hovering an untitled card)
-to one of the six viewport slots. The highlighted zone and insertion line show
-where it will land. Wired slots show a lock; change those in Grasshopper.
-Layout is saved with the Overlay component in the `.gh` file and supports Undo/Redo
-without a solve. Right-click Overlay → **Reset layout** to clear all saved positions
-and ordering. Escape on mouse move or leaving the initiating viewport cancels a drag.
+Cards appear in the order they arrive in Overlay's Cards input, and each card's Slot input picks its side.
+When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
+front of Overlay makes the order explicit. Cards can't be dragged in the viewport.
 
 ## Grasshopper components
 
@@ -187,10 +182,7 @@ Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pic
 0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
 connected wire always takes priority.
 
-Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. A wired slot takes precedence over
-a stored manual slot, followed by automatic placement. Cards stack within slots;
-small viewports can overflow. Different Overlay components have separate owner
-sessions and do not currently reserve space around one another.
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise cards use input index % 6. Cards stack in input order within each slot.
 
 ## Cards on the Grasshopper canvas
 

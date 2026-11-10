@@ -23,7 +23,7 @@ def compare(a, b):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("full", "compact-1", "compact-2", "compact-4", "drag", "tooltip", "selected"):
+    for name in ("full", "compact-1", "compact-2", "compact-4", "tooltip", "selected"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
     compact = [args.compact_1, args.compact_2, args.compact_4]
@@ -36,9 +36,8 @@ def main():
         assert metadata["sessions"][0]["raster"]["scale"] == metadata["dpi"] * scale
 
     baseline = png(args.compact_1)
-    drag_difference = compare(baseline, png(args.drag))
     tooltip_difference = compare(baseline, png(args.tooltip))
-    assert drag_difference == tooltip_difference == 0, (drag_difference, tooltip_difference)
+    assert tooltip_difference == 0, tooltip_difference
     assert read(args.selected / "compact-capture-check.json")["selected"] == ["M04"]
     highlights = 0
     with Image.open(baseline) as before, Image.open(png(args.selected)) as after:
@@ -55,7 +54,7 @@ def main():
     assert len(full["regions"]) == 9 and full["after"] > full["before"]
     # Every surface must contain opaque pixels AND ink; a flat white rectangle does not pass.
     assert all(r["fraction"] > .98 and r["ink"] > 5 for r in full["regions"])
-    # The saved manual layout must not cover other cards.
+    # The example's slot arrangement must not cover other cards.
     for i, a in enumerate(full["regions"]):
         for b in full["regions"][i + 1:]:
             assert (a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or
@@ -87,7 +86,7 @@ def main():
         page.get_pixmap(matrix=pymupdf.Matrix(1, 1)).save(args.full / "captures" / "pdf-page.png")
         (args.full / "captures" / "pdf-text.txt").write_text(text, encoding="utf-8")
         result = dict(png_dimensions=dimensions, full_card_regions=9, minimum_opaque_fraction=min(r["fraction"] for r in full["regions"]),
-                      drag_difference=drag_difference, tooltip_difference=tooltip_difference, selected_wire_pixels=highlights,
+                      tooltip_difference=tooltip_difference, selected_wire_pixels=highlights,
                       pdf_pages=len(pdf), pdf_points=[page.rect.width, page.rect.height], searchable_titles=len(titles),
                       maximum_title_position_error_points=max(errors), pdf_bytes=pdf_path.stat().st_size)
     (args.full / "verification.json").write_text(json.dumps(result, indent=2), encoding="utf-8")

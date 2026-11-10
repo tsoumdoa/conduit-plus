@@ -114,7 +114,7 @@ public sealed class CanvasCardState
         var spec = Current.Project([_source])[0] with
         {
             ScrollOffset = _offset, SortColumn = _column, SortDescending = _descending,
-            WiredSlot = null, ManualSlot = null, OrderSlot = null, ManualOrder = null
+            WiredSlot = null
         };
         if (spec.Kind == CardKind.Table && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
         { _offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = _offset }; }

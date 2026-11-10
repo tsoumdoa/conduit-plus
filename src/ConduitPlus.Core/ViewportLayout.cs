@@ -37,7 +37,7 @@ public static class ViewportLayout
         Participants = r.Participants.OrderBy(p => p.Owner.ToString("N"), StringComparer.Ordinal).Select(p => new
         {
             p.Owner, p.Size, p.Theme.FontSize, p.Theme.RowHeight, p.Theme.Padding, p.Theme.Font,
-            Cards = p.Cards.Select((c, i) => new { c.Id, c.Kind, c.Width, Index = i, Slot = SlotLayout.Resolve(c, i), c.ManualSlot, c.OrderSlot, c.ManualOrder, c.Title, c.Text, c.Value, c.Unit, Rows = c.Rows.Length, Values = c.Values.Length, Colors = c.Colors.Length, Labels = c.Labels.Length, HasMin = c.Min.HasValue, c.MaxRows })
+            Cards = p.Cards.Select((c, i) => new { c.Id, c.Kind, c.Width, Index = i, Slot = SlotLayout.Resolve(c, i), c.Title, c.Text, c.Value, c.Unit, Rows = c.Rows.Length, Values = c.Values.Length, Colors = c.Colors.Length, Labels = c.Labels.Length, HasMin = c.Min.HasValue, c.MaxRows })
         })
     });
     public static ViewportSolution Solve(LayoutRequest r)
@@ -78,7 +78,7 @@ public static class ViewportLayout
             for (var rail = 0; rail < 2; rail++)
             {
                 Slot[] slots = rail == 0 ? [Slot.Tl, Slot.Lc, Slot.Bl] : [Slot.Tr, Slot.Rc, Slot.Br];
-                var ordered = slots.SelectMany(s => owners.SelectMany(p => LayoutEditing.Stack(p.Cards, s).Select(c => items.Single(x => x.P.Owner == p.Owner && x.C.Id == c.Id)))).Where(x => !hidden.Contains(x)).ToArray();
+                var ordered = slots.SelectMany(s => owners.SelectMany(p => p.Cards.Where((c, i) => SlotLayout.Resolve(c, i) == s).Select(c => items.Single(x => x.P.Owner == p.Owner && x.C.Id == c.Id)))).Where(x => !hidden.Contains(x)).ToArray();
                 var groups = new List<List<Item>>();
                 var capacity = portrait ? r.Viewport.Width - 2 * margin : r.Viewport.Height - top - margin;
                 foreach (var x in ordered)
