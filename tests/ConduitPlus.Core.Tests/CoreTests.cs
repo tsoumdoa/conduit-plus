@@ -35,8 +35,8 @@ public sealed class CoreTests
     {
         var c = StructuralDemo.Create()[0] with { WiredSlot = Slot.Tr };
         Assert.Equal(Slot.Tr, SlotLayout.Resolve(c, 0)); Assert.Equal(Slot.Tl, SlotLayout.Resolve(c with { WiredSlot = null }, 0));
-        var layout = Assert.Single(SlotLayout.Place([c], Theme.Paper, new(1600, 1200), 2));
-        Assert.Equal(1600 - (c.Width + 12) * 2, layout.X); Assert.Equal(184, layout.H);
+        var layout = Assert.Single(ViewportLayout.Solve(new(new(1600, 1200), 2, [new(Guid.Empty, 1, Theme.Paper, [c])], TextMetrics.Measurer, new LayoutOptions { EnableCompact = false })).Placements);
+        Assert.Equal(1600 - (c.Width + 12) * 1.25, layout.X); Assert.Equal(115, layout.Height);
     }
     [Fact]
     public void InvalidDataCannotCreateAmbiguousHitRegions()

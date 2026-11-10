@@ -64,25 +64,4 @@ public static class CardMeasure
 public static class SlotLayout
 {
     public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (Slot)(index % 6);
-    public static CardLayout[] Place(IReadOnlyList<CardSpec> cards, Theme theme, Size2 viewport, double scale = 1)
-    {
-        if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
-        var result = new List<CardLayout>();
-        var groups = cards.Select((c, i) => (c, i, slot: Resolve(c, i))).GroupBy(x => x.slot);
-        foreach (var group in groups)
-        {
-            var items = group.Select(x => x.c).ToArray();
-            var total = items.Sum(c => CardMeasure.Measure(c, theme).Height * scale) + (items.Length - 1) * 8 * scale;
-            var y = group.Key is Slot.Bl or Slot.Br ? viewport.Height - 12 * scale - total : group.Key is Slot.Lc or Slot.Rc ? (viewport.Height - total) / 2 : 36 * scale;
-            foreach (var c in items)
-            {
-                var size = CardMeasure.Measure(c, theme);
-                var x = group.Key is Slot.Tr or Slot.Br or Slot.Rc ? viewport.Width - (size.Width + 12) * scale : 12 * scale;
-                result.Add(new(c.Id, c.Rev, x, y, size.Width * scale, size.Height * scale, CardMeasure.Hits(c, theme)));
-                y += (size.Height + 8) * scale;
-            }
-        }
-        // Preserve input order, which is also the paint order used for reverse hit testing.
-        return cards.Select(c => result.Single(r => r.Id == c.Id)).ToArray();
-    }
 }

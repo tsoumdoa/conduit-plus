@@ -134,6 +134,8 @@ Cards appear in the order they arrive in Overlay's Cards input, and each card's 
 When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
 front of Overlay makes the order explicit. Cards can't be dragged in the viewport.
 
+Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Size scales one Overlay.
+
 ## Grasshopper components
 
 All components are in the **Conduit+** category. Connect one or more card outputs
@@ -149,7 +151,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
-| Overlay | Cards, optional Links, Theme, Scope and View inputs; Selection and Events outputs. Auto theme by default for new components. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
+| Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
 | Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Appended optional Scope input and Selection output. Right-click → Theme. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |

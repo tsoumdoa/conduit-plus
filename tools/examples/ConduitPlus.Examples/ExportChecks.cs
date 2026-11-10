@@ -74,7 +74,7 @@ internal static class ExportChecks
         Require(image.Width == size.Width * scale && image.Height == size.Height * scale, "PNG dimensions mismatch.");
         var theme = (Theme)Get(session, "Theme");
         var surface = GdiCanvas.ParseColor(theme.Surface);
-        var layouts = SlotLayout.Place(cards, theme, new(image.Width, image.Height), Dpi(view) * scale);
+        var layouts = ((CardLayout[])typeof(OverlayManager).GetMethod("Placements", Internal)!.Invoke(null, [session])!).Select(l => l with { X = l.X * scale, Y = l.Y * scale, W = l.W * scale, H = l.H * scale }).ToArray();
         for (var i = 0; i < layouts.Length; i++)
         for (var j = i + 1; j < layouts.Length; j++)
         {

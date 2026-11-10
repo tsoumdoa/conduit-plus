@@ -1,6 +1,6 @@
 namespace ConduitPlus.Core;
 
-public sealed record LayoutOptions(double RefWidth = 1600, double RefHeight = 900, double MinZoom = .625, double MaxZoom = 2, double ZoomStep = 1d / 32, double KeepClear = .35, double TopInsetCss = 30, double Margin = 12, double Gap = 8, double ChipReserve = 34, bool EnableCompact = true);
+public sealed record LayoutOptions(double RefWidth = 1600, double RefHeight = 900, double MinZoom = .625, double MaxZoom = 2, double ZoomStep = 1d / 32, double KeepClear = .35, double TopInsetCss = 30, double Margin = 12, double Gap = 8, double ChipReserve = 34, bool EnableCompact = true, double BottomLeftReserve = 0);
 public sealed record LayoutParticipant(Guid Owner, double Size, Theme Theme, IReadOnlyList<CardSpec> Cards);
 public sealed record LayoutRequest(Size2 Viewport, double Dpi, IReadOnlyList<LayoutParticipant> Participants, Func<string, double, string, Size2> Measure, LayoutOptions Options);
 /// <summary>Presentation only; future title forms can extend this without changing authored cards.</summary>
@@ -80,7 +80,9 @@ public static class ViewportLayout
                 Slot[] slots = rail == 0 ? [Slot.Tl, Slot.Lc, Slot.Bl] : [Slot.Tr, Slot.Rc, Slot.Br];
                 var ordered = slots.SelectMany(s => owners.SelectMany(p => p.Cards.Where((c, i) => SlotLayout.Resolve(c, i) == s).Select(c => items.Single(x => x.P.Owner == p.Owner && x.C.Id == c.Id)))).Where(x => !hidden.Contains(x)).ToArray();
                 var groups = new List<List<Item>>();
-                var capacity = portrait ? r.Viewport.Width - 2 * margin : r.Viewport.Height - top - margin;
+                // Keep the bottom-left corner clear (Rhino's world axes icon): the left rail, or the bottom band in portrait, ends above it.
+                var bottom = margin + ((portrait ? rail == 1 : rail == 0) ? o.BottomLeftReserve : 0);
+                var capacity = portrait ? r.Viewport.Width - 2 * margin : r.Viewport.Height - top - bottom;
                 foreach (var x in ordered)
                 {
                     var size = Measure(x); var length = portrait ? size.Width : size.Height;
@@ -103,12 +105,12 @@ public static class ViewportLayout
                         {
                             var remaining = group.SkipWhile(y => y != x).ToArray();
                             var rest = remaining.Sum(y => Measure(y).Height) + (remaining.Length - 1) * gap;
-                            if (x.Slot is Slot.Bl or Slot.Br) cursor = Math.Max(cursor, r.Viewport.Height - margin - rest);
+                            if (x.Slot is Slot.Bl or Slot.Br) cursor = Math.Max(cursor, r.Viewport.Height - bottom - rest);
                             // Centre the middle-slot cards as a block, clamped between the top and bottom stacks.
-                            else if (middle.Length > 0 && ReferenceEquals(x, middle[0])) cursor = Math.Max(cursor, Math.Min((r.Viewport.Height - middleTotal) / 2, r.Viewport.Height - margin - rest));
+                            else if (middle.Length > 0 && ReferenceEquals(x, middle[0])) cursor = Math.Max(cursor, Math.Min((r.Viewport.Height - middleTotal) / 2, r.Viewport.Height - bottom - rest));
                         }
                         var px = portrait ? cursor : rail == 0 ? margin + offset : r.Viewport.Width - margin - offset - s.Width;
-                        var py = portrait ? rail == 0 ? top + offset : r.Viewport.Height - margin - offset - s.Height : cursor;
+                        var py = portrait ? rail == 0 ? top + offset : r.Viewport.Height - bottom - offset - s.Height : cursor;
                         var rect = new Rect2(px, py, s.Width, s.Height);
                         if (px < 0 || py < 0 || px + s.Width > r.Viewport.Width + 1e-7 || py + s.Height > r.Viewport.Height + 1e-7 || chip is { } ch && Overlap(rect, ch) || placed.Any(p => Overlap(rect, new(p.X, p.Y, p.Width, p.Height)))) return false;
                         placed.Add(new(x.P.Owner, x.C.Id, px, py, s.Width, s.Height, forms[(x.P.Owner, x.C.Id)]));

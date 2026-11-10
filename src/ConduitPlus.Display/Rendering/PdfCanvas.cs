@@ -6,7 +6,7 @@ using Rhino.FileIO;
 namespace ConduitPlus.Rendering;
 
 /// <summary>FilePdf takes positions/strokes in page dots, but font heights in points (72/in).</summary>
-internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double dotsPerCssPixel) : ICanvas2D, IDisposable
+internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double dotsPerCssPixel, double dpi) : ICanvas2D, IDisposable
 {
     private readonly Bitmap _measureBitmap = new(1, 1);
     private Rect2 _clip = new(-100000, -100000, 200000, 200000);
@@ -101,7 +101,7 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
         }
         if (text.Length == 0) return;
         var p = P(topLeft);
-        pdf.DrawText(page, text, p.X, p.Y, (float)(size * 72 / 96), new global::Rhino.DocObjects.Font(font), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
+        pdf.DrawText(page, text, p.X, p.Y, (float)(size * dotsPerCssPixel * 72 / (96 * dpi)), new global::Rhino.DocObjects.Font(font), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     }
     public void DrawBitmap(Bitmap bitmap, Rect2 r)
     {

@@ -28,12 +28,15 @@ def main():
     args = parser.parse_args()
     compact = [args.compact_1, args.compact_2, args.compact_4]
     dimensions = []
+    zooms = []
     for root, scale in zip(compact, (1, 2, 4)):
         with Image.open(png(root, scale)) as image:
             assert image.size == (474 * scale, 329 * scale), image.size
             dimensions.append(image.size)
         metadata = read(root / "compact" / "captures" / f"raster-{scale}x.json")
-        assert metadata["sessions"][0]["raster"]["scale"] == metadata["dpi"] * scale
+        # Cards scale with the viewport: raster scale = dpi x layout zoom x capture multiplier.
+        zooms.append(metadata["sessions"][0]["raster"]["scale"] / (metadata["dpi"] * scale))
+    assert all(abs(z - zooms[0]) < 1e-9 for z in zooms) and .625 - 1e-9 <= zooms[0] <= 2 + 1e-9, zooms
 
     baseline = png(args.compact_1)
     tooltip_difference = compare(baseline, png(args.tooltip))
@@ -67,6 +70,7 @@ def main():
         assert len(pdf) == 1
         page = pdf[0]
         point_scale = 72 / (96 * capture["dpi"])
+        zoom = capture["sessions"][0]["raster"]["scale"] / capture["dpi"]
         expected_size = (capture["width"] * point_scale, capture["height"] * point_scale)
         assert abs(page.rect.width - expected_size[0]) < .01
         assert abs(page.rect.height - expected_size[1]) < .01
@@ -78,14 +82,14 @@ def main():
         errors = []
         for title, region in zip(titles, full["regions"]):
             span = next(s for s in spans if s["text"] == title)
-            expected = ((region["x"] + 12 * capture["dpi"]) * point_scale,
-                        (region["y"] + 10 * capture["dpi"]) * point_scale)
+            expected = ((region["x"] + 12 * capture["dpi"] * zoom) * point_scale,
+                        (region["y"] + 10 * capture["dpi"] * zoom) * point_scale)
             errors.extend(abs(actual - wanted) for actual, wanted in zip(span["bbox"][:2], expected))
-            assert abs(span["size"] - 9) < .01
+            assert abs(span["size"] - 9 * zoom) < .01
         assert max(errors) < .01, errors
         page.get_pixmap(matrix=pymupdf.Matrix(1, 1)).save(args.full / "captures" / "pdf-page.png")
         (args.full / "captures" / "pdf-text.txt").write_text(text, encoding="utf-8")
-        result = dict(png_dimensions=dimensions, full_card_regions=9, minimum_opaque_fraction=min(r["fraction"] for r in full["regions"]),
+        result = dict(png_dimensions=dimensions, compact_zoom=zooms[0], full_zoom=zoom, full_card_regions=9, minimum_opaque_fraction=min(r["fraction"] for r in full["regions"]),
                       tooltip_difference=tooltip_difference, selected_wire_pixels=highlights,
                       pdf_pages=len(pdf), pdf_points=[page.rect.width, page.rect.height], searchable_titles=len(titles),
                       maximum_title_position_error_points=max(errors), pdf_bytes=pdf_path.stat().st_size)

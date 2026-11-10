@@ -48,7 +48,6 @@ For the full Canvas Card checks, wire each card kind from these files into its o
 - **Several viewports per Overlay.** One Overlay drawing to more than one viewport at once; View picks one today.
 - **Gradient-aware Legend.** Reads a GH Gradient wire.
 - **Card resize.**
-- **Space between owners.** Two Overlay components currently overlap in the same slot.
 - **Export.** PDF of the whole view (model + cards) and a multi-page PDF report (see IDEAS.md).
 
 ## Still unverified / known trade-offs
