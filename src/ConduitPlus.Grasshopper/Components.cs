@@ -656,7 +656,9 @@ public sealed class OverlayComponent : GH_Component
             var view = pending.Interaction ? pending.ViewId is { } id ? doc?.Views.Find(id) : null : doc?.Views.ActiveView;
             if (doc is not null && pending.RequestedView is { } name)
             {
-                var resolved = ViewportNames.Resolve(doc.Views.GetStandardRhinoViews().Select(v => (v.MainViewport.Id, v.MainViewport.Name)), name, pending.ViewId);
+                // Keep the viewport only while it serves this same request, so changing View always looks the name up again.
+                var bound = string.Equals(_lastPublish?.RequestedView, name, StringComparison.OrdinalIgnoreCase) ? pending.ViewId : null;
+                var resolved = ViewportNames.Resolve(doc.Views.GetStandardRhinoViews().Select(v => (v.MainViewport.Id, v.MainViewport.Name)), name, bound);
                 view = resolved.Id is { } target ? doc.Views.Find(target) : null;
                 SetNotice("view", GH_RuntimeMessageLevel.Warning, view is null ? $"View \"{name}\" isn't open, so nothing is drawn. Open it or pick another View." : resolved.Duplicate ? $"More than one viewport is named \"{name}\". Drawing in one of them." : null);
                 if (view is null) OverlayManager.Detach(doc, InstanceGuid);

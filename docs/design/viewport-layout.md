@@ -124,7 +124,7 @@ Item access re-runs the solve per item, so several values warn and use the last.
 
 **Option list.** `Param_TextOption` gains `Func<IReadOnlyList<InputOption>>? OptionsProvider`, evaluated only when the menu opens. `ApplyOption` compares by value against that list, or accepts the clicked option when a provider is set, so a name that vanished after the menu opened is stored and then reports as not open. Overlay's provider uses its bound document, else `RhinoDoc.ActiveDoc`: **Active viewport** (no value), each distinct `MainViewport.Name` from `GetStandardRhinoViews` (`Find` also matches pages), then a stored name not currently open.
 
-**Resolution** is pure logic in Core over `(id, name)` pairs, with the currently bound id: keep the bound view while its name still matches ordinal-ignore-case, otherwise take the first match. It reports whether a name is duplicated.
+**Resolution** is pure logic in Core over `(id, name)` pairs. The name only finds a viewport. Rhino renames viewports, and `_SetView` changes a panel's name from Top to Front while its id stays the same, so a viewport already serving this same request stays bound whatever it is called now and however many other viewports match. Otherwise take the first ordinal-ignore-case match. Changing the View value drops the binding and looks the new name up. Files save the name, so reopening looks it up again: a panel since switched away from "Top" is not found by that name. A duplicate is reported only when the chosen viewport itself carries the name.
 
 **Which view to use.**
 
@@ -224,6 +224,8 @@ Harness: frozen old `.gh` fixture; menu persistence and undo; non-finite Size. `
 Rhino by hand: 4-up, maximised, floating and DPI change; resize smoothness and the settle timer; named view close, reopen, rename, rename-away; whether `_SetView` retitles a viewport and fires `Rename`; runtime-message refresh; chip clicks versus model picks; drag at the floor; shared viewport; scope selection while hidden; halo over light and dark geometry; PNG and PDF match the screen and restore state after failure.
 
 ## Review record
+
+Testing PR 1 in RhinoCore showed `_SetView` renames the viewport, so the user chose to keep a bound viewport through renames (2026-11-10), replacing the second round's "treat rename-away as re-resolve".
 
 Second round (revision 3): missing-chunk error confirmed by PR #26 and made a mandatory PR 1 fix (both); view choice per publish path and intent surviving without a session (both); event ownership under `Start`/`Stop` and lock (both); notices replacing the retained-message idea (both); name resolution moved to PR 1 (both); `Tc`/`Bc` moved to PR 6 (Opus).
 
