@@ -37,9 +37,6 @@ public sealed record CardSpec
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
     public Slot? WiredSlot { get; init; }
-    public Slot? ManualSlot { get; init; }
-    public Slot? OrderSlot { get; init; }
-    public int? ManualOrder { get; init; }
     public double Width { get; init; } = 280;
     public string? HoverKey { get; init; }
     public string[] SelectedKeys { get; init; } = [];
@@ -55,7 +52,7 @@ public sealed record CardSpec
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(Id)) throw new ArgumentException("Card ID is required.");
-        if (WiredSlot is { } wired && !Enum.IsDefined(wired) || ManualSlot is { } manual && !Enum.IsDefined(manual) || OrderSlot is { } orderSlot && !Enum.IsDefined(orderSlot) || ManualOrder < 0) throw new ArgumentException("Invalid card layout.");
+        if (WiredSlot is { } wired && !Enum.IsDefined(wired)) throw new ArgumentException("Invalid card layout.");
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
         if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");

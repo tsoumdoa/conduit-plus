@@ -285,14 +285,11 @@ public sealed class OverlayComponent : GH_Component
             if (!Locked) OverlayManager.RefreshDomain(InstanceGuid);
         };
     }
-    private Dictionary<string, LayoutOverride> _layout = new(StringComparer.Ordinal);
     private CardSpec[] _originals = [];
-    private bool _layoutWarning;
     private Theme _menuTheme = Theme.NewComponentDefault;
     private Theme _selectedTheme = Theme.NewComponentDefault;
     public override bool Write(GH_IWriter writer)
     {
-        lock (_publishLock) writer.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(_layout));
         writer.SetString("ConduitPlus.Theme", _menuTheme.Name);
         return base.Write(writer);
     }
@@ -304,20 +301,15 @@ public sealed class OverlayComponent : GH_Component
         bool result;
         try { result = base.Read(reader); }
         finally { foreach (var entry in removed.OrderBy(e => e.Index)) Params.RegisterInputParam(entry.Param, entry.Index); }
-        var json = ""; var found = reader.TryGetString("ConduitPlus.Layout", ref json);
-        lock (_publishLock) _layout = LayoutEditing.Read(json, out _layoutWarning);
-        _layoutWarning |= !found && reader.ItemExists("ConduitPlus.Layout");
         var themeName = "";
         var themeFound = reader.TryGetString("ConduitPlus.Theme", ref themeName);
         _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);
         _selectedTheme = _menuTheme;
-        if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         return result;
     }
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalComponentMenuItems(menu);
-        Menu_AppendItem(menu, "Reset layout", (_, _) => ChangeLayout(new Dictionary<string, LayoutOverride>(StringComparer.Ordinal)), true, false);
         // A wired or right-click-set Theme input wins, so the menu is shown but disabled while it has a value.
         var setByInput = ThemeInputSet;
         var themes = Menu_AppendItem(menu, setByInput ? "Theme (set by input)" : "Theme");
@@ -367,59 +359,6 @@ public sealed class OverlayComponent : GH_Component
         public override bool Read(GH_IReader reader)
         {
             _owner = reader.GetGuid("Owner"); _before = reader.GetString("Before"); _after = reader.GetString("After");
-            return base.Read(reader);
-        }
-    }
-    private void OnLayoutProposal(LayoutProposal proposal)
-    {
-        if (!_active || proposal.Owner != InstanceGuid) return;
-        Dictionary<string, LayoutOverride> next;
-        lock (_publishLock) next = new(_layout, StringComparer.Ordinal);
-        foreach (var entry in proposal.Changes) next[entry.Key] = entry.Value;
-        ChangeLayout(next);
-    }
-    private void ChangeLayout(Dictionary<string, LayoutOverride> next)
-    {
-        if (OnPingDocument() is null) return;
-        lock (_publishLock)
-        {
-            if (_layout.Count == next.Count && _layout.All(p => next.TryGetValue(p.Key, out var value) && p.Value == value)) return;
-            RecordUndoEvent("Edit layout", new LayoutUndoAction(InstanceGuid, _layout, next));
-        }
-        ApplyLayout(next);
-    }
-    private void ApplyLayout(IReadOnlyDictionary<string, LayoutOverride> layout)
-    {
-        lock (_publishLock) _layout = new(layout, StringComparer.Ordinal);
-        // The manager rebuilds its currently bound original specs; no publish, solve or active-view lookup.
-        OverlayManager.ReplaceLayout(InstanceGuid, layout);
-        OnPingDocument()?.Modified();
-    }
-    public sealed class LayoutUndoAction : GH_ObjectUndoAction
-    {
-        private Guid _owner;
-        private ImmutableDictionary<string, LayoutOverride> _before = ImmutableDictionary<string, LayoutOverride>.Empty;
-        private ImmutableDictionary<string, LayoutOverride> _after = ImmutableDictionary<string, LayoutOverride>.Empty;
-        public LayoutUndoAction() : base(Guid.Empty) { }
-        public LayoutUndoAction(Guid owner, IReadOnlyDictionary<string, LayoutOverride> before, IReadOnlyDictionary<string, LayoutOverride> after) : base(owner)
-        { _owner = owner; _before = before.ToImmutableDictionary(StringComparer.Ordinal); _after = after.ToImmutableDictionary(StringComparer.Ordinal); }
-        public override bool ExpiresSolution => false;
-        public override bool ExpiresDisplay => true;
-        protected override void Object_Undo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyLayout(_before); }
-        protected override void Object_Redo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyLayout(_after); }
-        // GH_ObjectUndoAction does not serialize its private target id. Resolve our serialized id after Read as well.
-        protected override void Internal_Undo(GH_Document doc) => Object_Undo(doc, doc.FindObject(_owner, false));
-        protected override void Internal_Redo(GH_Document doc) => Object_Redo(doc, doc.FindObject(_owner, false));
-        public override bool Write(GH_IWriter writer)
-        {
-            writer.SetGuid("Owner", _owner); writer.SetString("Before", LayoutEditing.Serialize(_before)); writer.SetString("After", LayoutEditing.Serialize(_after));
-            return base.Write(writer);
-        }
-        public override bool Read(GH_IReader reader)
-        {
-            _owner = reader.GetGuid("Owner");
-            _before = LayoutEditing.Read(reader.GetString("Before"), out _).ToImmutableDictionary(StringComparer.Ordinal);
-            _after = LayoutEditing.Read(reader.GetString("After"), out _).ToImmutableDictionary(StringComparer.Ordinal);
             return base.Read(reader);
         }
     }
@@ -475,7 +414,7 @@ public sealed class OverlayComponent : GH_Component
         if (_active) return;
         OverlayManager.Start();
         _active = true; _generation++;
-        OverlayManager.Interaction += OnInteraction; OverlayManager.LayoutProposed += OnLayoutProposal;
+        OverlayManager.Interaction += OnInteraction;
         OverlayManager.BoundDocumentClosed += OnBoundDocumentClosed;
         OverlayManager.ViewsChanged += OnViewsChanged;
         if (_scope is { IsValid: true } && _lastPublish is { } last)
@@ -496,7 +435,7 @@ public sealed class OverlayComponent : GH_Component
         if (_noticeDocument is { } noticeDoc) noticeDoc.SolutionEnd -= NoticeSolutionEnd; _noticeDocument = null;
         _active = false; _generation++;
         lock (_publishLock) { _pending = null; _publishScheduled = false; _solveScheduled = false; _interactionSolve = false; }
-        OverlayManager.Interaction -= OnInteraction; OverlayManager.LayoutProposed -= OnLayoutProposal;
+        OverlayManager.Interaction -= OnInteraction;
         OverlayManager.BoundDocumentClosed -= OnBoundDocumentClosed;
         OverlayManager.ViewsChanged -= OnViewsChanged;
         if (clear) { DetachScope(); _lastPublish = null; _events.Clear(); }
@@ -563,7 +502,6 @@ public sealed class OverlayComponent : GH_Component
     {
         string requested = ""; da.GetData(4, ref requested); _requestedView = ViewportNames.Requested(requested);
         if (Params.Input[4].VolatileData.DataCount > 1) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Several View values supplied; using the last.");
-        if (_layoutWarning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Some saved Conduit+ layout data was invalid or unsupported and was ignored.");
         lock (_publishLock) _solveScheduled = false;
         var theme = _menuTheme;
         if (ThemeInputSet)
@@ -671,7 +609,7 @@ public sealed class OverlayComponent : GH_Component
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _layout, _selectedTheme, pending.Scope, pending.BrushEnabled);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }

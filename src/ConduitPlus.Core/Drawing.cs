@@ -63,7 +63,7 @@ public static class CardMeasure
 
 public static class SlotLayout
 {
-    public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? c.ManualSlot ?? (Slot)(index % 6);
+    public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (Slot)(index % 6);
     public static CardLayout[] Place(IReadOnlyList<CardSpec> cards, Theme theme, Size2 viewport, double scale = 1)
     {
         if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
@@ -71,7 +71,7 @@ public static class SlotLayout
         var groups = cards.Select((c, i) => (c, i, slot: Resolve(c, i))).GroupBy(x => x.slot);
         foreach (var group in groups)
         {
-            var items = group.OrderBy(x => x.c.OrderSlot != x.slot || !x.c.ManualOrder.HasValue).ThenBy(x => x.c.OrderSlot == x.slot ? x.c.ManualOrder : null).ThenBy(x => x.i).Select(x => x.c).ToArray();
+            var items = group.Select(x => x.c).ToArray();
             var total = items.Sum(c => CardMeasure.Measure(c, theme).Height * scale) + (items.Length - 1) * 8 * scale;
             var y = group.Key is Slot.Bl or Slot.Br ? viewport.Height - 12 * scale - total : group.Key is Slot.Lc or Slot.Rc ? (viewport.Height - total) / 2 : 36 * scale;
             foreach (var c in items)

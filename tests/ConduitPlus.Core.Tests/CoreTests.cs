@@ -33,8 +33,8 @@ public sealed class CoreTests
     [Fact]
     public void LayoutPrecedenceAndScaleAreDeterministic()
     {
-        var c = StructuralDemo.Create()[0] with { WiredSlot = Slot.Tr, ManualSlot = Slot.Bl };
-        Assert.Equal(Slot.Tr, SlotLayout.Resolve(c, 0)); Assert.Equal(Slot.Bl, SlotLayout.Resolve(c with { WiredSlot = null }, 0)); Assert.Equal(Slot.Tl, SlotLayout.Resolve(c with { WiredSlot = null, ManualSlot = null }, 0));
+        var c = StructuralDemo.Create()[0] with { WiredSlot = Slot.Tr };
+        Assert.Equal(Slot.Tr, SlotLayout.Resolve(c, 0)); Assert.Equal(Slot.Tl, SlotLayout.Resolve(c with { WiredSlot = null }, 0));
         var layout = Assert.Single(SlotLayout.Place([c], Theme.Paper, new(1600, 1200), 2));
         Assert.Equal(1600 - (c.Width + 12) * 2, layout.X); Assert.Equal(184, layout.H);
     }

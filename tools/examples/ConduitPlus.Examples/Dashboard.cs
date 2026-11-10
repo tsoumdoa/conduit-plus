@@ -44,8 +44,8 @@ internal static class Dashboard
             var oldOverlay = legacy.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
             Require(oldOverlay.Params.Input.Count == 5 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false }, "Legacy View must be appended and unset.");
             Require(oldOverlay.Params.Input[0].SourceCount > 0, "Legacy card wires lost.");
-            var legacyLayout = typeof(ConduitPlus.Grasshopper.OverlayComponent).GetField("_layout", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(oldOverlay);
-            Require(legacyLayout is System.Collections.ICollection { Count: > 0 }, "Legacy layout lost.");
+            var clean = new GH_Archive().CreateTopLevelNode("Overlay"); oldOverlay.Write(clean);
+            Require(!((GH_IReader)clean).ItemExists("ConduitPlus.Layout"), "Legacy layout must be ignored.");
             var saved = new GH_Archive(); Require(saved.AppendObject(legacy, "Definition"), "Cannot save legacy fixture.");
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
@@ -118,16 +118,13 @@ internal static class Dashboard
         ((Param_Colour)legend.Params.Input[0]).PersistentData.AppendRange(new[] { ColorTranslator.FromHtml("#1F8A5B"), ColorTranslator.FromHtml("#E5B63D"), ColorTranslator.FromHtml("#C2334D") }.Select(c => new GH_Colour(c)));
         var min = Slider("Scale minimum", 0, 0, 0, 360, 1130); var max = Slider("Scale maximum", 1.2m, 1.2m, 1.2m, 360, 1190);
         Wire(legend, 2, min); Wire(legend, 3, max); Text(legend, 4, "ratio");
-        var note = Component(207, 740, 1410); Text(note, 0, "Illustrative example"); Text(note, 1, "Illustrative results — drag cards by their title; click a bar or a member.\nChange Span or Load in Grasshopper.\nNot structural analysis or design verification.");
+        var note = Component(207, 740, 1410); Text(note, 0, "Illustrative example"); Text(note, 1, "Illustrative results. Click a bar or a member.\nChange Span or Load in Grasshopper.\nNot structural analysis or design verification.");
         var link = Component(205, 1020, 1680); Wire(link, 0, truss.Params.Output[0]); Wire(link, 1, truss.Params.Output[1]);
         var overlay = Component(204, 1280, 760);
         GH_Component[] cards = [.. metrics, bar, table, line, legend, note];
-        // Persist manual slots so the example opens neatly and every card remains draggable.
+        // Set slots explicitly for the example arrangement.
         Slot[] slots = [Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tr, Slot.Tr, Slot.Tl, Slot.Tr, Slot.Tl];
-        var layout = cards.Select((c, i) => (c, i)).ToDictionary(p => p.c.InstanceGuid.ToString("N"), p => new LayoutOverride { ManualSlot = slots[p.i], OrderSlot = slots[p.i], Order = p.i });
-        var chunk = new GH_Archive().CreateTopLevelNode("Overlay"); overlay.Write(chunk);
-        chunk.RemoveItem("ConduitPlus.Layout");
-        chunk.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(layout)); overlay.Read((GH_IReader)chunk);
+        for (var i = 0; i < cards.Length; i++) Text(cards[i], cards[i].Params.Input.FindIndex(p => p.Name == "Slot"), slots[i].ToString().ToLowerInvariant());
         overlay.Params.Input[0].DataMapping = GH_DataMapping.Flatten;
         overlay.Params.Input[1].DataMapping = GH_DataMapping.Flatten;
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);

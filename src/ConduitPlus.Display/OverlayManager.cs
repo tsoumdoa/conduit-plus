@@ -4,7 +4,6 @@ using Rhino.Display;
 
 namespace ConduitPlus.Rhino;
 
-public sealed record LayoutProposal(Guid Owner, IReadOnlyDictionary<string, LayoutOverride> Changes);
 
 public static partial class OverlayManager
 {
@@ -19,8 +18,6 @@ public static partial class OverlayManager
         public bool Enabled { get; set; } = true;
         public long Gesture { get; set; } = Interlocked.Increment(ref _gestureGeneration);
         public BrushDomainSnapshot Current => Domain?.Current ?? Brush.Current;
-        public Dictionary<string, LayoutOverride> Layout { get; set; } = new(StringComparer.Ordinal);
-        public CardSpec[] Originals { get; set; } = [];
     }
     private static long _gestureGeneration;
     public static event Action? ViewsChanged;
@@ -43,7 +40,6 @@ public static partial class OverlayManager
     private static readonly OverlayMouse Mouse = new();
     private static bool _started, _stopping;
     public static event Action<OverlayInteraction>? Interaction;
-    public static event Action<LayoutProposal>? LayoutProposed;
     public static bool Busy { get; internal set; }
     internal static void Start()
     {
@@ -144,7 +140,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, IReadOnlyDictionary<string, LayoutOverride>? layout = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true)
     {
         UiContext.Ensure();
         Start();
@@ -157,16 +153,14 @@ public static partial class OverlayManager
             var key = (doc.RuntimeSerialNumber, owner);
             if (!States.TryGetValue(key, out var state)) States.Add(key, state = new(doc.RuntimeSerialNumber, view.MainViewport.Id));
             state.ViewId = view.MainViewport.Id; Bindings[owner] = state;
-            state.Originals = specs;
             state.Domain = domain; state.Enabled = brushEnabled;
-            if (layout is not null) state.Layout = new(layout, StringComparer.Ordinal);
             if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
         }
         // Following the active view removes this owner's previous conduit.
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
         session.SetLinks(linked);
-        session.Update(LayoutEditing.Apply(specs, LayoutSnapshot(session)), theme: theme ?? Theme.Paper);
+        session.Update(specs, theme: theme ?? Theme.Paper);
         view.Redraw();
     }
     public static void ReplaceTheme(Guid owner, Theme theme)
@@ -203,32 +197,6 @@ public static partial class OverlayManager
     }
     public static (uint DocumentSerial, Guid? ViewId)? Binding(Guid owner)
     { Start(); lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? (state.DocumentSerial, state.ViewId) : null; }
-    internal static Dictionary<string, LayoutOverride> LayoutSnapshot(OverlaySession session)
-    { lock (StateLock) return States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? new(state.Layout, StringComparer.Ordinal) : []; }
-    public static void ReplaceLayout(Guid owner, IReadOnlyDictionary<string, LayoutOverride> layout) => ReplaceLayout(owner, layout, null);
-    private static void ReplaceLayout(Guid owner, IReadOnlyDictionary<string, LayoutOverride> layout, uint? documentSerial)
-    {
-        UiContext.Ensure();
-        Start();
-        lock (StateLock)
-            foreach (var state in States.Where(p => p.Key.Owner == owner && (!documentSerial.HasValue || p.Key.Doc == documentSerial)).Select(p => p.Value)) state.Layout = new(layout, StringComparer.Ordinal);
-        foreach (var session in Sessions.Values.Where(s => s.Owner == owner && (!documentSerial.HasValue || s.Document.RuntimeSerialNumber == documentSerial)).ToArray())
-        {
-            OwnerState state;
-            lock (StateLock) state = States[(session.Document.RuntimeSerialNumber, owner)];
-            session.Update(LayoutEditing.Apply(state.Originals, state.Layout), session.CommittingLayout);
-            session.View.Redraw();
-        }
-    }
-    internal static void ProposeLayout(OverlaySession session, IReadOnlyDictionary<string, LayoutOverride> changes)
-    {
-        UiContext.Ensure();
-        if (changes.Count == 0) return;
-        if (session.Owner != Guid.Empty) { LayoutProposed?.Invoke(new(session.Owner, changes)); return; }
-        var next = LayoutSnapshot(session);
-        foreach (var pair in changes) next[pair.Key] = pair.Value;
-        ReplaceLayout(session.Owner, next, session.Document.RuntimeSerialNumber);
-    }
     internal static void CancelGesture(OverlaySession session) => Mouse.Forget(session);
     private static void CancelBrushHover(OverlaySession session)
     {

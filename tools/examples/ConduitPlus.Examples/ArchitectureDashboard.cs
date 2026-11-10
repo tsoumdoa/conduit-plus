@@ -172,8 +172,7 @@ internal static class ArchitectureDashboard
         }
         var link = Component(205, 1050, 400); Wire(link, 0, demo.Params.Output[0]); Wire(link, 1, demo.Params.Output[1]);
         var overlay = Component(204, 1340, 750); overlay.Params.Input[0].DataMapping = GH_DataMapping.Flatten; overlay.Params.Input[1].DataMapping = GH_DataMapping.Flatten;
-        var layout = cards.Select((c, i) => (c, i)).ToDictionary(p => p.c.InstanceGuid.ToString("N"), p => new LayoutOverride { ManualSlot = p.i == 4 ? Slot.Tr : p.i == 5 ? Slot.Br : Slot.Tl, OrderSlot = p.i == 4 ? Slot.Tr : p.i == 5 ? Slot.Br : Slot.Tl, Order = p.i });
-        var chunk = new GH_Archive().CreateTopLevelNode("Overlay"); overlay.Write(chunk); chunk.RemoveItem("ConduitPlus.Layout"); chunk.SetString("ConduitPlus.Layout", LayoutEditing.Serialize(layout)); overlay.Read((GH_IReader)chunk);
+        for (var i = 0; i < cards.Count; i++) Text(cards[i], cards[i].Params.Input.FindIndex(p => p.Name == "Slot"), i == 4 ? "tr" : i == 5 ? "br" : "tl");
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);
 
         if (rooms)

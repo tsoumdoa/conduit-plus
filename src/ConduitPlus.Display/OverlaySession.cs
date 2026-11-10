@@ -10,6 +10,7 @@ namespace ConduitPlus.Rhino;
 
 internal sealed partial class OverlaySession : IDisposable
 {
+    internal Size2 ViewSize => new(View.ActiveViewport.Size.Width, View.ActiveViewport.Size.Height);
     public Guid Owner { get; }
     public RhinoDoc Document { get; }
     public RhinoView View { get; }
@@ -187,11 +188,6 @@ internal sealed partial class OverlaySession : IDisposable
         // Rhino's viewport Size remains the source view size during ViewCapture.
         var viewport = e.Display.IsInViewCapture ? new Size2(View.ActiveViewport.Size.Width * CaptureMultiplier, View.ActiveViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
         var layouts = SlotLayout.Place(Cards, Theme, viewport, scale);
-        if (!e.Display.IsInViewCapture)
-        {
-            if (!LayoutEnvironmentValid()) OverlayManager.CancelGesture(this);
-            if (_layoutDrag is { } drag) layouts = drag.Frozen;
-        }
         // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
         // including direct captures; the next screen draw lazily restores screen resolution.
         if (_raster.Scale != scale || e.Display.IsInViewCapture || _rasterHasCaptureState)
@@ -212,11 +208,9 @@ internal sealed partial class OverlaySession : IDisposable
         }
         foreach (var layout in layouts)
         {
-            if (!e.Display.IsInViewCapture && _layoutDrag?.CardId == layout.Id) continue;
             if (_raster.Prepared.TryGetValue(layout.Id, out var p))
                 e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X) - p.Capture.Margin, (int)Math.Round(layout.Y) - p.Capture.Margin);
         }
-        if (!e.Display.IsInViewCapture) DrawLayoutEditing(e.Display, layouts, scale);
         FrameCount++;
     }
     private void DrawHighlights(DisplayPipeline display, bool includeHover)
@@ -255,7 +249,6 @@ internal sealed partial class OverlaySession : IDisposable
     {
         if (_disposed) return;
         _disposed = true; _conduit.Enabled = false;
-        EndLayoutDrag();
         HideTooltip(); _tooltipTimer.Dispose();
         _raster.Dispose();
     }
