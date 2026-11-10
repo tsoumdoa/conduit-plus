@@ -8,9 +8,10 @@ public static class TextMetrics
     public const int MaxLines = 30;
     public static Func<string, double, string, Size2> Measurer { get; set; } = Estimate;
     public static Size2 Estimate(string text, double size, string font) => new(text.Length * size * .6, size * 1.5);
-    public static TextLayout Layout(CardSpec c, Theme t)
+    public static TextLayout Layout(CardSpec c, Theme t) => Layout(c, t, Measurer);
+    public static TextLayout Layout(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
     {
-        var measure = Measurer;
+
         var width = c.Width - 2 * t.Padding;
         double W(string text) => measure(text, t.FontSize, t.Font).Width;
         var lines = Wrap().Take(MaxLines + 1).ToList();
@@ -48,3 +49,4 @@ public static class TextMetrics
         }
     }
 }
+
