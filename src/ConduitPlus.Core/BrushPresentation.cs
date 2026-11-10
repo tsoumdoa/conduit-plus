@@ -19,7 +19,7 @@ public static class BrushPresentation
     public static string? FirstNewRow(CardSpec table, IReadOnlySet<string> previous)
     {
         var selected = table.SelectedKeys.ToHashSet(StringComparer.Ordinal);
-        return TableSort.Rows(table).FirstOrDefault(r => selected.Contains(r.Key) && !previous.Contains(r.Key))?.Key;
+        return (table.Kind == CardKind.Bar ? table.Keys : TableSort.Rows(table).Select(r => r.Key)).FirstOrDefault(key => selected.Contains(key) && !previous.Contains(key));
     }
 }
 

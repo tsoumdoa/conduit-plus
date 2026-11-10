@@ -20,6 +20,23 @@ internal sealed partial class OverlaySession : IDisposable
     private Theme _themeSelection = Theme.Paper;
     internal double Unit { get; private set; }
     internal void PrepareUnit(double unit) { Unit = unit; if (_raster.Scale != unit) _raster.Prepare(Cards, Theme, unit); }
+    /// <summary>Compact forms chosen by the view's layout. View state like scroll, re-applied to every incoming spec.</summary>
+    private readonly Dictionary<string, CardForm> _forms = new(StringComparer.Ordinal);
+    /// <summary>Cards as authored: the layout always measures these, never the compact forms it chose.</summary>
+    internal CardSpec[] AuthoredCards => Cards.Select(c => c.Form == CardForm.None ? c : c with { Form = CardForm.None }).ToArray();
+    /// <summary>Apply a settled layout: scale and compact forms. Re-presents cards only when a form changed.</summary>
+    internal void ApplyLayout(double unit, IReadOnlyDictionary<string, CardForm> forms)
+    {
+        Unit = unit;
+        var next = forms.Where(p => p.Value != CardForm.None).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        if (next.Count != _forms.Count || next.Any(p => !_forms.TryGetValue(p.Key, out var f) || f != p.Value))
+        {
+            _forms.Clear();
+            foreach (var p in next) _forms[p.Key] = p.Value;
+            Update(Cards, preserveGesture: true);
+        }
+        else if (_raster.Scale != unit) _raster.Prepare(Cards, Theme, unit);
+    }
     public double CaptureMultiplier { get; set; } = 1;
     public long FrameCount { get; private set; }
     public bool Visible { get => _conduit.Enabled; set => _conduit.Enabled = value; }
@@ -68,6 +85,7 @@ internal sealed partial class OverlaySession : IDisposable
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
         foreach (var id in _sort.Keys.Where(id => !live.Contains(id)).ToArray()) _sort.Remove(id);
+        foreach (var id in _forms.Keys.Where(id => !live.Contains(id)).ToArray()) _forms.Remove(id);
         SyncTooltip();
     }
 
@@ -80,7 +98,10 @@ internal sealed partial class OverlaySession : IDisposable
 
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
     {
-        if (c.Kind == CardKind.Table && _scroll.TryGetValue(c.Id, out var offset)) c = c with { ScrollOffset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c)) };
+        // Form first: it changes how many rows a Table or Bar shows, which bounds the scroll offset below.
+        var form = _forms.GetValueOrDefault(c.Id, CardForm.None);
+        if (c.Form != form) c = c with { Form = form };
+        if (c.Kind is (CardKind.Table or CardKind.Bar) && _scroll.TryGetValue(c.Id, out var offset)) c = c with { ScrollOffset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c)) };
         if (_sort.TryGetValue(c.Id, out var sort))
         {
             if (c.Kind != CardKind.Table || sort.Column is { } col && (col < 0 || col >= c.Headers.Length))
@@ -93,7 +114,7 @@ internal sealed partial class OverlaySession : IDisposable
             else _headerHover = null;
         }
         // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
-        if (c.Kind == CardKind.Table && BrushPresentation.FirstNewRow(c, _selectedMembers) is { } added)
+        if (c.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(c, _selectedMembers) is { } added)
         {
             var revealed = TableScroll.Reveal(c, added);
             _scroll[c.Id] = revealed;

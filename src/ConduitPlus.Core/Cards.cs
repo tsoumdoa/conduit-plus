@@ -43,6 +43,8 @@ public sealed record CardSpec
     public bool OwnerHasSelection { get; init; }
     /// <summary>Table only: rows shown at once; more rows scroll.</summary>
     public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
+    /// <summary>Compact form chosen by the viewport layout. Presentation state, like ScrollOffset.</summary>
+    public CardForm Form { get; init; } = CardForm.None;
     /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
     public int ScrollOffset { get; init; }
     /// <summary>Table only: session-owned display sort; null preserves the incoming row order.</summary>
@@ -84,17 +86,17 @@ public static class TableScroll
 {
     public const int DefaultVisibleRows = 8;
     public const double BarWidth = 6;
-    public static int Visible(CardSpec c) => Math.Min(c.Rows.Length, c.MaxRows);
-    public static int MaxOffset(CardSpec c) => Math.Max(0, c.Rows.Length - Visible(c));
+    public static int Visible(CardSpec c) => Math.Min(c.Kind == CardKind.Bar ? c.Values.Length : Math.Min(c.Rows.Length, c.MaxRows), c.Form.VisibleRows ?? int.MaxValue);
+    public static int MaxOffset(CardSpec c) => Math.Max(0, (c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length) - Visible(c));
     public static int Offset(CardSpec c) => Math.Clamp(c.ScrollOffset, 0, MaxOffset(c));
-    public static bool CanScroll(CardSpec c) => c.Kind == CardKind.Table && MaxOffset(c) > 0;
+    public static bool CanScroll(CardSpec c) => c.Kind is (CardKind.Table or CardKind.Bar) && MaxOffset(c) > 0;
 
     /// <summary>Minimal scroll to reveal a key in the sorted display order. Missing keys leave the offset alone.</summary>
     public static int Reveal(CardSpec c, string key)
     {
         var offset = Offset(c);
-        if (c.Kind != CardKind.Table) return offset;
-        var index = Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
+        if (c.Kind is not (CardKind.Table or CardKind.Bar)) return offset;
+        var index = c.Kind == CardKind.Bar ? Array.IndexOf(c.Keys, key) : Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
         if (index < 0) return offset;
         return Math.Clamp(index < offset ? index : index >= offset + Visible(c) ? index - Visible(c) + 1 : offset, 0, MaxOffset(c));
     }
@@ -103,8 +105,8 @@ public static class TableScroll
     public static (Rect2 Track, Rect2 Thumb)? Bar(CardSpec c, Theme t)
     {
         if (!CanScroll(c)) return null;
-        var track = new Rect2(c.Width - t.Padding / 2 - BarWidth / 2, 36 + t.RowHeight, BarWidth, Visible(c) * t.RowHeight);
-        var thumbHeight = Math.Max(16, track.Height * Visible(c) / c.Rows.Length);
+        var track = new Rect2(c.Width - t.Padding / 2 - BarWidth / 2, 36 + (c.Kind == CardKind.Table ? t.RowHeight : 0), BarWidth, Visible(c) * t.RowHeight);
+        var thumbHeight = Math.Max(16, track.Height * Visible(c) / (c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length));
         var top = track.Y + (track.Height - thumbHeight) * Offset(c) / MaxOffset(c);
         return (track, new Rect2(track.X, top, BarWidth, thumbHeight));
     }

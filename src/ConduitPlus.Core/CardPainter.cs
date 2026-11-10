@@ -12,6 +12,31 @@ public static class CardPainter
         canvas.RoundedRect(new(0, 0, size.Width, size.Height), t.Radius, t.Surface);
         ThemePainter.Border(canvas, size, t);
         var clear = CardMeasure.Clear(c, t);
+        if (c.Kind == CardKind.Metric && c.Form.Compact)
+        {
+            foreach (var hit in CardMeasure.DataHits(c, t)) Highlight(canvas, c, t, hit);
+            var value = c.Value ?? "—";
+            var unitSize = canvas.MeasureText(c.Unit, t.FontSize, t.Font);
+            var valueSize = canvas.MeasureText(value, 18, t.Font);
+            var end = clear is null ? c.Width - t.Padding : clear.X - 8;
+            var valueX = end - unitSize.Width - (c.Unit.Length > 0 ? 6 : 0) - valueSize.Width;
+            var title = c.Title;
+            var available = Math.Max(0, valueX - 8 - t.Padding);
+            if (canvas.MeasureText(title, t.FontSize, t.Font).Width > available)
+            {
+                while (title.Length > 0 && canvas.MeasureText(title + "…", t.FontSize, t.Font).Width > available) title = title[..^1];
+                title = available >= canvas.MeasureText("…", t.FontSize, t.Font).Width ? title + "…" : "";
+            }
+            canvas.Text(title, new(t.Padding, (48 - canvas.MeasureText(title, t.FontSize, t.Font).Height) / 2), t.FontSize, t.Muted, t.Font);
+            canvas.Text(value, new(valueX, (48 - valueSize.Height) / 2), 18, t.Ink, t.Font);
+            canvas.Text(c.Unit, new(end - unitSize.Width, (48 - unitSize.Height) / 2), t.FontSize, t.Muted, t.Font);
+            if (clear is not null)
+            {
+                canvas.RoundedRect(new(clear.X, clear.Y, clear.W, clear.H), 3, t.Track);
+                canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Accent, t.Font);
+            }
+            return;
+        }
         using (canvas.Clip(new(t.Padding, 7, (clear?.X ?? (c.Width - t.Padding)) - t.Padding - 4, 24)))
             canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
         if (clear is not null)
@@ -45,17 +70,23 @@ public static class CardPainter
                 Math.Max(55, c.Labels.Select(label => canvas.MeasureText(label, t.FontSize, t.Font).Width + 8).DefaultIfEmpty(55).Max()));
             for (var i = 0; i < hits.Length; i++)
             {
+                var dataIndex = TableScroll.Offset(c) + i;
                 var h = hits[i]; Highlight(canvas, c, t, h);
                 using (canvas.Clip(new(h.X, h.Y, labelWidth - 4, h.H)))
-                    canvas.Text(c.Labels[i], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
+                    canvas.Text(c.Labels[dataIndex], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
                 var x = h.X + labelWidth; var w = h.W - labelWidth - 55; var y = h.Y + 7;
                 canvas.Rect(new(x, y, w, 8), t.Track);
-                var value = c.Values[i];
+                var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var signed = c.Values.Any(v => v < 0); var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
-                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > i ? c.Colors[i] : value > c.Threshold ? t.Bad : t.Good);
+                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > dataIndex ? c.Colors[dataIndex] : value > c.Threshold ? t.Bad : t.Good);
                 canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
                 canvas.Text(value?.ToString("0.00", CultureInfo.InvariantCulture) ?? "—", new(h.X + h.W - 43, h.Y + 2), t.FontSize, t.Ink, t.Font);
+            }
+            if (TableScroll.Bar(c, t) is { } bar)
+            {
+                canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
+                canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
             }
         }
         else

@@ -30,18 +30,19 @@ public static class LineCardPainter
         {
             var left = i == 0 ? 40 : 44 + (i - .5) * step;
             var right = i == c.Keys.Length - 1 ? c.Width - 16 : 44 + (i + .5) * step;
-            return new HitRegion(key, left, 40, right - left, 148);
+            return new HitRegion(key, left, 40, right - left, c.Form.Compact ? 68 : 148);
         }).ToArray();
     }
 
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
+        var bottom = c.Form.Compact ? 104 : 184;
         var hits = Hits(c);
         foreach (var hit in hits)
             if (hit.Key == c.HoverKey) canvas.Rect(new(hit.X, hit.Y, hit.W, hit.H), t.Track);
         var ticks = ChartTicks.Nice(Math.Min(0, c.Values.Min() ?? 0), Math.Max(c.Threshold, c.Values.Max() ?? 0));
         var lo = ticks[0]; var hi = ticks[^1]; var right = c.Width - 20;
-        double Y(double v) => 184 - (v - lo) / (hi - lo) * 140;
+        double Y(double v) => bottom - (v - lo) / (hi - lo) * (bottom - 44);
         double X(int i) => 44 + i * (right - 44) / (c.Values.Length - 1);
         if (c.Threshold > 0) canvas.Rect(new(44, 44, right - 44, Y(c.Threshold) - 44), t.ThresholdBand);
         foreach (var tick in ticks)
@@ -49,8 +50,8 @@ public static class LineCardPainter
             canvas.Line(new(44, Y(tick)), new(right, Y(tick)), t.Line);
             canvas.Text(tick.ToString("G4", CultureInfo.InvariantCulture), new(5, Y(tick) - 7), 10, t.Muted, t.Font);
         }
-        canvas.Line(new(44, 44), new(44, 184), t.Muted);
-        canvas.Line(new(44, 184), new(right, 184), t.Muted);
+        canvas.Line(new(44, 44), new(44, bottom), t.Muted);
+        canvas.Line(new(44, bottom), new(right, bottom), t.Muted);
         var segment = new List<Point2>();
         for (var i = 0; i <= c.Values.Length; i++)
         {
@@ -70,11 +71,11 @@ public static class LineCardPainter
         {
             if (i == 0 || i == c.Values.Length - 1 || i % Math.Max(1, (int)Math.Ceiling(c.Values.Length / 4d)) == 0)
             {
-                using var clip = canvas.Clip(new(X(i) - 12, 190, Math.Min(50, c.Width - X(i) + 12), 20));
-                canvas.Text(c.Labels[i], new(X(i) - 12, 190), 10, t.Muted, t.Font);
+                using var clip = canvas.Clip(new(X(i) - 12, bottom + 6, Math.Min(50, c.Width - X(i) + 12), 20));
+                canvas.Text(c.Labels[i], new(X(i) - 12, bottom + 6), 10, t.Muted, t.Font);
             }
             var selected = c.SelectedKeys.Contains(c.Keys[i]);
-            if (selected) canvas.Line(new(X(i), 44), new(X(i), 184), t.Ink, 2);
+            if (selected) canvas.Line(new(X(i), 44), new(X(i), bottom), t.Ink, 2);
             if (c.HoveredKeys.Contains(c.Keys[i]) || c.HoverKey == c.Keys[i])
                 CardPainter.Outline(canvas, hits[i], t.Accent);
         }

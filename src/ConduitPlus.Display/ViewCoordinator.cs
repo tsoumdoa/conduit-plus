@@ -17,10 +17,10 @@ public static partial class OverlayManager
     }
     public static event Action<Guid, string?>? OverflowChanged;
     private static readonly Dictionary<(uint Doc, Guid View), ViewCoordinator> Coordinators = [];
-    private static LayoutRequest Request(RhinoView view, IEnumerable<OverlaySession> sessions) => new(
+    private static LayoutRequest Request(RhinoView view, IEnumerable<OverlaySession> sessions, bool compact = true) => new(
         new(view.MainViewport.Size.Width, view.MainViewport.Size.Height), UiContext.Dpi(view),
-        sessions.Where(s => s.Visible).Select(s => new LayoutParticipant(s.Owner, s.Size, s.Theme, s.Cards)).ToArray(),
-        TextMetrics.Measurer, new LayoutOptions { EnableCompact = false, BottomLeftReserve = AxesIconReserve(view) });
+        sessions.Where(s => s.Visible).Select(s => new LayoutParticipant(s.Owner, s.Size, s.Theme, s.AuthoredCards)).ToArray(),
+        TextMetrics.Measurer, new LayoutOptions { EnableCompact = compact, BottomLeftReserve = AxesIconReserve(view) });
     /// <summary>Rhino draws its world axes icon in the bottom-left corner, about 72 CSS px tall including labels; cards stay above it.</summary>
     private static double AxesIconReserve(RhinoView view) => view.MainViewport.WorldAxesVisible ? 72 * UiContext.Dpi(view) : 0;
     private static ViewCoordinator Coordinator(RhinoDoc doc, RhinoView view)
@@ -57,7 +57,8 @@ public static partial class OverlayManager
             c.Signature = signature; c.Size = request.Viewport; c.Dpi = request.Dpi;
         }
         foreach (var session in sessions)
-            if (c.Frame.Unit.TryGetValue(session.Owner, out var unit)) session.PrepareUnit(unit);
+            if (c.Frame.Unit.TryGetValue(session.Owner, out var unit))
+                session.ApplyLayout(unit, c.Frame.Placements.Where(p => p.Owner == session.Owner).ToDictionary(p => p.CardId, p => p.Form, StringComparer.Ordinal));
         view.Redraw();
     }
     private static void CheckFrame(OverlaySession session)
@@ -79,7 +80,8 @@ public static partial class OverlayManager
         }
         else
         {
-            frame = ViewportLayout.Solve(Request(session.View, [session]));
+            // Unregistered benchmark sessions never receive forms, so lay them out at full size.
+            frame = ViewportLayout.Solve(Request(session.View, [session], compact: false));
             if (frame.Unit.TryGetValue(session.Owner, out var unit)) session.PrepareUnit(unit);
         }
         return frame.Placements.Where(p => p.Owner == session.Owner && !frame.Hidden.Contains((p.Owner, p.CardId)))
