@@ -29,7 +29,7 @@ public sealed class ConduitPlusPdf : Command
             sessions = OverlayManager.InView(doc, view);
         }
         OverlayManager.Settle(doc, view);
-        var snapshots = sessions.Select(s => (Layouts: OverlayManager.Placements(s), Unit: s.Unit)).ToArray();
+        var snapshots = sessions.Select(s => (Layouts: OverlayManager.Placements(s, false), Unit: s.Unit)).ToArray();
         var omitted = sessions.Where(s => s.Visible).Select((s) => s.Cards.Length - snapshots[Array.IndexOf(sessions, s)].Layouts.Length).Sum();
         if (omitted > 0) RhinoApp.WriteLine($"Conduit+ PDF: {omitted} hidden cards omitted.");
         var visible = sessions.Select(s => s.Visible).ToArray();

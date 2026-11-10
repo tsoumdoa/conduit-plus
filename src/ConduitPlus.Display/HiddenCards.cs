@@ -5,7 +5,7 @@ namespace ConduitPlus.Rhino;
 public static partial class OverlayManager
 {
     private static void HiddenEscape(object? sender, EventArgs e)
-    { if (global::Rhino.Commands.Command.InCommand()) return; foreach (var c in Coordinators.Values) c.ListOpen = false; foreach (var s in Sessions.Values) s.View.Redraw(); }
+    { if (global::Rhino.Commands.Command.InCommand()) return; foreach (var c in Coordinators.Values) { c.ListOpen = false; c.Shown = null; } foreach (var s in Sessions.Values) s.View.Redraw(); }
     private static (HiddenRow[] Rows, HiddenPanel Panel, double Unit) HiddenGeometry(RhinoView view, ViewCoordinator c)
     {
         var f = c.Frame!; var unit = f.Unit.Values.Min();
@@ -19,7 +19,7 @@ public static partial class OverlayManager
         if (!c.ListOpen) return false;
         var g = HiddenGeometry(view,c);
         if (g.Panel.Bounds.Contains(x,y))
-        { if (click) for (var i=0;i<g.Panel.Rows.Length;i++) if (g.Panel.Rows[i].Contains(x,y) && g.Rows[i].CardId is { } id) c.ShowHidden(g.Rows[i].Owner,id); return true; }
+        { if (click) for (var i=0;i<g.Panel.Rows.Length;i++) if (g.Panel.Rows[i].Contains(x,y) && g.Rows[i].CardId is { } id) { c.ShowHidden(g.Rows[i].Owner,id); Settle(view.Document, view); } return true; }
         if (click) { c.ListOpen=false; view.Redraw(); } return false;
     }
     private static void DrawHiddenList(RhinoView view, ViewCoordinator c, DrawEventArgs e)
@@ -32,7 +32,7 @@ public static partial class OverlayManager
         var inner = (b.Width - 16 * g.Unit) / g.Unit;
         void Text(string raw, double y, bool muted) => e.Display.Draw2dText(HiddenList.Fit(raw, inner, t => TextMetrics.Measurer(t, 12, "Segoe UI").Width), muted ? System.Drawing.Color.FromArgb(169,176,191) : System.Drawing.Color.White, new global::Rhino.Geometry.Point2d(b.X+8*g.Unit,y+4*g.Unit),false,Math.Max(1,(int)(12*g.Unit)));
         Text("Hidden cards",b.Y,false);
-        for(var i=0;i<g.Panel.Rows.Length;i++) Text(g.Rows[i].Text,g.Panel.Rows[i].Y,g.Rows[i].CardId is null);
+        for(var i=0;i<g.Panel.Rows.Length;i++) Text((c.Shown == (g.Rows[i].Owner, g.Rows[i].CardId) ? "• " : "") + g.Rows[i].Text,g.Panel.Rows[i].Y,g.Rows[i].CardId is null);
         if(g.Panel.More>0 && b.Height>=44*g.Unit) Text($"+{g.Panel.More} more",b.Y+b.Height-22*g.Unit,true);
     }
 }
