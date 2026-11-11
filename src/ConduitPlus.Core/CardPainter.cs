@@ -97,16 +97,17 @@ public static class CardPainter
         }
         else
         {
-            var columns = TablePresentation.Columns(c, t);
-            foreach (var header in TableSort.Headers(c, t))
+            var layout = TablePresentation.Layout(c, t);
+            var columns = layout.Columns;
+            foreach (var header in layout.Headers)
                 if (c.HoverKey == header.Key) canvas.Rect(new(header.X, header.Y, header.W, header.H), t.Track);
             for (var col = 0; col < c.Headers.Length; col++)
             {
-                Cell(c.Headers[col], col, CardMeasure.BodyTop, t.Muted, c.SortColumn == col ? 14 : 0);
+                // A fixed gutter keeps the right-aligned label/glyph group stable while sorting.
+                var headerEnd = Cell(c.Headers[col], col, CardMeasure.BodyTop, t.Muted, 14, columns[col].Numeric);
                 if (c.SortColumn != col) continue;
                 // Glyph hugs the header text so it can't be read as belonging to the next column.
-                var textWidth = Math.Max(0, Math.Min(canvas.MeasureText(c.Headers[col], t.FontSize, t.Font).Width, columns[col].Width - 6 - 14 - 6));
-                var x = columns[col].X + 6 + textWidth + 8; var y = CardMeasure.BodyTop + 10;
+                var x = headerEnd + 8; var y = CardMeasure.BodyTop + 10;
                 using var glyphClip = canvas.Clip(new(columns[col].X, CardMeasure.BodyTop, columns[col].Width, t.RowHeight));
                 canvas.FillPolygon(c.SortDescending ? [new(x - 4, y - 2), new(x + 4, y - 2), new(x, y + 3)] :
                     [new(x - 4, y + 2), new(x + 4, y + 2), new(x, y - 3)], t.Muted);
@@ -118,25 +119,22 @@ public static class CardPainter
                 var h = hits[row]; Highlight(canvas, c, t, h);
                 canvas.Line(new(h.X, h.Y), new(h.X + h.W, h.Y), t.Line);
                 for (var col = 0; col < c.Headers.Length; col++)
-                    Cell(TablePresentation.Format(rows[offset + row].Cells[col], c.Decimals), col, h.Y, t.Ink, right: columns[col].Numeric);
+                    Cell(layout.Content.Cell(rows[offset + row], col), col, h.Y, t.Ink, right: columns[col].Numeric);
             }
             if (TableScroll.Bar(c, t) is { } bar)
             {
                 canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
                 canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
             }
-            void Cell(string text, int col, double y, string color, double reserve = 0, bool right = false)
+            double Cell(string text, int col, double y, string color, double reserve = 0, bool right = false)
             {
                 var column = columns[col];
                 var available = Math.Max(0, column.Width - 12 - reserve);
                 using var cellClip = canvas.Clip(new(column.X + 6, y, available, t.RowHeight));
-                if (canvas.MeasureText(text, t.FontSize, t.Font).Width > available)
-                {
-                    while (text.Length > 0 && canvas.MeasureText(text + "…", t.FontSize, t.Font).Width > available) text = text[..^1];
-                    text = canvas.MeasureText("…", t.FontSize, t.Font).Width <= available ? text + "…" : "";
-                }
-                var x = right ? column.X + column.Width - 6 - canvas.MeasureText(text, t.FontSize, t.Font).Width : column.X + 6;
-                canvas.Text(text, new(x, y + 2), t.FontSize, color, t.Font);
+                var fitted = layout.Content.Fit(text, available);
+                var x = right ? column.X + 6 + available - fitted.Width : column.X + 6;
+                canvas.Text(fitted.Text, new(x, y + 2), t.FontSize, color, t.Font);
+                return x + fitted.Width;
             }
         }
     }

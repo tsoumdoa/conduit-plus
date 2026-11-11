@@ -207,11 +207,13 @@ Table Columns follows tree path order: branch count must match Headers and every
 column must have the same number of items. Rows must each match Headers; ragged
 trees produce errors and are never padded. Connected inputs and persistent trees,
 including empty branches, count as supplied. Explicit Keys must match the row count.
-Column widths fit the headers and displayed content within Width; long cells are
+Column widths fit the headers and a bounded sample of content within Width; long cells are
 ellipsized. Header sorting uses those same column boundaries. Wholly numeric columns
 align right; mixed or empty columns align left. Unset Decimals preserves cell text.
 Set Decimals to format finite invariant numeric cells only (0–12 places), with a true
-minus (−) and rounded negative zero displayed as 0. Keys and sorting retain raw values.
+minus (−) and rounded negative zero retaining the requested places (for example, 0.00).
+Numeric text accepts an optional sign, digits, optional dot fraction and optional exponent;
+commas, grouping separators, percentages and units remain text. Keys and sorting retain raw values.
 
 Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards stack in input order within each slot.
 

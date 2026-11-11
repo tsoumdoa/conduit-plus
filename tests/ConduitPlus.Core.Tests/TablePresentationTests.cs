@@ -1,9 +1,14 @@
 using System.Drawing.Imaging;
+using System.Globalization;
 using ConduitPlus.Rendering;
 using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
+[CollectionDefinition("Table text metrics", DisableParallelization = true)]
+public sealed class TableTextMetricsCollection;
+
+[Collection("Table text metrics")]
 public sealed class TablePresentationTests
 {
     private static CardSpec Fixture() => new()
@@ -44,6 +49,116 @@ public sealed class TablePresentationTests
         Assert.All(TablePresentation.Columns(card with { Rows = [] }, Theme.Paper), col => Assert.False(col.Numeric));
     }
 
+    [Fact]
+    public void TwoThousandRowsReuseMeasurementsAcrossPaintHitsAndInteraction()
+    {
+        var previous = TextMetrics.Measurer;
+        var canvas = new Commands { Estimate = true };
+        TextMetrics.Measurer = canvas.MeasureText;
+        try
+        {
+            var card = Fixture() with
+            {
+                SelectedKeys = [], SortColumn = null,
+                Rows = Enumerable.Range(0, 2000).Select(i => new TableRow($"r{i}",
+                    [$"Room {i}", (i * 1.234).ToString(CultureInfo.InvariantCulture), "-0.01234", "Ordinary room schedule note"])).ToArray()
+            };
+            CardPainter.Paint(canvas, card, Theme.Paper);
+            var first = canvas.MeasureCalls;
+            Assert.InRange(first, 1, 800); // Headers + bounded width sample + visible-cell fitting, not 8,004 measurements.
+            CardPainter.Paint(canvas, card, Theme.Paper);
+            Assert.Equal(first, canvas.MeasureCalls);
+            var headers = TableSort.Headers(card, Theme.Paper);
+            var interacting = card with { Rev = 99, HoverKey = "r3", SelectedKeys = ["r4"], ScrollOffset = 1000, SortColumn = 1, SortDescending = true };
+            Assert.Same(headers, TableSort.Headers(interacting, Theme.Paper));
+            for (var i = 0; i < 10; i++) CardMeasure.Hits(interacting, Theme.Paper);
+            Assert.Equal(first, canvas.MeasureCalls);
+            CardPainter.Paint(canvas, interacting, Theme.Paper);
+            var scrolled = canvas.MeasureCalls;
+            Assert.InRange(scrolled - first, 0, 160); // Only newly visible strings may need fitting.
+            CardPainter.Paint(canvas, interacting, Theme.Paper);
+            Assert.Equal(scrolled, canvas.MeasureCalls);
+
+            var oldColumns = TablePresentation.Columns(card, Theme.Paper);
+            var changed = card with { Rev = 100, Rows = [.. card.Rows[..^1], new("last", [new string('W', 200), "text", "2", "x"])] };
+            var newColumns = TablePresentation.Columns(changed, Theme.Paper);
+            Assert.True(newColumns[0].Width > oldColumns[0].Width);
+            Assert.False(newColumns[1].Numeric); // Last/offscreen row still determines alignment.
+            Assert.True(canvas.MeasureCalls > scrolled);
+            var count = canvas.MeasureCalls;
+            TableSort.Headers(changed with { Width = 600 }, Theme.Paper with { Padding = 16 });
+            Assert.Equal(count, canvas.MeasureCalls); // Geometry changes reuse content measurements.
+            TableSort.Headers(card, Theme.Night);
+            Assert.Equal(count, canvas.MeasureCalls); // Palette changes do not change font metrics.
+            TableSort.Headers(card with { Decimals = 4 }, Theme.Paper);
+            Assert.True(canvas.MeasureCalls > count);
+            count = canvas.MeasureCalls;
+            TableSort.Headers(card, Theme.Paper with { FontSize = 18 });
+            Assert.True(canvas.MeasureCalls > count);
+            count = canvas.MeasureCalls;
+            TableSort.Headers(card, Theme.Paper with { Font = "Arial" });
+            Assert.True(canvas.MeasureCalls > count);
+            count = canvas.MeasureCalls;
+            TableSort.Headers(card with { Headers = ["Space", "Area", "Delta", "Comment"] }, Theme.Paper);
+            Assert.True(canvas.MeasureCalls > count);
+            count = canvas.MeasureCalls;
+            TextMetrics.Measurer = (text, size, font) => canvas.MeasureText(text, size, font);
+            TableSort.Headers(card, Theme.Paper);
+            Assert.True(canvas.MeasureCalls > count); // A host replacing its metrics provider invalidates too.
+        }
+        finally { TextMetrics.Measurer = previous; }
+    }
+
+    [Fact]
+    public void LongCellsUseLogarithmicFittingAndReuseTheFittedText()
+    {
+        var previous = TextMetrics.Measurer;
+        var canvas = new Commands { Estimate = true };
+        TextMetrics.Measurer = canvas.MeasureText;
+        try
+        {
+            var card = new CardSpec
+            {
+                Id = "long", Kind = CardKind.Table, Width = 380, Headers = ["Room", "Note"],
+                Rows = Enumerable.Range(0, 8).Select(i => new TableRow($"r{i}", [$"Room {i}", string.Concat(Enumerable.Repeat("😀e\u0301", 1250))])).ToArray()
+            };
+            CardPainter.Paint(canvas, card, Theme.Paper);
+            Assert.InRange(canvas.MeasureCalls, 1, 65); // 5,000 UTF-16 units; one binary search shared by eight cells.
+            var first = canvas.MeasureCalls;
+            CardPainter.Paint(canvas, card, Theme.Paper);
+            Assert.Equal(first, canvas.MeasureCalls);
+            var fitted = canvas.Texts.Where(t => t.Point.Y > CardMeasure.BodyTop + Theme.Paper.RowHeight).ToArray()[1].Text;
+            Assert.EndsWith("…", fitted);
+            // Emoji and the accented letter are separate text elements; either is a valid endpoint.
+            Assert.Contains(fitted.Length - 1, StringInfo.ParseCombiningCharacters(card.Rows[0].Cells[1]!));
+        }
+        finally { TextMetrics.Measurer = previous; }
+    }
+
+    [Theory]
+    [InlineData(180, false)]
+    [InlineData(180, true)]
+    [InlineData(440, false)]
+    [InlineData(440, true)]
+    public void NumericHeaderAndAdjacentSortGlyphShareARightAlignedGroup(double width, bool sorted)
+    {
+        var card = Fixture() with { Width = width, SortColumn = sorted ? 1 : null };
+        var columns = TablePresentation.Columns(card, Theme.Paper);
+        var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
+        var header = canvas.Texts.Where(t => t.Point.Y == CardMeasure.BodyTop + 2).ToArray()[1];
+        var end = header.Point.X + canvas.MeasureText(header.Text, Theme.Paper.FontSize, Theme.Paper.Font).Width;
+        Assert.Equal(columns[1].X + columns[1].Width - 6 - 14, end, 6);
+        Assert.InRange(header.Point.X, columns[1].X, columns[1].X + columns[1].Width);
+        if (sorted)
+        {
+            var glyph = Assert.Single(canvas.Polygons);
+            Assert.Equal(end + 4, glyph.Min(p => p.X), 6);
+            Assert.True(glyph.Max(p => p.X) <= columns[1].X + columns[1].Width - 6);
+        }
+        else Assert.Empty(canvas.Polygons);
+        Assert.Equal(TableSort.Headers(card, Theme.Paper), TableSort.Headers(TableSort.Cycle(card, 1), Theme.Paper));
+    }
+
     [Theory]
     [InlineData(180)]
     [InlineData(440)]
@@ -76,6 +191,7 @@ public sealed class TablePresentationTests
         Theme.TryGet(name, out var theme);
         var output = Path.Combine(AppContext.BaseDirectory, "artifacts", "pr-c"); Directory.CreateDirectory(output);
         foreach (var (label, card) in new[] { ("columns", Fixture()), ("narrow", Fixture() with { Width = 260 }),
+            ("narrow-unsorted", Fixture() with { Width = 260, SortColumn = null }),
             ("structural", StructuralDemo.Create().Single(c => c.Kind == CardKind.Table) with { SortColumn = 1 }) })
         {
             using var bitmap = RasterDrawing.Render(card, theme, 2);
@@ -87,14 +203,21 @@ public sealed class TablePresentationTests
     private sealed class Commands : ICanvas2D
     {
         public List<(string Text, Point2 Point)> Texts { get; } = [];
-        public Size2 MeasureText(string text, double size, string font) => TextMetrics.Measurer(text, size, font);
+        public List<Point2[]> Polygons { get; } = [];
+        public bool Estimate { get; init; }
+        public int MeasureCalls { get; private set; }
+        public Size2 MeasureText(string text, double size, string font)
+        {
+            MeasureCalls++;
+            return Estimate ? TextMetrics.Estimate(text, size, font) : TextMetrics.Measurer(text, size, font);
+        }
         public void Text(string text, Point2 topLeft, double size, string color, string font) => Texts.Add((text, topLeft));
         public void Rect(Rect2 rect, string fill) { }
         public void Gradient(Rect2 rect, IReadOnlyList<string> colors) { }
         public void RoundedRect(Rect2 rect, double radius, string fill) { }
         public void Line(Point2 from, Point2 to, string color, double width = 1) { }
         public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) { }
-        public void FillPolygon(IReadOnlyList<Point2> points, string fill) { }
+        public void FillPolygon(IReadOnlyList<Point2> points, string fill) => Polygons.Add(points.ToArray());
         public IDisposable Clip(Rect2 rect) => new Scope();
         private sealed class Scope : IDisposable { public void Dispose() { } }
     }

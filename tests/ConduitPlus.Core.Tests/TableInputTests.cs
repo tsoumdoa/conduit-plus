@@ -77,15 +77,24 @@ public sealed class TableInputTests
 
     [Theory]
     [InlineData("-12.345", 2, "−12.35")]
-    [InlineData("-0.0001", 2, "0")]
+    [InlineData("-0.0001", 2, "0.00")]
     [InlineData("-0.005", 2, "−0.01")]
     [InlineData("-0.0006", 3, "−0.001")]
-    [InlineData("-0", 12, "0")]
+    [InlineData("-0", 12, "0.000000000000")]
     [InlineData("0", 2, "0.00")]
     [InlineData("0.0001", 2, "0.00")]
     [InlineData("1.23", 0, "1")]
     [InlineData("1.23", 12, "1.230000000000")]
-    [InlineData("1,000", 1, "1000.0")]
+    [InlineData("1,000", 1, "1,000")]
+    [InlineData("1,23", 2, "1,23")]
+    [InlineData("1,234", 2, "1,234")]
+    [InlineData("1,234.56", 2, "1,234.56")]
+    [InlineData("1.234,56", 2, "1.234,56")]
+    [InlineData("1\u202f234,56", 2, "1\u202f234,56")]
+    [InlineData("12%", 2, "12%")]
+    [InlineData("3 m²", 2, "3 m²")]
+    [InlineData("−4.0", 2, "−4.00")]
+    [InlineData("", 2, "")]
     [InlineData("2e3", 2, "2000.00")]
     [InlineData("NaN", 2, "NaN")]
     [InlineData("Infinity", 2, "Infinity")]
@@ -95,6 +104,38 @@ public sealed class TableInputTests
         var previous = CultureInfo.CurrentCulture;
         try { CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR"); Assert.Equal(expected, TablePresentation.Format(raw, decimals)); }
         finally { CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Theory]
+    [InlineData("1,23", false)]
+    [InlineData("1,234", false)]
+    [InlineData("12%", false)]
+    [InlineData("3 m²", false)]
+    [InlineData("−4.0", true)]
+    [InlineData("", false)]
+    [InlineData("NaN", false)]
+    [InlineData(" 1.2 ", false)]
+    [InlineData("1.2\n", false)]
+    [InlineData(".5", false)]
+    [InlineData("1.", false)]
+    [InlineData("+12.3e−2", true)]
+    [InlineData("1e999", false)]
+    public void NumericGrammarAcceptsOnlySignedInvariantFiniteNumbers(string raw, bool numeric)
+    {
+        Assert.Equal(numeric, TablePresentation.TryNumber(raw, out _));
+        var card = new CardSpec { Id = "grammar", Kind = CardKind.Table, Headers = ["Value"], Rows = [new("r", [raw])] };
+        Assert.Equal(numeric, TablePresentation.Columns(card, Theme.Paper)[0].Numeric);
+    }
+
+    [Theory]
+    [InlineData(0, "0.01")]
+    [InlineData(2, "0.0001")]
+    [InlineData(12, "0.0000000000001")]
+    public void RoundedZeroRetainsPrecisionForBothSignsAndExactZero(int decimals, string small)
+    {
+        var expected = decimals == 0 ? "0" : "0." + new string('0', decimals);
+        foreach (var raw in new[] { small, "-" + small, "−" + small, "0", "-0", "−0" })
+            Assert.Equal(expected, TablePresentation.Format(raw, decimals));
     }
 
     [Fact]
