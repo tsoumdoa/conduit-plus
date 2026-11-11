@@ -41,11 +41,35 @@ public static class LegendCardPainter
         var hits = CardMeasure.DataHits(c, t);
         for (var i = 0; i < c.Colors.Length; i++)
         {
-            var y = 36 + i * t.RowHeight;
+            var y = CardMeasure.BodyTop + i * t.RowHeight;
             if (hits.Length > 0) CardPainter.Highlight(canvas, c, t, hits[i]);
-            canvas.Rect(new(t.Padding + 3, y + 4, 14, 14), c.Colors[i]);
-            using var clip = canvas.Clip(new(t.Padding + 26, y, c.Width - 2 * t.Padding - 26, t.RowHeight));
-            canvas.Text(c.Labels[i], new(t.Padding + 26, y + 2), t.FontSize, t.Ink, t.Font);
+            var swatch = new Rect2(t.Padding, y + (t.RowHeight - 12) / 2, 12, 12);
+            var radius = t.Radius == 0 ? 0 : 2;
+            canvas.RoundedRect(swatch, radius, c.Colors[i]);
+            // A 1px stroke centred half a pixel inside the fill leaves the entire edge inset.
+            canvas.Polyline(ThemePainter.Outline(new(swatch.X + .5, swatch.Y + .5, 11, 11), Math.Max(0, radius - .5)),
+                ColorRgba.Parse(t.Ink).WithAlpha(0x29).ToHex());
+
+            var labelX = t.Padding + 12 + 8;
+            var right = c.Width - t.Padding;
+            var labelRight = right;
+            if (c.ValueLabels.Length > 0)
+            {
+                var value = c.ValueLabels[i];
+                var size = canvas.MeasureText(value, t.FontSize, t.Font);
+                labelRight -= size.Width + 8;
+                using var valueClip = canvas.Clip(new(labelX, y, Math.Max(0, right - labelX), t.RowHeight));
+                canvas.Text(value, new(right - size.Width, y + (t.RowHeight - size.Height) / 2), t.FontSize, t.Muted, t.Font);
+            }
+            var available = Math.Max(0, labelRight - labelX);
+            var label = c.Labels[i];
+            if (canvas.MeasureText(label, t.FontSize, t.Font).Width > available)
+            {
+                while (label.Length > 0 && canvas.MeasureText(label + "…", t.FontSize, t.Font).Width > available) label = label[..^1];
+                label = canvas.MeasureText("…", t.FontSize, t.Font).Width <= available ? label + "…" : "";
+            }
+            using var clip = canvas.Clip(new(labelX, y, available, t.RowHeight));
+            canvas.Text(label, new(labelX, y + (t.RowHeight - canvas.MeasureText(label, t.FontSize, t.Font).Height) / 2), t.FontSize, t.Ink, t.Font);
         }
     }
 }
