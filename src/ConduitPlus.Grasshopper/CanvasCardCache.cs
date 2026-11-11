@@ -63,13 +63,13 @@ internal static class CanvasCardCache
     }
 }
 
-internal sealed class CanvasCardFrame(Bitmap bitmap, CardSpec spec, Theme theme, CanvasFrameKey key) : IDisposable
+internal sealed class CanvasCardFrame(Bitmap bitmap, CardSpec[] specs, Theme theme, CanvasFrameKey key) : IDisposable
 {
     internal Bitmap Bitmap { get; } = bitmap;
-    internal CardSpec Spec { get; } = spec;
+    internal CardSpec[] Specs { get; } = specs;
+    internal CanvasStackLayout Layout { get; } = new(specs, theme);
     internal Theme Theme { get; } = theme;
     internal CanvasFrameKey Key { get; } = key;
-    internal HitRegion[] Hits { get; } = CardMeasure.Hits(spec, theme);
-    internal long Bytes => Key.Raster.Bytes;
+    internal long Bytes => (long)Bitmap.Width * Bitmap.Height * 4;
     public void Dispose() => Bitmap.Dispose();
 }

@@ -20,11 +20,13 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private RectangleF _body, _strip;
     private double _scale = 1;
     private string? _pressed;
+    private string? _pressedCard;
+    private CardSpec? GestureSpec => Frame?.Specs.FirstOrDefault(c => c.Id == _pressedCard);
     private Point2 _down;
     private Keys _selectionModifiers;
     // Letting go of Shift/Ctrl just before the button keeps the click; only an extra modifier cancels it.
     private bool GestureModifiersValid => (Control.ModifierKeys & ~_selectionModifiers) == Keys.None;
-    private bool Actionable(string? key) => key is not null && !CardMeasure.IsReserved(key) && Frame is { } frame && BrushState.Keys(frame.Spec).Contains(key, StringComparer.Ordinal);
+    private bool Actionable(string? key) => key is not null && !CardMeasure.IsReserved(key) && Frame is { } frame && frame.Specs.Where(c => c.Id == _pressedCard).SelectMany(BrushState.Keys).Contains(key, StringComparer.Ordinal);
     private bool _dragScroll, _cancelClick;
     private double _grab;
     private int _originalOffset;
@@ -35,7 +37,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private int _pageOffset;
     internal bool HasGesture => _pressed is not null || _dragScroll;
     private bool Disabled => Component.Locked || Component.OnPingDocument()?.Enabled == false;
-    private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Spec.Id == Component.State.Spec?.Id);
+    private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Specs.Select(c => c.Id).SequenceEqual(Component.State.Specs.Select(c => c.Id)));
     internal bool Visible
     {
         get
@@ -96,9 +98,9 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void ClearHover()
     {
         _hoverPoint = null;
-        var rev = Component.State.Spec?.Rev;
+        var rev = Component.State.Revision;
         Component.State.Hover(null);
-        if (rev != Component.State.Spec?.Rev) RequestDisplay();
+        if (rev != Component.State.Revision) RequestDisplay();
         HideTooltip();
     }
     private void HideTooltip()
@@ -109,15 +111,15 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void RefreshHover()
     {
         var hit = _hoverPoint is { } p ? Hit(p) : null;
-        var rev = Component.State.Spec?.Rev;
-        Component.State.Hover(hit is not null && !CardMeasure.IsReserved(hit.Key) ? hit.Key : null);
-        if (rev != Component.State.Spec?.Rev) RequestDisplay();
+        var rev = Component.State.Revision;
+        Component.State.Hover(hit?.CardId, hit is not null && !CardMeasure.IsReserved(hit.Key) ? hit.Key : null);
+        if (rev != Component.State.Revision) RequestDisplay();
     }
     private Point2 Local(PointF point) => CanvasCardGeometry.ToLocal(new(point.X, point.Y), new(_body.X, _body.Y));
-    private HitRegion? Hit(PointF point)
+    private CanvasStackHit? Hit(PointF point)
     {
         var p = Local(point);
-        return Frame?.Hits.LastOrDefault(h => h.Contains(p.X, p.Y));
+        return Frame?.Layout.Hit(p);
     }
     protected override void Render(GH_Canvas canvas, Graphics graphics, GH_CanvasChannel channel)
     {
@@ -150,14 +152,16 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             if (export)
             {
                 // Verified against GH 8.20 GenerateHiResImageTile: Export mode, projected target Graphics.
-                var spec = Disabled ? Frame?.Spec : Component.State.Spec;
+                var specs = Disabled ? Frame?.Specs : Component.State.Specs;
                 var theme = Disabled ? Frame?.Theme : Component.CardTheme;
-                if (spec is not null && theme is not null)
+                if (specs is { Length: > 0 } && theme is not null)
                 {
-                    spec = BrushPresentation.WithoutHover(spec) with { ScrollOffset = _dragScroll ? _originalOffset : spec.ScrollOffset };
-                    var plan = CanvasRasterPlan.Create(CardMeasure.Measure(spec, theme), scale);
-                    using var image = RasterDrawing.Render(spec, theme, plan.Scale);
-                    graphics.DrawImage(image, WithMargin(new RectangleF(_body.X, _body.Y, (float)exportSize.Width, (float)exportSize.Height), theme, plan.Scale));
+                    specs = specs.Select(spec => BrushPresentation.WithoutHover(spec) with
+                    { ScrollOffset = _dragScroll && spec.Id == _pressedCard ? _originalOffset : spec.ScrollOffset }).ToArray();
+                    var size = new CanvasStackLayout(specs, theme).Size;
+                    var plan = Plan(size, theme, scale);
+                    using var image = RasterDrawing.RenderStack(specs, theme, plan.Scale);
+                    graphics.DrawImage(image, WithMargin(new RectangleF(_body.X, _body.Y, (float)size.Width, (float)size.Height), theme, plan.Scale));
                 }
                 else DrawPlaceholder(graphics);
                 return;
@@ -190,19 +194,22 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         using var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
         graphics.DrawString(Component.Placeholder, font, brush, _body.X + 12, _body.Y + 16);
     }
-    private CanvasFrameKey? DesiredKey() => Component.State.Spec is { } spec
-        ? new(spec.Id, spec.Rev, Component.CardTheme, Component.BodySize, CanvasRasterPlan.Create(Component.BodySize, _scale, CanvasCardCache.BitmapBudget(this))) : null;
+    private static CanvasRasterPlan Plan(Size2 size, Theme theme, double scale, long budget = CanvasRasterPlan.BitmapBudget)
+        => CanvasRasterPlan.Create(size, scale, budget, theme.Shadow ? theme.ShadowExtent + 1 : 0);
+    private CanvasFrameKey? DesiredKey() => Component.State.Specs.Length > 0
+        ? new(Component.InstanceGuid.ToString("N"), Component.State.Revision, Component.CardTheme, Component.BodySize,
+            Plan(Component.BodySize, Component.CardTheme, _scale, CanvasCardCache.BitmapBudget(this))) : null;
     internal void Regenerate()
     {
         ConduitPlus.Rhino.OverlayManager.Start();
         Pending = false;
-        if (Disabled || Component.State.Spec is not { } spec || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
+        if (Disabled || Component.State.Specs.Length == 0 || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
         try
         {
             CanvasCardCache.Reserve(this, key.Raster.Bytes);
-            var bitmap = RasterDrawing.Render(spec, key.Theme, key.Raster.Scale);
+            var bitmap = RasterDrawing.RenderStack(Component.State.Specs, key.Theme, key.Raster.Scale);
             CanvasCardFrame next;
-            try { next = new(bitmap, spec, key.Theme, key); }
+            try { next = new(bitmap, Component.State.Specs, key.Theme, key); }
             catch { bitmap.Dispose(); throw; }
             HideTooltip();
             var old = Frame; Frame = next;
@@ -220,21 +227,26 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     {
         if (!Interactive || e.Button != MouseButtons.Left || Control.MouseButtons != MouseButtons.Left || Frame is not { } frame)
             return base.RespondToMouseDown(sender, e);
-        var local = Local(e.CanvasLocation);
-        var bar = TableScroll.Bar(frame.Spec, frame.Theme);
+        var stackLocal = Local(e.CanvasLocation);
+        var card = frame.Layout.CardAt(stackLocal);
+        if (card is null) return base.RespondToMouseDown(sender, e);
+        var spec = frame.Specs.Single(c => c.Id == card.Id);
+        var local = CanvasCardGeometry.ToLocal(stackLocal, new(card.X, card.Y));
+        var bar = TableScroll.Bar(spec, frame.Theme);
         var hit = Hit(e.CanvasLocation);
         var modifiers = Control.ModifierKeys;
-        if (modifiers != Keys.None && ((modifiers & ~(Keys.Shift | Keys.Control)) != Keys.None || !Actionable(hit?.Key) || bar?.Track.Contains(local.X, local.Y) == true))
+        if (modifiers != Keys.None && ((modifiers & ~(Keys.Shift | Keys.Control)) != Keys.None || (hit is null || CardMeasure.IsReserved(hit.Key) || !BrushState.Keys(spec).Contains(hit.Key, StringComparer.Ordinal)) || bar?.Track.Contains(local.X, local.Y) == true))
             return base.RespondToMouseDown(sender, e);
         _selectionModifiers = modifiers;
         if (bar?.Track.Contains(local.X, local.Y) != true && hit is null) return base.RespondToMouseDown(sender, e);
         ClearHover();
-        _down = new(e.ControlX, e.ControlY); _originalOffset = Component.State.Spec?.ScrollOffset ?? 0;
+        _pressedCard = spec.Id;
+        _down = new(e.ControlX, e.ControlY); _originalOffset = spec.ScrollOffset;
         _cancelClick = false;
         if (bar is { } scroll && scroll.Track.Contains(local.X, local.Y))
         {
             if (scroll.Thumb.Contains(local.X, local.Y)) { _dragScroll = true; _grab = local.Y - scroll.Thumb.Y; }
-            else { _pressed = TrackKey; _pageOffset = local.Y < scroll.Thumb.Y ? -TableScroll.Visible(frame.Spec) : TableScroll.Visible(frame.Spec); }
+            else { _pressed = TrackKey; _pageOffset = local.Y < scroll.Thumb.Y ? -TableScroll.Visible(spec) : TableScroll.Visible(spec); }
         }
         else _pressed = hit!.Key;
         sender.Capture = true; CanvasCardCache.Queue(this); RequestDisplay();
@@ -245,8 +257,12 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         if (_pressed is null && !_dragScroll) return base.RespondToMouseMove(sender, e);
         if (!Interactive || !GestureModifiersValid) { CancelGesture(); return GH_ObjectResponse.Release; }
         if (!CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY))) _cancelClick = true;
-        if (_dragScroll && Frame is { } frame)
-        { Component.State.Scroll(TableScroll.OffsetForThumbTop(frame.Spec, frame.Theme, Local(e.CanvasLocation).Y - _grab)); HideTooltip(); RequestDisplay(); }
+        if (_dragScroll && Frame is { } frame && GestureSpec is { } spec)
+        {
+            var card = frame.Layout.Cards.Single(c => c.Id == spec.Id);
+            Component.State.Scroll(spec.Id, TableScroll.OffsetForThumbTop(spec, frame.Theme, Local(e.CanvasLocation).Y - card.Y - _grab));
+            HideTooltip(); RequestDisplay();
+        }
         return GH_ObjectResponse.Handled;
     }
     public override GH_ObjectResponse RespondToMouseUp(GH_Canvas sender, GH_CanvasMouseEvent e)
@@ -257,9 +273,11 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         if (commit && !_cancelClick && key is not null && CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY)))
         {
             var local = Local(e.CanvasLocation);
-            if (key == TrackKey && Frame is { } frame && TableScroll.Bar(frame.Spec, frame.Theme) is { } bar &&
-                bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y)) Component.State.Scroll(_originalOffset + _pageOffset);
-            else if (Hit(e.CanvasLocation)?.Key == key) Component.State.Activate(key, BrushSelection.FromModifiers((_selectionModifiers & Keys.Shift) != 0, (_selectionModifiers & Keys.Control) != 0));
+            var card = Frame?.Layout.Cards.FirstOrDefault(c => c.Id == _pressedCard);
+            if (card is not null) local = CanvasCardGeometry.ToLocal(local, new(card.X, card.Y));
+            if (key == TrackKey && Frame is { } frame && GestureSpec is { } spec && TableScroll.Bar(spec, frame.Theme) is { } bar &&
+                bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y)) Component.State.Scroll(spec.Id, _originalOffset + _pageOffset);
+            else if (Hit(e.CanvasLocation) is { } hit && hit.Key == key && hit.CardId == _pressedCard) Component.State.Activate(hit.CardId, key, BrushSelection.FromModifiers((_selectionModifiers & Keys.Shift) != 0, (_selectionModifiers & Keys.Control) != 0));
         }
         FinishGesture(!commit); _hoverPoint = e.CanvasLocation; RefreshHover(); RequestDisplay();
         return GH_ObjectResponse.Release;
@@ -279,17 +297,18 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         var active = _pressed is not null || _dragScroll;
         var restore = cancel && _dragScroll;
         _pressed = null; _dragScroll = false;
-        if (restore) { Component.State.Scroll(_originalOffset); RequestDisplay(); }
+        if (restore && _pressedCard is { } id) { Component.State.Scroll(id, _originalOffset); RequestDisplay(); }
+        _pressedCard = null;
         if (active && _canvas is not null)
         { if (_canvas.ActiveObject == Component) _canvas.ActiveObject = null; _canvas.Capture = false; }
     }
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
     {
         if (!Interactive || _pressed is not null || _dragScroll || _canvas?.IsActiveInteraction == true) return;
-        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Spec, hit.Key, Component.State.Membership) is { } lines)
+        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Specs.Single(c => c.Id == hit.CardId), hit.Key, Component.State.Membership) is { } lines)
         {
             _tooltipOwned = true;
-            e.Title = frame.Spec.Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";
+            e.Title = frame.Specs.Single(c => c.Id == hit.CardId).Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";
             // GH 8.20 requires control coordinates here, unlike the SetupTooltip point argument.
             var x = _canvas!.Viewport.ProjectX((float)(_body.X + hit.X));
             var y = _canvas.Viewport.ProjectY((float)(_body.Y + hit.Y));

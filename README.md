@@ -218,10 +218,13 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 ## Cards on the Grasshopper canvas
 
 Place **Conduit+ → Display → Canvas Card** and connect the Card output from any
-Metric, Bar, Table, Line, Title, Text, Legend or Key Legend. Each display accepts exactly one valid
-card across all branches; empty input shows a placeholder and invalid or multiple
-cards show an error and clear the previous image. Use separate Canvas Cards to
-arrange a dashboard with Grasshopper's normal component layout and groups.
+Metric, Bar, Table, Line, Title, Text, Legend or Key Legend to **Cards**. One card
+looks and behaves as before. Several cards form a left-aligned column in input tree
+order, with an 8 px gap and each card's own width. Empty items are skipped with a
+warning; duplicate card IDs show once with a warning. Up to 12 unique valid cards
+are shown; a warning reports any remainder. Unconnected input shows a placeholder;
+invalid items report errors while valid siblings still display. Use another Canvas
+Card for the rest, or Grasshopper's normal layout and groups to arrange columns.
 
 Drag/select the component by its **Canvas Card** title strip, margins or inactive
 body areas. Plain left-click on a keyed Metric body, row/bar/sample/swatch replaces
@@ -232,15 +235,18 @@ screen pixels. Escape or lost capture cancels a scrollbar drag. GH tooltips show
 the hovered item's details. Alt clicks, modified clicks outside actionable keyed regions,
 and middle-button navigation retain their normal GH behavior.
 
-Unwired Canvas Cards have private, transient selection, sort and scroll state.
-State survives data updates (with keys pruned and offsets clamped), resets when
-the source card ID changes, and is not saved in the `.gh`. Committed selection
+Each unscoped Canvas Card stack has one private, transient selection domain;
+its Selection output is the union of selected member keys across the stack.
+A wired Scope shares that domain with its other participants. Sort and scroll
+state belong to each card ID, survive reordering/data updates (with keys pruned
+and offsets clamped), and reset when that card is removed or replaced. This
+interaction state is not saved in the `.gh`. Committed selection
 updates the appended Selection output through one coalesced solution; hover,
 sorting and scrolling only repaint. Card width/visible rows come from the source;
 Slot has no canvas meaning. There is no canvas resize control in this version.
 
 Right-click **Canvas Card → Theme: Auto/Paper/Night/Smoke/Blueprint** to save a theme
-choice with Undo/Redo. It uses the same presets and Auto policy as Overlay.
+choice for the whole stack with Undo/Redo. It uses the same presets and Auto policy as Overlay.
 Invalid saved names fall back to Paper with a warning.
 
 Preview off/Hidden do not hide the canvas card. A locked component or disabled
