@@ -1,6 +1,7 @@
 """Diagram palette styles for Conduit+: curated bases, deterministic farthest-point
 extension in OKLCH, metrics (OKLab dE, CVD, contrast) and swatch sheets (PNG + HTML).
-Run: python make_palettes.py            (writes next to this file)"""
+Run: python make_palettes.py            (refresh report/sheets from approved palettes.json)
+     python make_palettes.py --regenerate (explore new tables; requires design review)"""
 import math, os, sys, json
 from PIL import Image, ImageDraw, ImageFont
 
@@ -8,6 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PAPER, NIGHT = "#FFFFFF", "#1A1D23"
 CAP = 24
 MIN_DE = 5.0
+MISSING = "#B4B7BD"
 
 # ---------- colour maths ----------
 def hex2rgb(h): h = h.lstrip('#'); return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
@@ -99,8 +101,9 @@ def order_base(style):
     w, lead = style.get('cvdWeight', 1.5), style.get('lead', len(style['base']))
     return farthest(list(style['base'][:lead]), style['base'][lead:], len(style['base']), w)
 def generate(style, n=CAP):
+    assert all(dE(c, MISSING) >= MIN_DE for c in style['base']), "Base colour is too close to No data"
     seq = order_base(style)
-    pool = style.get('extra', []) + candidates(style)
+    pool = [c for c in style.get('extra', []) + candidates(style) if dE(c, MISSING) >= MIN_DE]
     seq = farthest(seq, pool, n, style.get('cvdWeight', 1.5))[:n]
     # Ship only the prefix that stays tell-apart-able: min pairwise dE >= MIN_DE, in steps of 4.
     k = len(seq)
@@ -186,9 +189,13 @@ h2{font-size:16px;margin:0 0 2px}.look{opacity:.65;font-size:12px;margin-bottom:
     return "\n".join(out)
 
 if __name__ == '__main__':
+    # Shipped tables are hand-approved: preserve their order and extensions when
+    # refreshing reports. Regeneration is an explicit design exploration only.
+    approved = {} if '--regenerate' in sys.argv else json.load(open(os.path.join(HERE, 'palettes.json')))
     results, report = [], []
     for name, st in STYLES.items():
-        seq = generate(st)
+        seq = generate(st) if '--regenerate' in sys.argv else approved[name]
+        assert all(dE(c, MISSING) >= MIN_DE for c in seq), f"{name}: colour is too close to No data"
         results.append((name, st, seq))
         stats = prefix_stats(seq)
         get = lambda k: next(s for s in stats if s[0] == k)
@@ -198,6 +205,7 @@ if __name__ == '__main__':
             + "  ".join(f"N={k}: dE {get(k)[1]:.1f} cvd {get(k)[2]:.1f}" for k in sorted({4, 6, 8, len(st['base']), 12, 16, 20, 24}) if k <= len(seq)) + f"  -> ships {len(seq)}"
             + "\nworst pairs: " + "; ".join(f"N={k} dE {worst(seq, k, dE)[1]}~{worst(seq, k, dE)[2]} cvd {worst(seq, k, dCvd)[1]}~{worst(seq, k, dCvd)[2]}" for k in (6, 8, len(st['base'])))
             + f"\n<1.5:1 on Paper: {low_p or 'none'}; on Night: {low_n or 'none'}"
+            + f"\nMinimum dE from No data ({MISSING}): {min(dE(c, MISSING) for c in seq):.1f}"
             + f"\n3:1 on both: {sum(1 for c in seq[:len(st['base'])] if contrast(c, PAPER) >= 3 and contrast(c, NIGHT) >= 3)}/{len(st['base'])}\n")
     open(os.path.join(HERE, 'report.txt'), 'w', encoding='utf-8').write("\n".join(report))
     json.dump({n: s for n, _, s in results}, open(os.path.join(HERE, 'palettes.json'), 'w'), indent=1)

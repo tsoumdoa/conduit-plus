@@ -76,11 +76,6 @@ public sealed class DiagramPaletteTests
         var unknown = DiagramPalette.Create("Bold", 8);
         Assert.Equal(Palettes.Styles[0].Take(8), unknown.Colours);
         Assert.Equal("Unknown style 'Bold'; using Programme. Right-click Style for the list.", Assert.Single(unknown.Messages).Text);
-        foreach (var n in new[] { 0, -1 })
-        {
-            Assert.Equal($"Count must be 1 or more; got {n}.", Assert.Throws<ArgumentException>(() => DiagramPalette.Create("Programme", n)).Message);
-            Assert.Throws<ArgumentException>(() => Palettes.Styles[0].Take(n));
-        }
         foreach (var p in Palettes.All.Where(p => p.Kind != PaletteKind.Categorical))
         {
             Assert.Equal(p.Take(5), p.Take(5, int.MinValue));
@@ -88,6 +83,59 @@ public sealed class DiagramPaletteTests
             Assert.Equal(Enumerable.Range(0, 5).Select(i => p.ColourAt(i / 4d)), p.Take(5));
         }
         Assert.Equal("Blue is a scale: sampled evenly; Shift is ignored.", Assert.Single(DiagramPalette.Create("Blue", 5, 3).Messages).Text);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    [InlineData(257)]
+    [InlineData(int.MaxValue)]
+    public void CountIsValidatedBeforeAllocation(int count)
+    {
+        Assert.Equal("Count must be 0–256.", Assert.Throws<ArgumentException>(() => DiagramPalette.Create("Programme", count)).Message);
+        foreach (var p in Palettes.All)
+            Assert.Equal("Count must be 0–256.", Assert.Throws<ArgumentException>(() => p.Take(count)).Message);
+    }
+
+    [Fact]
+    public void ZeroIsEmptyWithoutMessagesAndMaximumCountRetainsSamplingAndRepetition()
+    {
+        foreach (var p in Palettes.All)
+        {
+            Assert.Empty(p.Take(0));
+            var empty = DiagramPalette.Create(p.Name, 0);
+            Assert.Empty(empty.Colours); Assert.Empty(empty.Messages);
+            var maximum = p.Take(256, int.MaxValue);
+            Assert.Equal(256, maximum.Length);
+            Assert.Equal(maximum, DiagramPalette.Create(p.Name, 256, int.MaxValue).Colours);
+            if (p.Kind == PaletteKind.Categorical) Assert.Equal(maximum[0], maximum[p.Colours.Length]);
+            else { Assert.Equal(p.Colours[0], maximum[0]); Assert.Equal(p.Colours[^1], maximum[^1]); }
+        }
+        Assert.Empty(DiagramPalette.Create("unknown", 0).Messages);
+    }
+
+    [Fact]
+    public void FullSizeStylesWarnAboutRepetitionWithoutSuggestingLargerStyles()
+    {
+        foreach (var p in Palettes.Styles.Where(p => p.Colours.Length == 24))
+        {
+            var message = Assert.Single(DiagramPalette.Create(p.Name, 25).Messages);
+            Assert.Equal(ColourMessageLevel.Warning, message.Level);
+            Assert.Equal($"{p.Name} has 24 colours; 25 were asked for, so they repeat from the 25th.", message.Text);
+            var names = Enumerable.Range(1, 25).Select(i => $"C{i}").ToArray();
+            var categoriesMessage = Assert.Single(ColourCategories.Create(names, palette: [p.Name]).Messages);
+            Assert.Equal(ColourMessageLevel.Warning, categoriesMessage.Level);
+            Assert.Contains("colours repeat from 'C25'", categoriesMessage.Text);
+            Assert.DoesNotContain("larger style", categoriesMessage.Text);
+        }
+    }
+
+    [Fact]
+    public void EveryStyleColourIsDistinctFromNoDataGrey()
+    {
+        foreach (var p in Palettes.Styles)
+        foreach (var colour in p.Colours)
+            Assert.True(MinimumDistance([colour, Palettes.Missing]) >= 5, $"{p.Name} {colour} is too close to No data");
     }
 
     [Fact]
@@ -103,6 +151,8 @@ public sealed class DiagramPaletteTests
         Assert.Equal(8, repeated.Colours.Distinct().Count());
         Assert.Contains("Programme (24 colours)", Assert.Single(repeated.Messages).Text);
         Assert.Equal(["2", "1"], ColourCategories.Create(["A", "A", "B"]).Legend.ValueLabels);
+        Assert.Empty(ColourCategories.Create(["A", "A", "B"], ["a", "a", "b"]).Legend.ValueLabels);
+        Assert.Equal(["1", "0"], ColourCategories.Create(["A", "A"], ["a", "a"], order: ["A", "B"]).Legend.ValueLabels);
         Assert.Equal(["1", "0"], ColourCategories.Create(["A"], order: ["A", "B"]).Legend.ValueLabels);
         Assert.Empty(ColourCategories.Create(["A", "A"], showCounts: false).Legend.ValueLabels);
     }
@@ -113,7 +163,7 @@ public sealed class DiagramPaletteTests
     [InlineData("Pop", 11, 18.3, 7.8, 5.0)]
     [InlineData("Pastel", 10, 7.5, 5.9, 5.1)]
     [InlineData("Earth", 12, 11.2, 5.7, 5.7)]
-    [InlineData("Accent", 8, 11.6, 10.1, 5.5)]
+    [InlineData("Accent", 8, 11.6, 7.9, 5.5)]
     [InlineData("Cool", 9, 11.8, 9.7, 5.1)]
     public void PerceptualDistinctnessMatchesTheApprovedReport(string name, int baseCount, double six, double basis, double all)
     {

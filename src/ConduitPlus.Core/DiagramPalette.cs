@@ -7,7 +7,8 @@ public static class DiagramPalette
 {
     public static DiagramPaletteResult Create(string? style, int count, int shift = 0)
     {
-        if (count < 1) throw new ArgumentException($"Count must be 1 or more; got {count}.");
+        ColourPalette.ValidateCount(count);
+        if (count == 0) return new([], []);
         var messages = new List<ColourMessage>();
         var name = string.IsNullOrWhiteSpace(style) ? "Programme" : style.Trim();
         var reversed = name.EndsWith(" reversed", StringComparison.OrdinalIgnoreCase);
@@ -23,7 +24,8 @@ public static class DiagramPalette
         if (palette.Kind != PaletteKind.Categorical)
             messages.Add(new(ColourMessageLevel.Remark, $"{palette.Name} is a scale: sampled evenly; Shift is ignored."));
         else if (count > palette.Colours.Length)
-            messages.Add(new(ColourMessageLevel.Warning, $"{palette.Name} has {palette.Colours.Length} colours; {count} were asked for, so they repeat from the {palette.Colours.Length + 1}{Ordinal(palette.Colours.Length + 1)}. Programme, Primary, Pop and Cool have 24."));
+            messages.Add(new(ColourMessageLevel.Warning, $"{palette.Name} has {palette.Colours.Length} colours; {count} were asked for, so they repeat from the {palette.Colours.Length + 1}{Ordinal(palette.Colours.Length + 1)}." +
+                (palette.Colours.Length < 24 ? " Programme, Primary, Pop and Cool have 24." : "")));
         return new(palette.Take(count, shift), messages.ToArray());
     }
 

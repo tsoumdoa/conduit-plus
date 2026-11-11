@@ -144,7 +144,7 @@ public sealed class ColourHelperReviewTests
     {
         var scale = ColourScale.Create([0, 1], [palette]);
         Assert.Equal("Blue", scale.Palette.Name);
-        Assert.Equal("Categorical is for categories; using Blue. Choose a sequential, diverging or Status palette.", Assert.Single(scale.Messages).Text);
+        Assert.Equal($"'{palette}' is a category palette; using Blue. Choose a sequential, diverging or Status palette.", Assert.Single(scale.Messages).Text);
         Assert.Equal("Custom", ColourScale.Create([0, 1], ["#000000", "#FFFFFF"]).Palette.Name);
     }
 }

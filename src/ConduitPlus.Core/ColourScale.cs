@@ -35,9 +35,9 @@ public static class ColourScale
     {
         var messages = new List<ColourMessage>();
         var scheme = Palettes.Resolve(palette, "Blue", messages);
-        if (scheme.Name is "Categorical" or "Categorical reversed")
+        if (scheme.Kind == PaletteKind.Categorical && scheme.Name != "Custom")
         {
-            messages.Add(new(ColourMessageLevel.Warning, "Categorical is for categories; using Blue. Choose a sequential, diverging or Status palette."));
+            messages.Add(new(ColourMessageLevel.Warning, $"'{scheme.Name}' is a category palette; using Blue. Choose a sequential, diverging or Status palette."));
             scheme = Palettes.Resolve(["Blue"], "Blue", []);
         }
         var finite = values.Where(v => v.HasValue && double.IsFinite(v.Value)).Select(v => v!.Value).ToArray();

@@ -39,17 +39,20 @@ public sealed class ColourLegendRenderTests
         Assert.True(Theme.TryGet(name, out var theme));
         foreach (var p in Palettes.All)
         {
-            var values = Enumerable.Range(0, 17).Select(i => (double?)(i * 40d / 16)).ToArray();
-            var scale = ColourScale.Create(values, [p.Name], min: 0, max: 40, title: p.Name, unit: "m²");
-            using var ramp = RasterDrawing.Render(scale.Legend, theme, 2);
-            var left = theme.Padding + Math.Max(2, TextMetrics.Measurer("0", 10, theme.Font).Width / 2);
-            var right = scale.Legend.Width - theme.Padding - Math.Max(2, TextMetrics.Measurer("40", 10, theme.Font).Width / 2);
-            for (var i = 1; i < 16; i++)
+            if (p.Kind != PaletteKind.Categorical)
             {
-                var pixel = ramp.GetPixel((int)Math.Round(2 * (left + (right - left) * i / 16)), 2 * 45);
-                Near(scale.Colours[i], pixel, 5);
+                var values = Enumerable.Range(0, 17).Select(i => (double?)(i * 40d / 16)).ToArray();
+                var scale = ColourScale.Create(values, [p.Name], min: 0, max: 40, title: p.Name, unit: "m²");
+                using var ramp = RasterDrawing.Render(scale.Legend, theme, 2);
+                var left = theme.Padding + Math.Max(2, TextMetrics.Measurer("0", 10, theme.Font).Width / 2);
+                var right = scale.Legend.Width - theme.Padding - Math.Max(2, TextMetrics.Measurer("40", 10, theme.Font).Width / 2);
+                for (var i = 1; i < 16; i++)
+                {
+                    var pixel = ramp.GetPixel((int)Math.Round(2 * (left + (right - left) * i / 16)), 2 * 45);
+                    Near(scale.Colours[i], pixel, 5);
+                }
+                Save(ramp, $"scale-{p.Name}-{name}.png");
             }
-            Save(ramp, $"scale-{p.Name}-{name}.png");
             string[] order = ["Residential", "Office", "Retail", "Plant", "Store", "Circulation", "Other", "Future", "No data"];
             var cat = ColourCategories.Create(["Residential", "Office", "Residential", "Retail", null], ["R1", "R2", "R3", "R4", "R5"],
                 [p.Name], order, p.Name + " uses");

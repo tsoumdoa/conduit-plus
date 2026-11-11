@@ -162,7 +162,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
 | Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title and Slot → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
-| Colour Palette | Colour: Style (Programme), Count (8), Shift (0) → Colours and #RRGGBB Hex lists. Curated diagram styles keep their prefix as Count grows. |
+| Colour Palette | Colour: Style (Programme), Count (8), Shift (0) → Colours and #RRGGBB Hex lists. Curated diagram styles keep the first colours the same when Count grows. |
 | Colour Categories | Colour: Categories tree, optional member Keys, Palette (Categorical), Order, Title and Slot → Colours tree, Legend, distinct Categories, Category colours, Group keys and Members for a grouped Bar. Order pins colours across filtering; right-click Show counts defaults on. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
@@ -280,10 +280,12 @@ in different categories, and generated group tokens colliding with member keys
 are errors. Repeated keys within one category are deduplicated. Right-click
 **Show counts** (on by default, saved with Undo) to show/hide unique member counts;
 without Keys, counts are item counts. The count column hides automatically when every
-category has exactly one item; zero-count rows and repeated items retain it.
+category has exactly one member (or one item without Keys); zero-count rows and counts above one retain it.
 
 Both Palette inputs accept case-insensitive names, an ASCII hyphen in the diverging
-names, and typed ` reversed` after any name (the menu offers reversal for ordered palettes). Wired colour lists are opaque RGB (alpha
+names, and typed ` reversed` after a name (the menu offers reversal for ordered palettes).
+Colour Scale warns and uses Blue for any named category palette, including diagram styles.
+Wired colour lists are opaque RGB (alpha
 is ignored), with evenly spaced stops on Colour Scale and discrete swatches on
 Colour Categories. The RGB values stay identical in Paper, Night, Smoke and Blueprint.
 To use a GH Gradient, wire its sampled colours and set the same Min/Max explicitly.
@@ -298,16 +300,17 @@ To use a GH Gradient, wire its sampled colours and set the same Min/Max explicit
 | Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
 | Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
 
-**Diagram palettes / Colour Palette (`ColPal`)**
+**Diagram styles / Colour Palette (`ColPal`)**
 
 1. Wire a list of names (for example Housing, Office, Retail, Landscape) to **Colour Categories → Categories**.
 2. Right-click **Palette** and choose **Programme**, **Primary**, **Pop**, **Pastel**, **Earth**, **Accent** or **Cool**.
 3. Wire **Legend** to **Overlay**. One name gets one swatch; a column of identical counts is hidden automatically.
 
 For colours by index, use **Colour Palette**: **Style (S)** defaults to Programme,
-**Count (N)** to 8 and optional **Shift (Sh)** to 0; outputs are **Colours (C)** and
+**Count (N)** to 8 (0–256; zero gives empty outputs) and optional **Shift (Sh)** to 0;
+outputs are **Colours (C)** and
 **Hex (H)** lists. Wire Colours to **Key Legend → Colors** and set Count to your
-label list length. Increasing Count preserves the existing colours; Shift skips
+label list length. The first colours stay the same when Count grows; Shift skips
 colours and wraps, including negative shifts. Programme, Primary, Pop and Cool
 have 24 colours; Pastel, Earth and Accent have 16. Beyond that they repeat with a
 warning. A typed scale name such as Blue samples evenly and ignores Shift.
@@ -317,8 +320,10 @@ Pop is bright and loud; Pastel is pale; Earth uses muted material tones; Accent
 pairs greys with red; Cool uses blues and greens with coral. These styles favour
 the diagram's look over colour-blind separation; **Categorical** remains Colour
 Categories' default. Exact tables and measured distances are in
-[docs/diagram-palettes](docs/diagram-palettes/palettes.json). Colours stay identical
-on Paper and Night, with the existing swatch outline preserving pale and dark edges.
+[docs/diagram-palettes](docs/diagram-palettes/). Colours stay identical
+on all four themes, with the swatch outline preserving pale and dark edges.
+Accent and Cool include near-black swatches that rely on outlines on Night; Accent
+is best for a handful of categories.
 
 ## Cards on the Grasshopper canvas
 

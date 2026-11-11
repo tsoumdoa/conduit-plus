@@ -191,8 +191,8 @@ public sealed class ColourPaletteComponent : ColourComponent
         var style = new Param_TextOption { Options = Palettes.Styles.Select(s => new InputOption(s.Name, s.Name, "Diagram styles"))
             .Append(new InputOption("Categorical", "Categorical", "Categorical")).ToArray() };
         p.AddParameter(style, "Style", "S", "Right-click to choose a diagram style; a typed scale name is sampled evenly", GH_ParamAccess.item);
-        style.PersistentData.Append(new GH_String("Programme"));
-        p.AddIntegerParameter("Count", "N", "How many colours", GH_ParamAccess.item, 8);
+        style.PersistentData.Append(new GH_String("Programme")); p[0].Optional = true;
+        p.AddIntegerParameter("Count", "N", "How many colours (0–256; zero gives empty outputs)", GH_ParamAccess.item, 8);
         p.AddIntegerParameter("Shift", "Sh", "Start further along the style; wraps in either direction", GH_ParamAccess.item, 0); p[2].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
@@ -203,7 +203,8 @@ public sealed class ColourPaletteComponent : ColourComponent
     protected override void SolveInstance(IGH_DataAccess da)
     {
         string style = "Programme"; int count = 8, shift = 0;
-        if (!da.GetData(0, ref style) || !da.GetData(1, ref count)) return;
+        da.GetData(0, ref style);
+        if (!da.GetData(1, ref count)) return;
         da.GetData(2, ref shift);
         try
         {
