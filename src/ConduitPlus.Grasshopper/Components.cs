@@ -311,29 +311,49 @@ public sealed class KeyLegendComponent : CardComponent
 
 public sealed class TableComponent : CardComponent
 {
-    public TableComponent() : base("Table", "Table", "One branch per result row; optional stable row keys") { }
+    public TableComponent() : base("Table", "Table", "Rows or Columns as a text tree; optional stable row keys") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae203");
     protected override ComponentIcon IconKind => ComponentIcon.Table;
+    public override bool Read(GH_IReader reader)
+    {
+        var result = base.Read(reader);
+        Params.Input[1].Optional = true;
+        return result;
+    }
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Headers", "H", "Column headers", GH_ParamAccess.list);
-        p.AddTextParameter("Rows", "R", "One branch per row, one item per column", GH_ParamAccess.tree);
-        p.AddTextParameter("Keys", "K", "Optional stable row keys; default branch paths", GH_ParamAccess.list); p[2].Optional = true;
+        p.AddTextParameter("Rows", "R", "One branch per row, one item per column; set Rows or Columns", GH_ParamAccess.tree); p[1].Optional = true;
+        p.AddTextParameter("Keys", "K", "Optional stable row keys; default first column when unique and valid, otherwise 1…n", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Table title", GH_ParamAccess.item, "Table");
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[4].Optional = true;
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
         p.AddNumberParameter("Width", "W", "Table width in CSS pixels (180–1200)", GH_ParamAccess.item, 380);
+        p.AddTextParameter("Columns", "Co", "One branch per column in path order, one item per row; set Rows or Columns", GH_ParamAccess.tree); p[7].Optional = true;
+        p.AddIntegerParameter("Decimals", "D", "Optional numeric display precision (0–12); unset preserves text and sorting always uses raw values", GH_ParamAccess.item); p[8].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var headers = new List<string>(); var keys = new List<string>(); string title = "Table";
-        if (!da.GetDataList(0, headers) || !da.GetDataTree(1, out GH_Structure<GH_String> tree)) return;
+        if (!da.GetDataList(0, headers)) return;
+        da.GetDataTree(1, out GH_Structure<GH_String> rowTree);
+        da.GetDataTree(7, out GH_Structure<GH_String> columnTree);
         da.GetDataList(2, keys); da.GetData(3, ref title);
         var visibleRows = TableScroll.DefaultVisibleRows; da.GetData(5, ref visibleRows);
         double width = 380; da.GetData(6, ref width);
-        if (keys.Count != 0 && keys.Count != tree.PathCount) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Key count must match row count."); return; }
-        var rows = tree.Branches.Select((branch, i) => new TableRow(keys.Count == 0 ? tree.Paths[i].ToString() : keys[i], branch.Select(v => v?.Value).ToArray())).ToArray();
-        try { Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = rows, Width = width, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) }); }
+        var decimals = 0; var hasDecimals = da.GetData(8, ref decimals);
+        bool Supplied(int index) => HasInput(index) ||
+            Params.Input[index] is global::Grasshopper.Kernel.Parameters.Param_String { PersistentData.PathCount: > 0 };
+        static string?[][] Branches(GH_Structure<GH_String>? tree) => tree is null ? [] :
+            tree.Branches.Select(branch => branch.Select(v => v?.Value).ToArray()).ToArray();
+        try
+        {
+            var result = TableInputs.Create(headers.ToArray(), Supplied(1) ? Branches(rowTree) : null,
+                Supplied(7) ? Branches(columnTree) : null, Supplied(2) ? keys.ToArray() : null);
+            if (result.Warning is { } warning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, warning);
+            if (!Supplied(1) && !Supplied(7)) return;
+            Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = result.Rows, Decimals = hasDecimals ? decimals : null, Width = width, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) });
+        }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }

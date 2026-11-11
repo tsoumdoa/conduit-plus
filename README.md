@@ -161,7 +161,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
-| Table | Headers, one data-tree branch per row, optional row keys, title (default “Table”), slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
+| Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a warning; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
 | Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
 | Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Empty items warn and are skipped; foreign items and duplicate card IDs report their index, while valid siblings still draw. Publication failures appear as runtime errors. With Links wired, zero key overlap warns with examples; individual unmatched cards get Remarks when others match. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
@@ -188,8 +188,9 @@ strings; Grasshopper color inputs are converted automatically (alpha is ignored)
 
 Connect **Link** to **Overlay → Links**, and give the cards and linked geometry
 the same keys. With no label/key wires, new Bar and Line cards use 1…n and
-Link generates matching keys. Table keys still default to branch paths; use
-explicit keys to match them. Keys are case-sensitive. Link supports points,
+Link generates matching keys. Table keys default to the raw first-column values
+for both Rows and Columns when nonempty, nonreserved and unique; otherwise they
+fall back to 1…n with a warning. Set explicit Keys to override them. Keys are case-sensitive. Link supports points,
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
 geometry and caches its wires and shared pick/highlight meshes when solved.
 
@@ -201,6 +202,16 @@ Card and Link outputs have readable one-line summaries in Panels. Solve iteratio
 zero retains the component ID; subsequent cards use positional `:n` suffixes.
 Unslotted cards from one component share the first card’s slot. If Values has many
 one-item branches, Bar/Line warns to flatten it for one chart.
+
+Table Columns follows tree path order: branch count must match Headers and every
+column must have the same number of items. Rows must each match Headers; ragged
+trees produce errors and are never padded. Connected inputs and persistent trees,
+including empty branches, count as supplied. Explicit Keys must match the row count.
+Column widths fit the headers and displayed content within Width; long cells are
+ellipsized. Header sorting uses those same column boundaries. Wholly numeric columns
+align right; mixed or empty columns align left. Unset Decimals preserves cell text.
+Set Decimals to format finite invariant numeric cells only (0–12 places), with a true
+minus (−) and rounded negative zero displayed as 0. Keys and sorting retain raw values.
 
 Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards stack in input order within each slot.
 
@@ -409,6 +420,9 @@ raster pipeline, the former HTML/JS path and maintainability options.
 
 ## Behaviour changes
 
+- Table accepts either Rows or appended Columns; Rows is optional, including in restored files. Both inputs error; neither warns. Existing input indices, GUIDs and stored values are retained.
+- Table row keys now default to raw first-column values instead of branch paths, for Rows as well as Columns. Repeated, empty or reserved defaults fall back to 1…n with a warning; explicit Keys still override them.
+- Table columns now fit their content within Width and wholly numeric columns align right. Optional Decimals changes numeric display only; unset keeps the original text, and sorting/keys keep raw values.
 - Typed/internalised Line Threshold and Legend Min/Max now apply. A single Legend bound warns and keeps matching swatches.
 - Overlay publishes valid siblings despite empty, foreign or duplicate inputs; Canvas Card explains upstream errors. Linked-key mismatch diagnostics expand groups and use case-sensitive matching.
 - Lists into Metric create distinct cards with native GH data matching; grouped Metric requires one Value. Branched Bar/Line inputs warn when flattening would make one chart.

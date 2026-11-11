@@ -9,8 +9,8 @@ public static class TableSort
     public static int? Column(string key) => key.StartsWith(Prefix, StringComparison.Ordinal) &&
         int.TryParse(key.AsSpan(Prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var col) ? col : null;
     public static HitRegion[] Headers(CardSpec c, Theme t) => c.Kind != CardKind.Table ? [] :
-        c.Headers.Select((_, i) => new HitRegion(Key(i), t.Padding + i * (c.Width - 2 * t.Padding) / c.Headers.Length,
-            CardMeasure.BodyTop, (c.Width - 2 * t.Padding) / c.Headers.Length, t.RowHeight)).ToArray();
+        TablePresentation.Columns(c, t).Select((column, i) => new HitRegion(Key(i), column.X,
+            CardMeasure.BodyTop, column.Width, t.RowHeight)).ToArray();
     public static CardSpec Cycle(CardSpec c, int column) => c with
     {
         SortColumn = c.SortColumn == column && c.SortDescending ? null : column,

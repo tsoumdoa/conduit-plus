@@ -32,6 +32,7 @@ internal static class Dashboard
         Console.WriteLine("Registering checkout components.");
         var gha = typeof(ConduitPlus.Grasshopper.DemoTrussComponent).Assembly;
         Register(gha);
+        TableHostChecks.Run();
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
         InputTrapChecks.Run();
