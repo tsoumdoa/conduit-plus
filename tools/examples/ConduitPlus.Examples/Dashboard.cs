@@ -34,6 +34,7 @@ internal static class Dashboard
         Register(gha);
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
+        InputTrapChecks.Run();
         Require(example == "structural", "Run Build-Examples.ps1 for all examples (one RhinoCore host per definition).");
         using (var legacy = new GH_Document())
         {
@@ -91,6 +92,7 @@ internal static class Dashboard
             var result = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS") ?? throw new InvalidOperationException("Set CONDUITPLUS_RESULTS.");
             Directory.CreateDirectory(result);
             File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = definition.ObjectCount, warnings = messages, owner = overlay.InstanceGuid, cards = cards.Select(c => c.Title), view = view.ActiveViewport.Size, truss.MaxUtilisation, truss.MaxDeflection, truss.Mass, truss.Passing, members = truss.Members.Length }));
+            ExportInputChecks.Run(doc, view);
             if (args.Contains("--exports"))
             {
                 var scale = int.Parse(args[Array.IndexOf(args, "--scale") + 1], System.Globalization.CultureInfo.InvariantCulture);

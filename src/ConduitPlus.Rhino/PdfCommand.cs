@@ -15,6 +15,7 @@ public sealed class ConduitPlusPdf : Command
     {
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
+        if (!CommandRunner.HasCards(doc, view)) return Result.Cancel;
         return CommandRunner.Run(() => RunAutomated(doc, view));
     }
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
@@ -23,11 +24,7 @@ public sealed class ConduitPlusPdf : Command
         OverlayManager.Start();
         RhinoApp.WriteLine("ConduitPlusPdf is experimental.");
         var sessions = OverlayManager.InView(doc, view);
-        if (sessions.Length == 0)
-        {
-            OverlayManager.Set(doc, view, Guid.Empty, [.. StructuralDemo.Create(), StructuralDemo.Line()]);
-            sessions = OverlayManager.InView(doc, view);
-        }
+        if (!CommandRunner.HasCards(doc, view)) return;
         OverlayManager.Settle(doc, view);
         var snapshots = sessions.Select(s => (Layouts: OverlayManager.Placements(s, false), Unit: s.Unit)).ToArray();
         var omitted = sessions.Where(s => s.Visible).Select((s) => s.Cards.Length - snapshots[Array.IndexOf(sessions, s)].Layouts.Length).Sum();
