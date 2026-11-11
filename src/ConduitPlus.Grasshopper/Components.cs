@@ -154,15 +154,21 @@ public sealed class BarComponent : CardComponent
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[5].Optional = true;
         p.AddColourParameter("Colors", "C", "Optional per-bar colors; set Threshold for good/bad colouring, otherwise theme accent", GH_ParamAccess.list); p[6].Optional = true;
         p.AddTextParameter("Members", "M", "One path-ordered branch per bar, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[7].Optional = true;
+        p.AddParameter(new Param_TextOption { Options = InputOptions.BarGoodWhen }, "Good when", "Gw", "Below (≤ threshold) or Above (≥ threshold); equality is good. Unset = Below; Colors override", GH_ParamAccess.item); p[8].Optional = true;
+        p.AddParameter(new Param_TextOption { Options = InputOptions.BarSort }, "Sort", "O", "Original, Worst first or Best first; missing values sort last. Without a threshold, worst is highest", GH_ParamAccess.item); p[9].Optional = true;
+        p.AddIntegerParameter("Visible rows", "N", "Rows shown at once (default 12); 0 = all, 1–200 otherwise. Scroll with the viewport wheel or scrollbar; canvas uses the scrollbar", GH_ParamAccess.item, BarPresentation.DefaultVisibleRows);
+
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var values = new List<double>(); var labels = new List<string>(); var keys = new List<string>(); string title = "Bar"; double threshold = 0;
         if (!da.GetDataList(0, values)) return; da.GetDataList(1, labels); da.GetDataList(2, keys); da.GetData(3, ref title); var hasThreshold = da.GetData(4, ref threshold);
         var colors = new List<Color>(); da.GetDataList(6, colors);
+        string goodWhen = "", sort = ""; da.GetData(8, ref goodWhen); da.GetData(9, ref sort);
+        var visibleRows = BarPresentation.DefaultVisibleRows; da.GetData(10, ref visibleRows);
         var explicitKeys = keys.Count > 0;
         if (labels.Count == 0) labels = InputKeys.Numbered(values.Count, _defaultsVersion == 0).ToList(); keys = ReadKeys(labels, keys).ToList();
-        try { Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Bar, Groups = ReadMembers(da, 7, keys.ToArray(), values.Count, explicitKeys), Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, HasThreshold = hasThreshold, WiredSlot = ReadSlot(da, 5) }); }
+        try { Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Bar, Groups = ReadMembers(da, 7, keys.ToArray(), values.Count, explicitKeys), Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, HasThreshold = hasThreshold, GoodWhen = BarPresentation.ParseGoodWhen(goodWhen), BarSort = BarPresentation.ParseSort(sort), MaxRows = visibleRows, WiredSlot = ReadSlot(da, 5) }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }

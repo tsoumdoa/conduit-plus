@@ -109,14 +109,14 @@ public sealed class CanvasCardState
         if (_source is null) { if (_binding is null) _brush.Prune([], []); Spec = null; _store.Update([]); return; }
         if (_source.Kind != CardKind.Table || _column < 0 || _column >= _source.Headers.Length)
         { _column = null; _descending = false; }
-        _offset = _source.Kind == CardKind.Table ? Math.Clamp(_offset, 0, TableScroll.MaxOffset(_source)) : 0;
+        _offset = _source.Kind is CardKind.Table or CardKind.Bar ? Math.Clamp(_offset, 0, TableScroll.MaxOffset(_source)) : 0;
         if (_binding is null) _brush.Prune([_source], []);
         var spec = Current.Project([_source])[0] with
         {
             ScrollOffset = _offset, SortColumn = _column, SortDescending = _descending,
             WiredSlot = null
         };
-        if (spec.Kind == CardKind.Table && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
+        if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
         { _offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = _offset }; }
         _selectedMembers = Current.SelectedMemberKeys;
         _store.Update([spec]); Spec = _store.Snapshot[0];

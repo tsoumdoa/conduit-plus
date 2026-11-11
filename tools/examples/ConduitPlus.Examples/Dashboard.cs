@@ -33,6 +33,7 @@ internal static class Dashboard
         var gha = typeof(ConduitPlus.Grasshopper.DemoTrussComponent).Assembly;
         Register(gha);
         TableHostChecks.Run();
+        BarHostChecks.Run();
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
         InputTrapChecks.Run();
@@ -43,6 +44,11 @@ internal static class Dashboard
             var frozenPath = Path.Combine(root.FullName, "tools", "examples", "fixtures", "structural-dashboard.gh");
             Require(frozen.ReadFromFile(frozenPath) && frozen.ExtractObject(legacy, "Definition"), "Cannot read frozen fixture.");
             DisplayLifecycleChecks.ArchiveClean(frozen, frozenPath);
+            var oldBar = legacy.Objects.OfType<ConduitPlus.Grasshopper.BarComponent>().Single();
+            Require(oldBar.Params.Input.Count == 11 && oldBar.Params.Input[8] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+                oldBar.Params.Input[9] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+                oldBar.Params.Input[10] is Param_Integer n && n.PersistentData.AllData(true).OfType<GH_Integer>().Single().Value == 12,
+                "Frozen Bar must append unset Good when/Sort and the new 12-row default.");
             var oldOverlay = legacy.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
             Require(oldOverlay.Params.Input.Count == 6 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } && oldOverlay.Params.Input[5] is Param_Number { PersistentData.DataCount: 0 }, "Legacy View and Size must be appended and unset.");
             Require(oldOverlay.Params.Input[0].SourceCount > 0, "Legacy card wires lost.");
@@ -51,7 +57,7 @@ internal static class Dashboard
             var saved = new GH_Archive(); Require(saved.AppendObject(legacy, "Definition"), "Cannot save legacy fixture.");
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, six inputs, unset View and Size and card wires passed.");
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size, Bar eleven inputs with the new 12-row default, and card wires passed.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);

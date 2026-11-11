@@ -28,6 +28,6 @@ public sealed class BarScrollTests
         }
         Assert.Equal(11, TableScroll.Reveal(c, "k16"));
         Assert.Equal("k16", BrushPresentation.FirstNewRow(c with { SelectedKeys = ["k16"] }, new HashSet<string>()));
-        Assert.False(TableScroll.CanScroll(c with { Form = CardForm.None }));
+        Assert.False(TableScroll.CanScroll(c with { Form = CardForm.None, MaxRows = 0 }));
     }
 }

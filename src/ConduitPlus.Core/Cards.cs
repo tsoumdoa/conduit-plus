@@ -41,6 +41,8 @@ public sealed record CardSpec
     public double Threshold { get; init; } = 1;
     /// <summary>False for a Bar with no supplied threshold; legacy specs retain their threshold.</summary>
     public bool HasThreshold { get; init; } = true;
+    public BarGoodWhen GoodWhen { get; init; }
+    public BarOrder BarSort { get; init; }
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
     /// <summary>Table-only numeric display precision; raw cells and sort values are preserved.</summary>
@@ -50,11 +52,14 @@ public sealed record CardSpec
     public string? HoverKey { get; init; }
     public string[] SelectedKeys { get; init; } = [];
     public bool OwnerHasSelection { get; init; }
-    /// <summary>Table only: rows shown at once; more rows scroll.</summary>
-    public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
+    private readonly int? _maxRows;
+    /// <summary>Table and Bar: rows shown at once; Bar also accepts zero for all rows.</summary>
+    public int MaxRows { get => _maxRows ?? (Kind == CardKind.Bar ? BarPresentation.DefaultVisibleRows : TableScroll.DefaultVisibleRows); init => _maxRows = value; }
+    [JsonIgnore]
+    public int RowLimit => Kind == CardKind.Bar && MaxRows == 0 ? int.MaxValue : MaxRows;
     /// <summary>Compact form chosen by the viewport layout. Presentation state, like ScrollOffset.</summary>
     public CardForm Form { get; init; } = CardForm.None;
-    /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
+    /// <summary>Table and Bar: first visible row. View state owned by the overlay session, clamped when painted.</summary>
     public int ScrollOffset { get; init; }
     /// <summary>Table only: session-owned display sort; null preserves the incoming row order.</summary>
     public int? SortColumn { get; init; }
@@ -104,26 +109,39 @@ public sealed record CardSpec
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
         if (Kind == CardKind.Table) TablePresentation.ValidateDecimals(Decimals);
         GroupDefinition.Validate(this);
-        if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
+        if (Kind == CardKind.Bar) BarPresentation.Validate(this);
+        else if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }
 }
 
-/// <summary>Scroll geometry for Table cards, shared by painting and hit testing.</summary>
+/// <summary>Scroll geometry for Table and Bar cards, shared by painting and hit testing.</summary>
 public static class TableScroll
 {
     public const int DefaultVisibleRows = 8;
     public const double BarWidth = 6;
-    public static int Visible(CardSpec c) => Math.Min(c.Kind == CardKind.Bar ? c.Values.Length : Math.Min(c.Rows.Length, c.MaxRows), c.Form.VisibleRows ?? int.MaxValue);
+    public static int Visible(CardSpec c) => Math.Min(Math.Min(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length, c.RowLimit), c.Form.VisibleRows ?? int.MaxValue);
     public static int MaxOffset(CardSpec c) => Math.Max(0, (c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length) - Visible(c));
     public static int Offset(CardSpec c) => Math.Clamp(c.ScrollOffset, 0, MaxOffset(c));
     public static bool CanScroll(CardSpec c) => c.Kind is (CardKind.Table or CardKind.Bar) && MaxOffset(c) > 0;
+
+    public static double FooterHeight(CardSpec c, Theme t) => CanScroll(c) ? t.RowHeight : 0;
+    public static string? Footer(CardSpec c) => !CanScroll(c) ? null :
+        $"Rows {Offset(c) + 1}–{Offset(c) + Visible(c)} of {(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length)} · scroll";
+    public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
+    {
+        if (Bar(c, t) is not { } bar) return;
+        canvas.RoundedRect(bar.Track, BarWidth / 2, t.Track);
+        canvas.RoundedRect(bar.Thumb, BarWidth / 2, t.Muted);
+        using var clip = canvas.Clip(new(t.Padding, bar.Track.Y + bar.Track.Height + 2, c.Width - 2 * t.Padding, t.RowHeight));
+        canvas.Text(Footer(c)!, new(t.Padding, bar.Track.Y + bar.Track.Height + 4), t.FontSize - 1, t.Muted, t.Font);
+    }
 
     /// <summary>Minimal scroll to reveal a key in the sorted display order. Missing keys leave the offset alone.</summary>
     public static int Reveal(CardSpec c, string key)
     {
         var offset = Offset(c);
         if (c.Kind is not (CardKind.Table or CardKind.Bar)) return offset;
-        var index = c.Kind == CardKind.Bar ? Array.IndexOf(c.Keys, key) : Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
+        var index = c.Kind == CardKind.Bar ? Array.FindIndex(BarPresentation.Order(c), i => c.Keys[i] == key) : Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
         if (index < 0) return offset;
         return Math.Clamp(index < offset ? index : index >= offset + Visible(c) ? index - Visible(c) + 1 : offset, 0, MaxOffset(c));
     }

@@ -135,7 +135,7 @@ public sealed class TooltipSortTests
         var hits = CardMeasure.DataHits(c, Theme.Paper);
         Assert.Equal(new[] { "r1", "r0" }, hits.Select(h => h.Key));
         var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, Theme.Paper);
-        Assert.Equal(new[] { "Sorted results", "Clear", "Value", "2", "10" }, canvas.Texts.Select(t => t.Text));
+        Assert.Equal(new[] { "Sorted results", "Clear", "Value", "2", "10", "Rows 2–3 of 4 · scroll" }, canvas.Texts.Select(t => t.Text));
         Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Accent && r.Rect.Y == hits[0].Y);
         Assert.Equal("r2", Assert.Single(CardMeasure.DataHits(c with { ScrollOffset = 99, MaxRows = 1 }, Theme.Paper)).Key);
         var header = TableSort.Headers(c, Theme.Paper)[0]; var hovered = new RecordingCanvas();

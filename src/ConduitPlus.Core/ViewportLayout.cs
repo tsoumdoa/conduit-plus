@@ -17,13 +17,13 @@ public static class FormMeasure
         var width = c.Kind == CardKind.Legend && !c.Min.HasValue ? LegendCardPainter.CategoricalWidth(c, t, measure) : c.Width;
         return new(width, c.Kind switch
         {
-            CardKind.Table => 48 + (Math.Min(Math.Min(c.MaxRows, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
-            CardKind.Bar => 48 + Math.Min(c.Values.Length, f.VisibleRows ?? int.MaxValue) * t.RowHeight,
+            CardKind.Table => 48 + (Math.Min(Math.Min(c.RowLimit, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
+            CardKind.Bar => 48 + Math.Min(Math.Min(c.Values.Length, c.RowLimit), f.VisibleRows ?? int.MaxValue) * t.RowHeight,
             CardKind.Line => f.Compact ? 140 : 220,
             CardKind.Metric => f.Compact ? 48 : 92,
             CardKind.Legend => c.Min.HasValue ? f.Compact ? LegendCardPainter.GradientCompactHeight : LegendCardPainter.GradientHeight : 48 + c.Colors.Length * t.RowHeight,
             _ => f.Compact ? text!.Top + Math.Min(2, text.Lines.Length) * text.LineHeight + t.Padding : text!.Height
-        });
+        } + TableScroll.FooterHeight(c with { Form = f }, t));
     }
 }
 public sealed record CardPlacement(Guid Owner, string CardId, double X, double Y, double Width, double Height, CardForm Form);
