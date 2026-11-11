@@ -746,8 +746,8 @@ public sealed class OverlayComponent : GH_Component
             if (value is not T item)
             {
                 var type = FriendlyType(value);
-                var article = type is "integer" or "item" ? "an" : "a";
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i} is {article} {type}, not a Conduit+ {singular}."); continue;
+                var article = type is "text" or "geometry" ? "" : type is "integer" or "item" ? "an " : "a ";
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i} is {article}{type}, not a Conduit+ {singular}."); continue;
             }
             try { validate?.Invoke(item); }
             catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i}: {e.Message}"); continue; }
