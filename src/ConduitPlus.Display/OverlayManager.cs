@@ -55,7 +55,7 @@ public static partial class OverlayManager
         RhinoView.Create += ViewChanged; RhinoView.Rename += ViewChanged; RhinoView.Modified += ViewChanged;
         _viewSnapshot = ViewSnapshot();
         RhinoApp.AppSettingsChanged += AppearanceChanged;
-        RhinoApp.Closing += AppClosing;
+        RhinoApp.Closing += AppClosing; RhinoApp.EscapeKeyPressed += HiddenEscape;
         global::Rhino.Commands.Command.BeginCommand += CommandStarted;
         WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
@@ -70,7 +70,7 @@ public static partial class OverlayManager
         RhinoView.Create -= ViewChanged; RhinoView.Rename -= ViewChanged; RhinoView.Modified -= ViewChanged;
         RhinoApp.Idle -= ViewsIdle; _viewsPending = false;
         RhinoApp.AppSettingsChanged -= AppearanceChanged;
-        RhinoApp.Closing -= AppClosing;
+        RhinoApp.Closing -= AppClosing; RhinoApp.EscapeKeyPressed -= HiddenEscape;
         global::Rhino.Commands.Command.BeginCommand -= CommandStarted;
         try
         {
@@ -145,7 +145,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1, string? label = null)
     {
         UiContext.Ensure();
         Start();
@@ -164,7 +164,7 @@ public static partial class OverlayManager
         // Following the active view removes this owner's previous conduit.
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
-        session.Size = size;
+        session.Size = size; session.Label = label ?? "Overlay";
         session.SetLinks(linked);
         session.Update(specs, theme: theme ?? Theme.Paper);
         Settle(doc, view);
@@ -299,8 +299,10 @@ public static partial class OverlayManager
         if (sessions[0] != source) return;
         if (sessions.Contains(source) && Sessions.Values.Contains(source)) CheckFrame(source);
         foreach (var session in sessions) session.Draw(e);
+        if (!e.Display.IsInViewCapture) foreach (var session in sessions.Where(s => ShownId(s) is not null)) session.DrawFloating(e);
         if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && coordinator.Frame is { Chip: { } chip } frame)
         {
+            DrawHiddenList(source.View, coordinator, e);
             var n = frame.Hidden.Count;
             var unit = frame.Unit.Values.Min();
             e.Display.DrawRoundedRectangle(new System.Drawing.PointF((float)(chip.X + chip.Width / 2), (float)(chip.Y + chip.Height / 2)), (float)chip.Width, (float)chip.Height, (float)(chip.Height / 2), System.Drawing.Color.FromArgb(229, 163, 61), 0, System.Drawing.Color.FromArgb(229, 163, 61));

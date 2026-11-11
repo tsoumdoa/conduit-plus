@@ -134,7 +134,7 @@ Cards appear in the order they arrive in Overlay's Cards input, and each card's 
 When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
 front of Overlay makes the order explicit. Cards can't be dragged in the viewport.
 
-Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Size scales one Overlay.
+Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Click the chip to list the hidden cards; Escape or another click closes the list. Clicking a hidden card in the list shows it over the model until you click it again or press Escape. Size scales one Overlay.
 
 ## Grasshopper components
 

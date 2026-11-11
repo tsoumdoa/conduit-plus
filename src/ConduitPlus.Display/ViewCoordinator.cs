@@ -6,6 +6,10 @@ public static partial class OverlayManager
 {
     private sealed class ViewCoordinator : IDisposable
     {
+        internal bool ListOpen;
+        internal (Guid Owner, string CardId)? Shown;
+
+        internal void ShowHidden(Guid owner, string cardId) => Shown = Shown == (owner, cardId) ? null : (owner, cardId);
         internal ViewportSolution? Frame;
         internal readonly Dictionary<Guid, string?> Reports = [];
         internal long Generation;
@@ -45,7 +49,9 @@ public static partial class OverlayManager
         var signature = ViewportLayout.Signature(request);
         if (c.Frame is null || c.Signature != signature)
         {
-            c.Frame = ViewportLayout.Solve(request); c.Generation++;
+            c.Frame = ViewportLayout.Solve(request);
+            if (c.Shown is { } shown && !c.Frame.Hidden.Contains(shown)) c.Shown = null;
+            if (c.Frame.Hidden.Count == 0) c.ListOpen = false; c.Generation++;
             foreach (var owner in c.Reports.Keys.Except(request.Participants.Select(p => p.Owner)).ToArray())
             { c.Reports.Remove(owner); OverflowChanged?.Invoke(owner, null); }
             foreach (var session in sessions.Where(s => s.Visible))
@@ -58,7 +64,12 @@ public static partial class OverlayManager
         }
         foreach (var session in sessions)
             if (c.Frame.Unit.TryGetValue(session.Owner, out var unit))
-                session.ApplyLayout(unit, c.Frame.Placements.Where(p => p.Owner == session.Owner).ToDictionary(p => p.CardId, p => p.Form, StringComparer.Ordinal));
+                {
+                var forms = c.Frame.Placements.Where(p => p.Owner == session.Owner).ToDictionary(p => p.CardId, p => p.Form, StringComparer.Ordinal);
+                if (c.Shown is { } shown && shown.Owner == session.Owner && session.AuthoredCards.FirstOrDefault(x => x.Id == shown.CardId) is { } card)
+                    forms[card.Id] = ShownCard.Form(card, session.Theme, (c.Size.Height - 24 * c.Dpi) / unit, TextMetrics.Measurer);
+                session.ApplyLayout(unit, forms);
+            }
         view.Redraw();
     }
     private static void CheckFrame(OverlaySession session)
@@ -69,7 +80,7 @@ public static partial class OverlayManager
         if (c.Size != new Size2(size.Width, size.Height) || c.Dpi != UiContext.Dpi(session.View))
         { c.Timer.Stop(); c.Timer.Start(); }
     }
-    internal static CardLayout[] Placements(OverlaySession session)
+    internal static CardLayout[] Placements(OverlaySession session, bool includeShown = true)
     {
         ViewportSolution frame;
         if (Sessions.Values.Contains(session))
@@ -84,10 +95,32 @@ public static partial class OverlayManager
             frame = ViewportLayout.Solve(Request(session.View, [session], compact: false));
             if (frame.Unit.TryGetValue(session.Owner, out var unit)) session.PrepareUnit(unit);
         }
-        return frame.Placements.Where(p => p.Owner == session.Owner && !frame.Hidden.Contains((p.Owner, p.CardId)))
+        var placements = frame.Placements.AsEnumerable();
+        if (includeShown && Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var coordinator) && coordinator.Shown is { } shown && shown.Owner == session.Owner && session.Card(shown.CardId) is { } floating)
+        {
+            var unit = frame.Unit[session.Owner]; var size = CardMeasure.Measure(floating, session.Theme);
+            bool LeftRail(CardPlacement placement)
+            {
+                var cards = InView(session.Document, session.View).First(s => s.Owner == placement.Owner).AuthoredCards;
+                var index = Array.FindIndex(cards, card => card.Id == placement.CardId);
+                return index >= 0 && SlotLayout.Resolve(cards[index], index) is Slot.Tl or Slot.Lc or Slot.Bl;
+            }
+            var left = frame.Placements.Where(LeftRail).Select(p => p.X + p.Width).DefaultIfEmpty(0).Max();
+            var right = frame.Placements.Where(p => !LeftRail(p)).Select(p => p.X).DefaultIfEmpty(coordinator.Size.Width).Min();
+            var rect = ShownCard.Place(new(size.Width * unit, size.Height * unit), coordinator.Size, 12 * coordinator.Dpi, left, right);
+            placements = placements.Append(new(session.Owner, floating.Id, rect.X, rect.Y, rect.Width, rect.Height, floating.Form));
+        }
+        return placements.Where(p => p.Owner == session.Owner)
             .Select(p => session.Card(p.CardId) is { } card ? new CardLayout(card.Id, card.Rev, p.X, p.Y, p.Width, p.Height, CardMeasure.Hits(card, session.Theme)) : null)
             .OfType<CardLayout>().ToArray();
     }
+    internal static bool CoveredByShown(OverlaySession session, double x, double y)
+    {
+        if (!Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var c) || c.Shown is not { } shown || shown.Owner == session.Owner) return false;
+        var owner = InView(session.Document, session.View).FirstOrDefault(s => s.Owner == shown.Owner);
+        return owner is not null && Placements(owner).Any(p => p.Id == shown.CardId && new Rect2(p.X, p.Y, p.W, p.H).Contains(x, y));
+    }
+    internal static string? ShownId(OverlaySession session) => Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var c) && c.Shown is { } shown && shown.Owner == session.Owner ? shown.CardId : null;
     private static void DisposeCoordinators(Func<(uint Doc, Guid View), bool> match)
     {
         foreach (var key in Coordinators.Keys.Where(match).ToArray()) { Coordinators[key].Dispose(); Coordinators.Remove(key); }

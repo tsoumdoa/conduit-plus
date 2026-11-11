@@ -57,6 +57,7 @@ public static partial class OverlayManager
             var pending = _pending; _pending = null;
             if (_gesture is not null || _pressed || pending is not { } p || !p.View.ScreenRectangle.Contains(System.Windows.Forms.Control.MousePosition)) return;
             _lastPick = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (HiddenHit(p.View,p.Point.X,p.Point.Y)) return;
             var sessions = InView(p.View);
             var hit = !Busy && !Command.InCommand() && !sessions.Any(s => s.Hit(p.Point.X, p.Point.Y) is not null)
                 ? ModelPicking.Pick(p.View, sessions, p.Point) : null;
@@ -92,6 +93,7 @@ public static partial class OverlayManager
         }
         private void MoveHover(RhinoView view, System.Drawing.Point point)
         {
+            if (HiddenHit(view,point.X,point.Y)) { _hoverTimer.Stop(); _pending=null; foreach(var s in Sessions.Values) { s.ClearCardHover(); ClearHover(s,true); } return; }
             var sessions = InView(view);
             var overCard = sessions.Any(s => s.Hit(point.X, point.Y) is not null);
             foreach (var s in Sessions.Values.ToArray())
@@ -113,6 +115,7 @@ public static partial class OverlayManager
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
+            if (HiddenHit(e.View,e.ViewportPoint.X,e.ViewportPoint.Y,true)) { e.Cancel=true; _pressed=true; _emptyPress=null; return; }
             _emptyPress = null;
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
@@ -167,6 +170,7 @@ public static partial class OverlayManager
         }
         protected override void OnMouseUp(MouseCallbackEventArgs e)
         {
+            if (HiddenHit(e.View,e.ViewportPoint.X,e.ViewportPoint.Y)) { e.Cancel=true; _pressed=false; Cancel(); return; }
             if (e.Button != System.Windows.Forms.MouseButtons.Left) return;
             var empty = _emptyPress; _emptyPress = null;
             if (empty is { } press && !Busy && !Command.InCommand() && !e.ShiftKeyDown && !e.CtrlKeyDown &&
@@ -229,6 +233,7 @@ public static partial class OverlayManager
                 if (!s.Visible) continue;
                 if (!s.View.ScreenRectangle.Contains(screen)) continue;
                 var client = s.View.ScreenToClient(screen);
+                if (HiddenHit(s.View,client.X,client.Y)) return true;
                 if (s.Hit(client.X, client.Y) is not { } hit || s.Card(hit.CardId) is not { } card || !TableScroll.CanScroll(card)) continue;
                 var notches = Math.Max(1, Math.Abs(delta) / 120);
                 s.ScrollBy(card.Id, -Math.Sign(delta) * 3 * notches);

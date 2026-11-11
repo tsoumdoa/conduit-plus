@@ -15,6 +15,7 @@ internal sealed partial class OverlaySession : IDisposable
     public RhinoDoc Document { get; }
     public RhinoView View { get; }
     public CardSpec[] Cards { get; private set; } = [];
+    internal string Label { get; set; } = "Overlay";
     internal double Size { get; set; } = 1;
     public Theme Theme { get; private set; } = Theme.Paper;
     private Theme _themeSelection = Theme.Paper;
@@ -153,6 +154,7 @@ internal sealed partial class OverlaySession : IDisposable
 
     public (string CardId, string Key)? Hit(double x, double y)
     {
+        if (OverlayManager.CoveredByShown(this, x, y)) return null;
         var size = View.MainViewport.Size;
         foreach (var layout in OverlayManager.Placements(this).AsEnumerable().Reverse())
         {
@@ -203,16 +205,18 @@ internal sealed partial class OverlaySession : IDisposable
         try { Update(cards, true); View.Redraw(); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
-    internal void Draw(DrawEventArgs e)
+    internal void Draw(DrawEventArgs e) => DrawCards(e, false);
+    internal void DrawFloating(DrawEventArgs e) => DrawCards(e, true);
+    private void DrawCards(DrawEventArgs e, bool floatingOnly)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
-        DrawHighlights(e.Display, !e.Display.IsInViewCapture);
+        if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.
         var viewport = e.Display.IsInViewCapture ? new Size2(View.MainViewport.Size.Width * CaptureMultiplier, View.MainViewport.Size.Height * CaptureMultiplier) : new Size2(size.Width, size.Height);
         var multiplier = e.Display.IsInViewCapture ? CaptureMultiplier : 1;
-        var layouts = OverlayManager.Placements(this).Select(l => l with { X = l.X * multiplier, Y = l.Y * multiplier, W = l.W * multiplier, H = l.H * multiplier });
+        var layouts = OverlayManager.Placements(this, !e.Display.IsInViewCapture).Where(l => floatingOnly ? l.Id == OverlayManager.ShownId(this) : l.Id != OverlayManager.ShownId(this)).Select(l => l with { X = l.X * multiplier, Y = l.Y * multiplier, W = l.W * multiplier, H = l.H * multiplier });
         // Synchronous GDI+ work only. A target-scale ViewCapture paints fresh pixels here,
         // including direct captures; the next screen draw lazily restores screen resolution.
         if (_raster.Scale != scale || e.Display.IsInViewCapture || _rasterHasCaptureState)
@@ -236,6 +240,8 @@ internal sealed partial class OverlaySession : IDisposable
             if (_raster.Prepared.TryGetValue(layout.Id, out var p))
                 e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X) - p.Capture.Margin, (int)Math.Round(layout.Y) - p.Capture.Margin);
         }
+        if (!e.Display.IsInViewCapture && OverlayManager.ShownId(this) is { } shownId && layouts.FirstOrDefault(l => l.Id == shownId) is { } shownLayout)
+            e.Display.Draw2dRectangle(new System.Drawing.Rectangle((int)shownLayout.X, (int)shownLayout.Y, (int)shownLayout.W, (int)shownLayout.H), ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent), 2, System.Drawing.Color.Transparent);
         FrameCount++;
     }
     private void DrawHighlights(DisplayPipeline display, bool includeHover)
