@@ -53,6 +53,33 @@ public sealed class ColourLegendRenderTests
         Save(customImage, $"scale-Custom-{name}.png");
     }
 
+    [Theory]
+    [InlineData("Paper")]
+    [InlineData("Night")]
+    [InlineData("Smoke")]
+    [InlineData("Blueprint")]
+    public void ExtremeAndAsymmetricLegendsRenderWithoutThrowing(string name)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        var cases = new (string Name, ColourScaleResult Scale)[] {
+            ("subnormal", ColourScale.Create([], min: 0, max: 8 * double.Epsilon)),
+            ("smallest", ColourScale.Create([0, double.Epsilon])),
+            ("large", ColourScale.Create([], min: -double.MaxValue, max: double.MaxValue)),
+            ("constant", ColourScale.Create([1e16, 1e16], title: "Constant 1e16")),
+            ("constant-max", ColourScale.Create([double.MaxValue])),
+            ("Blue-Red-asymmetric", ColourScale.Create([], ["Blue-Red"], -1, 9, title: "Blue–Red, Mid 0")),
+            ("Status-mid-099", ColourScale.Create([], ["Status"], 0, 1, .99, "Status, Mid 0.99")),
+            ("Status-mid-near-end", ColourScale.Create([], ["Status"], 0, 1, Math.BitDecrement(1))),
+            ("Custom-32", ColourScale.Create([], Enumerable.Range(0, 32).Select(i => i % 2 == 0 ? "#000000" : "#FFFFFF").ToArray(), 0, 1, title: "32 alternating stops"))
+        };
+        foreach (var (label, scale) in cases)
+        {
+            using var image = RasterDrawing.Render(scale.Legend, theme, 2);
+            Assert.True(image.Width > 0 && image.Height > 0);
+            Save(image, $"scale-{label}-{name}.png");
+        }
+    }
+
     private static void Near(string expected, Color pixel, int tolerance)
     {
         var rgb = ColorRgba.Parse(expected);

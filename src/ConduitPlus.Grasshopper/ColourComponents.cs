@@ -16,24 +16,37 @@ public abstract class ColourComponent(string name, string nickname, string descr
     protected abstract ComponentIcon IconKind { get; }
     protected override Bitmap Icon => _icon ??= ConduitIcons.Create(IconKind);
     public override IEnumerable<string> Keywords => ["color", "palette", "gradient"];
-    protected string CardId(IGH_DataAccess da) => da.Iteration == 0 ? InstanceGuid.ToString("N") : $"{InstanceGuid:N}:{da.Iteration}";
-    protected static void PaletteInput(GH_InputParamManager p, string fallback)
+    protected string CardId => InstanceGuid.ToString("N");
+    protected static void PaletteInput(GH_InputParamManager p, bool categories)
     {
-        var options = Palettes.All.SelectMany(s => new[] { new InputOption(s.Name, s.Name), new InputOption(s.Name + " reversed", s.Name + " reversed") }).ToArray();
-        var index = p.AddParameter(new Param_TextOption { Options = options }, "Palette", "P", "Right-click to choose a palette (default " + fallback + "), or set 2–32 colours as evenly spaced stops; append ' reversed' to a name", GH_ParamAccess.list);
+        var options = Palettes.All.Where(s => categories || s.Kind != PaletteKind.Categorical).SelectMany(s => new[] { new InputOption(s.Name, s.Name), new InputOption(s.Name + " reversed", s.Name + " reversed") }).ToArray();
+        var index = p.AddParameter(new Param_TextOption { Options = options }, "Palette", "P", categories ? "Right-click to choose, or set your own colours (one per category, repeating)" : "Right-click to choose, or set 2–32 colours as evenly spaced stops; append ' reversed' to a name", GH_ParamAccess.tree);
         p[index].Optional = true;
     }
     protected static string[] ReadPalette(IGH_DataAccess da, int index)
     {
-        var values = new List<string>(); da.GetDataList(index, values);
+        var values = ReadTextTree(da, index);
         // GH_String preserves named System.Drawing colours as names (e.g. Red), and adds
         // " (alpha)" to translucent RGB casts. Palette names take precedence over named colours.
         return values.Select(s =>
         {
-            if (values.Count == 1 && Palettes.All.Any(p => string.Equals(p.Name, s, StringComparison.OrdinalIgnoreCase))) return s;
+            if (values.Length == 1 && Palettes.All.Any(p => string.Equals(p.Name, s, StringComparison.OrdinalIgnoreCase))) return s;
             var colour = Color.FromName(s);
             return colour.IsKnownColor ? $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}" : s;
         }).ToArray();
+    }
+    protected static string[] ReadTextTree(IGH_DataAccess da, int index)
+    {
+        da.GetDataTree(index, out GH_Structure<GH_String> tree);
+        return tree?.Branches.SelectMany(b => b.Select(v => v?.Value ?? "")).ToArray() ?? [];
+    }
+    protected bool SingleIteration(IGH_DataAccess da, string name, string controls)
+    {
+        // GH otherwise inserts null placeholders for unassigned later iterations.
+        da.DisableGapLogic();
+        if (da.Iteration == 0) return true;
+        AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{name} makes one legend per component; give a single {controls}.");
+        return false;
     }
     protected Slot? ReadSlot(IGH_DataAccess da, int index)
     {
@@ -70,7 +83,7 @@ public sealed class ColourScaleComponent : ColourComponent
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddNumberParameter("Values", "V", "Numbers to colour; one scale across all branches. Null/NaN/infinity are missing", GH_ParamAccess.tree); p[0].Optional = true;
-        PaletteInput(p, "Blue");
+        PaletteInput(p, false);
         p.AddNumberParameter("Min", "Mn", "Value at the first colour; unset uses the nice floor of the data", GH_ParamAccess.item); p[2].Optional = true;
         p.AddNumberParameter("Max", "Mx", "Value at the last colour; unset uses the nice ceiling of the data", GH_ParamAccess.item); p[3].Optional = true;
         p.AddNumberParameter("Mid", "Md", "Value at the middle colour; defaults to centre, or zero for diverging/Status ranges spanning zero", GH_ParamAccess.item); p[4].Optional = true;
@@ -85,14 +98,17 @@ public sealed class ColourScaleComponent : ColourComponent
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
+        if (!SingleIteration(da, "Colour Scale", "Title, Unit, Slot, Min, Max and Mid")) return;
         da.GetDataTree(0, out GH_Structure<GH_Number> tree); tree ??= new();
         double min = 0, max = 0, mid = 0;
         var hasMin = da.GetData(2, ref min); var hasMax = da.GetData(3, ref max); var hasMid = da.GetData(4, ref mid);
+        if (tree.DataCount == 0 && !hasMin && !hasMax)
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Connect Values (or set Min and Max)."); return; }
         string unit = "", title = "Legend"; da.GetData(5, ref unit); da.GetData(6, ref title);
         try
         {
             var result = ColourScale.Create(tree.Branches.SelectMany(b => b.Select(v => (double?)v?.Value)).ToArray(),
-                ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId(da), ReadSlot(da, 7));
+                ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId, ReadSlot(da, 7));
             da.SetDataTree(0, ColourTree(tree, result.Colours)); da.SetData(1, new GH_ObjectWrapper(result.Legend)); Messages(result.Messages);
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
@@ -109,9 +125,9 @@ public sealed class ColourCategoriesComponent : ColourComponent
     {
         p.AddTextParameter("Categories", "Ca", "One category per item; blank is No data", GH_ParamAccess.tree); p[0].Optional = true;
         p.AddTextParameter("Keys", "K", "Optional member key per item in path order, as on Link; enables legend selection", GH_ParamAccess.tree); p[1].Optional = true;
-        PaletteInput(p, "Categorical");
-        p.AddTextParameter("Order", "O", "All categories in legend order; absent categories keep their slots and empty groups", GH_ParamAccess.list); p[3].Optional = true;
-        p.AddTextParameter("Title", "T", "Legend title; prefixes group keys (Title:Category)", GH_ParamAccess.item, "Legend");
+        PaletteInput(p, true);
+        p.AddTextParameter("Order", "O", "All categories in legend order; absent categories keep their slots and empty groups", GH_ParamAccess.tree); p[3].Optional = true;
+        p.AddTextParameter("Title", "T", "Legend title; group keys are generated as Title:Category@component identity", GH_ParamAccess.item, "Legend");
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position", GH_ParamAccess.item); p[5].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
@@ -120,7 +136,7 @@ public sealed class ColourCategoriesComponent : ColourComponent
         p.AddGenericParameter("Legend", "L", "Categorical Legend for Overlay or Canvas Card", GH_ParamAccess.item);
         p.AddTextParameter("Categories", "Ca", "Distinct categories in legend order; to Bar Labels", GH_ParamAccess.list);
         p.AddColourParameter("Category colours", "CC", "One colour per category; to Bar Colors", GH_ParamAccess.list);
-        p.AddTextParameter("Group keys", "GK", "Title:Category tokens; to Bar Keys. Empty without Keys", GH_ParamAccess.list);
+        p.AddTextParameter("Group keys", "GK", "Generated Title:Category@component identity tokens; to Bar Keys. Empty without Keys", GH_ParamAccess.list);
         p.AddTextParameter("Members", "M", "One branch per category, including empty branches; to Bar Members. Empty without Keys", GH_ParamAccess.tree);
     }
     public override bool Write(GH_IWriter writer) { writer.SetBoolean("ShowCounts", _showCounts); return base.Write(writer); }
@@ -133,15 +149,19 @@ public sealed class ColourCategoriesComponent : ColourComponent
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
+        if (!SingleIteration(da, "Colour Categories", "Title and Slot")) return;
         da.GetDataTree(0, out GH_Structure<GH_String> tree); tree ??= new();
         da.GetDataTree(1, out GH_Structure<GH_String> keys);
         var hasKeys = Params.Input[1].SourceCount > 0 || Params.Input[1].VolatileData.PathCount > 0;
-        var order = new List<string>(); da.GetDataList(3, order); string title = "Legend"; da.GetData(4, ref title);
+        var order = ReadTextTree(da, 3);
+        if (tree.DataCount == 0 && order.Length == 0)
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Connect Categories (or set Order)."); return; }
+        string title = "Legend"; da.GetData(4, ref title);
         try
         {
             var result = ColourCategories.Create(tree.Branches.SelectMany(b => b.Select(v => v?.Value)).ToArray(),
                 hasKeys ? keys?.Branches.SelectMany(b => b.Select(v => v?.Value)).ToArray() ?? [] : null,
-                ReadPalette(da, 2), order, title, _showCounts, CardId(da), ReadSlot(da, 5));
+                ReadPalette(da, 2), order, title, _showCounts, CardId, ReadSlot(da, 5), InstanceGuid.ToString("N")[..8]);
             var members = new GH_Structure<GH_String>();
             for (var i = 0; i < result.Members.Length; i++)
             {

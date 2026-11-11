@@ -21,6 +21,8 @@ public sealed record CardSpec
     public string Unit { get; init; } = "";
     public string Text { get; init; } = "";
     public string[] Colors { get; init; } = [];
+    /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
+    public double[] ColorPositions { get; init; } = [];
     public double? Min { get; init; }
     public double? Max { get; init; }
     public double?[] Values { get; init; } = [];
@@ -81,9 +83,13 @@ public sealed record CardSpec
             if (ValueLabels.Length != 0 && (Min.HasValue || ValueLabels.Length != Colors.Length)) throw new ArgumentException("Legend value labels must match categorical colors and cannot be used with a gradient.");
             if (Min.HasValue)
             {
-                if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value >= Max.Value || !double.IsFinite(Max.Value - Min.Value)) throw new ArgumentException("Gradient legends need 2+ colors and finite Min < Max.");
+                if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value > Max.Value || (Min.Value == Max.Value && Colors.Distinct().Count() != 1)) throw new ArgumentException("Gradient legends need 2+ colors and finite Min <= Max; equal bounds need a single colour.");
+                if (ColorPositions.Length > 0 && (ColorPositions.Length != Colors.Length || ColorPositions[0] != 0 || ColorPositions[^1] != 1 ||
+                    ColorPositions.Any(p => !double.IsFinite(p)) || ColorPositions.Zip(ColorPositions.Skip(1)).Any(p => p.First >= p.Second)))
+                    throw new ArgumentException("Gradient positions must match colors and increase strictly from 0 to 1.");
                 if (Keys.Length > 0) throw new ArgumentException("Only categorical legends can have keys.");
             }
+            else if (ColorPositions.Length > 0) throw new ArgumentException("Only gradient legends can have color positions.");
             else if (Labels.Length != Colors.Length || (Keys.Length != 0 && Keys.Length != Colors.Length)) throw new ArgumentException("Categorical colors, labels and optional keys must match.");
         }
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;

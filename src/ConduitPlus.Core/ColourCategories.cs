@@ -11,7 +11,7 @@ public static class ColourCategories
 
     public static ColourCategoriesResult Create(IReadOnlyList<string?> categories, IReadOnlyList<string?>? keys = null,
         IReadOnlyList<string>? palette = null, IReadOnlyList<string?>? order = null, string title = "Legend",
-        bool showCounts = true, string id = "colour-categories", Slot? slot = null)
+        bool showCounts = true, string id = "colour-categories", Slot? slot = null, string groupNamespace = "colour-categories")
     {
         var messages = new List<ColourMessage>();
         var scheme = Palettes.Resolve(palette, "Categorical", messages);
@@ -19,20 +19,21 @@ public static class ColourCategories
         var rows = (order ?? []).Select(Category).ToList();
         if (rows.Distinct(StringComparer.Ordinal).Count() != rows.Count) throw new ArgumentException("Order must contain unique categories.");
         var extra = items.Distinct(StringComparer.Ordinal).Except(rows, StringComparer.Ordinal).ToArray();
-        if (order is { Count: > 0 } && extra.Length > 0)
-            messages.Add(new(ColourMessageLevel.Warning, $"{extra.Length} categories are not in Order ({string.Join(", ", extra.Take(2).Select(s => $"'{s}'"))}); added after the listed ones."));
+        var unlisted = extra.Where(s => s != "No data").ToArray();
+        if (order is { Count: > 0 } && unlisted.Length > 0)
+            messages.Add(new(ColourMessageLevel.Warning, $"{unlisted.Length} {(unlisted.Length == 1 ? "category is" : "categories are")} not in Order ({string.Join(", ", unlisted.Take(2).Select(s => $"'{s}'"))}); added after the listed ones."));
         rows.AddRange(extra);
         if (rows.Remove("No data")) rows.Add("No data");
-        if (rows.Count == 0) throw new ArgumentException("Colour Categories needs categories in Categories or Order.");
+        if (rows.Count == 0) throw new ArgumentException("Connect Categories (or set Order).");
         var ordinary = rows.Count(s => s != "No data");
         var colours = rows.Select((s, i) => s == "No data" ? Palettes.Missing : scheme.Kind == PaletteKind.Categorical
             ? scheme.Colours[i % scheme.Colours.Length] : scheme.ColourAt(ordinary <= 1 ? .5 : (double)i / (ordinary - 1))).ToArray();
         if (scheme.Kind == PaletteKind.Categorical && ordinary > scheme.Colours.Length)
             messages.Add(new(ColourMessageLevel.Warning, $"{ordinary} categories but {scheme.Name} has {scheme.Colours.Length} colours; colours repeat from '{rows[scheme.Colours.Length]}'. Wire Order to choose which come first, or wire your own colours to Palette."));
         if (scheme.Kind != PaletteKind.Categorical && order is not { Count: > 0 })
-            messages.Add(new(ColourMessageLevel.Remark, $"{scheme.Name} is an ordered palette. Wire Order, best first, so colours do not follow data order."));
+            messages.Add(new(scheme.Kind == PaletteKind.Status ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, $"{scheme.Name} is an ordered palette. Wire Order, best first, so colours do not follow data order."));
         if (keys is not null && keys.Count != items.Length)
-            throw new ArgumentException($"Keys has {keys.Count} items and Categories has {items.Length}; wire one key per item.");
+            throw new ArgumentException($"Keys has {keys.Count} {(keys.Count == 1 ? "item" : "items")} and Categories has {items.Length}; wire one key per item.");
         if (keys is not null)
         {
             var seen = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -44,7 +45,7 @@ public static class ColourCategories
                 seen[key] = items[i];
             }
         }
-        var groupKeys = keys is null ? [] : rows.Select(s => $"{title}:{s}").ToArray();
+        var groupKeys = keys is null ? [] : rows.Select(s => $"{title}:{s}@{groupNamespace}").ToArray();
         if (keys is not null && groupKeys.FirstOrDefault(g => keys.Contains(g, StringComparer.Ordinal)) is { } collision)
             throw new ArgumentException($"Generated group key '{collision}' collides with a member key.");
         var members = keys is null ? [] : rows.Select(s => items.Select((category, i) => (category, i)).Where(x => x.category == s)

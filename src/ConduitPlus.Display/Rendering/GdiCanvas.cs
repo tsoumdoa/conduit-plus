@@ -52,10 +52,11 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     }
     public void Rect(Rect2 r, string fill)
     { graphics.FillRectangle(BrushOf(fill), (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height); }
-    public void Gradient(Rect2 r, IReadOnlyList<string> colors)
+    public void Gradient(Rect2 r, IReadOnlyList<string> colors) => Gradient(r, colors, []);
+    public void Gradient(Rect2 r, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
     {
         using var brush = new LinearGradientBrush(new RectangleF((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height), C(colors[0]), C(colors[^1]), LinearGradientMode.Horizontal);
-        brush.InterpolationColors = new ColorBlend { Colors = colors.Select(C).ToArray(), Positions = Enumerable.Range(0, colors.Count).Select(i => (float)i / (colors.Count - 1)).ToArray() };
+        brush.InterpolationColors = new ColorBlend { Colors = colors.Select(C).ToArray(), Positions = positions.Count == 0 ? Enumerable.Range(0, colors.Count).Select(i => (float)i / (colors.Count - 1)).ToArray() : positions.Select(p => (float)p).ToArray() };
         graphics.FillRectangle(brush, (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height);
     }
     public void RoundedRect(Rect2 r, double radius, string fill)

@@ -204,19 +204,23 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 
 ## Colour helpers
 
-**Conduit+ → Colour → Colour Scale** maps numbers to colours and a finished ordinary
-Legend. Connect **Colours** to Custom Preview (or Bar → Colors), and **Legend** to
-Overlay or Canvas Card. Values retain their tree paths, item counts and empty
-branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
+**Conduit+ → Colour → Colour Scale**
+
+1. Wire numbers to **Values**.
+2. Right-click **Palette** to choose a sequential, diverging or Status palette, or wire your own colours.
+3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
+
+Maps numbers to colours and a finished ordinary Legend. Colours can also feed
+Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
 of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
 set both for a legend with no Values. Out-of-range values use the end colours.
 Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
-a remark. Constant finite data gets a small nice range around the value.
+a remark. Constant finite data gets a single-colour legend at that value.
 
 | Colour Scale input | Nick | Access | Default / meaning |
 |---|---|---|---|
 | Values | V | Number tree, optional | Numbers to colour; one scale across branches. |
-| Palette | P | Text list, optional | Blue; right-click a name, or wire 2–32 colours. |
+| Palette | P | Text tree, flattened, optional | Blue; right-click a name, or wire 2–32 colours. |
 | Min | Mn | Number, optional | Nice floor of the finite data; value at the first colour. |
 | Max | Mx | Number, optional | Nice ceiling of the finite data; value at the last colour. |
 | Mid | Md | Number, optional | Centre, except diverging/Status ranges spanning zero use 0. Must be strictly between Min and Max. |
@@ -225,12 +229,22 @@ a remark. Constant finite data gets a small nice range around the value.
 | Slot | S | Text option, optional | Automatic. |
 
 Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid maps to the middle
-palette colour, with each side linear; for utilisation use Status, Min 0, Max 1.2,
-Mid 1. RGB interpolation is linear in sRGB. The gradient card has 17 evenly spaced
-samples of the same mapping. Between samples it interpolates, so arbitrary Mid
-positions and custom stop counts can introduce a small approximation in the legend.
+palette colour, with each side linear. Explicit Mid extends automatic bounds to include it;
+explicit Min/Max must enclose Mid. RGB interpolation is linear in sRGB. The legend
+samples every palette knot and the Mid breakpoint (at most 33 positioned stops),
+so its interpolation agrees with model colours within one RGB byte per channel.
+Each component produces one legend per solve; give scalar inputs a single value.
+Palette and Order flatten all branches without creating extra iterations.
 
-**Colour Categories** maps text to swatches. Wire the complete category list to
+**Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1.
+
+**Colour Categories**
+
+1. Wire text to **Categories**, and optionally member **Keys** and a complete **Order**.
+2. Right-click **Palette** to choose, or wire your own colours (one per category, repeating).
+3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
+
+Maps text to swatches. Wire the complete category list to
 **Order** to pin each category's colour and row even when filtering removes its
 items. Absent categories keep a zero-count row and, when keyed, an empty Members
 branch. Unlisted categories append with a warning. Without Order, colours follow
@@ -243,9 +257,9 @@ palettes repeat when exhausted and warn; they do not invent extra hues.
 |---|---|---|---|
 | Categories | Ca | Text tree | One category per item. Order alone can supply empty rows. |
 | Keys | K | Text tree, optional | One member key per item in path order, as on Link; enables selectable legend groups. |
-| Palette | P | Text list, optional | Categorical; right-click a name, or wire 2–32 colours. |
-| Order | O | Text list, optional | First appearance; a complete, unique list pins colours. |
-| Title | T | Text | Legend; also prefixes group keys as `Title:Category`. |
+| Palette | P | Text tree, flattened, optional | Categorical; right-click a name, or wire 2–32 colours. |
+| Order | O | Text tree, flattened, optional | First appearance; a complete, unique list pins colours. |
+| Title | T | Text | Legend; group keys are generated as `Title:Category@xxxxxxxx` (the first 8 hex digits of the component InstanceGuid). |
 | Slot | S | Text option, optional | Automatic. |
 
 | Colour Categories output | Nick | Access | Connect to |
@@ -257,6 +271,8 @@ palettes repeat when exhausted and warn; they do not invent extra hues.
 | Group keys | GK | Text list | Grouped Bar Keys; empty without Keys. |
 | Members | M | Text tree | Grouped Bar Members; one `{i}` branch per row including empty groups; empty without Keys. |
 
+Generated group keys are stable across solves and reopening the document. Separate
+components (including copies) get their own namespace, even with the same Title.
 Feed grouped numeric totals in Categories output order into Bar Values. Link
 still receives geometry and the original member keys. Blank/reserved keys, a key
 in different categories, and generated group tokens colliding with member keys
@@ -268,8 +284,7 @@ Both Palette inputs accept case-insensitive names, an ASCII hyphen in the diverg
 names, and ` reversed` after any name. Wired colour lists are opaque RGB (alpha
 is ignored), with evenly spaced stops on Colour Scale and discrete swatches on
 Colour Categories. The RGB values stay identical in Paper, Night, Smoke and Blueprint.
-Native GH Gradient source inspection is deferred; wire its sampled colours and
-set the same Min/Max explicitly for now.
+To use a GH Gradient, wire its sampled colours and set the same Min/Max explicitly.
 
 | Palette | Colours, low-to-high or category order |
 |---|---|
@@ -280,14 +295,6 @@ set the same Min/Max explicitly for now.
 | Blue–Red | `#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726` |
 | Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
 | Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
-
-Developers can regenerate the emitted legend PNG fixtures through the Rhino-free
-raster path in all four themes:
-
-```powershell
-$env:CONDUITPLUS_COLOUR_RENDERS = Join-Path (Get-Location) 'artifacts/colour-helpers'
-dotnet test tests/ConduitPlus.Core.Tests/ConduitPlus.Core.Tests.csproj -c Debug --filter FullyQualifiedName~ColourLegendRenderTests
-```
 
 ## Cards on the Grasshopper canvas
 
