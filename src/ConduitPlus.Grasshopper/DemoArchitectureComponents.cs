@@ -24,7 +24,7 @@ public sealed class DemoRoomsComponent : DemoArchitectureComponent
     private Bitmap? _icon;
     public DemoRoomsComponent() : base("Demo Rooms", "Rooms", "Schematic rooms in metres; fictitious area minima, not building regulations. GIA omits wall thickness.") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae210");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("R");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Rooms);
     protected override void RegisterInputParams(GH_InputParamManager p) => p.AddNumberParameter("Plan scale", "S", "Scale XY geometry (0.5–2); area requirements stay fixed", GH_ParamAccess.item, 1);
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
@@ -80,7 +80,7 @@ public sealed class DemoMassingComponent : DemoArchitectureComponent
     private Bitmap? _icon;
     public DemoMassingComponent() : base("Demo Massing", "Massing", "Schematic zoning study in metres; fictitious planning limits and whole-floorplate GFA.") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae211");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("M");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Massing);
     protected override void RegisterInputParams(GH_InputParamManager p) => p.AddIntegerParameter("Extra floors", "F", "Add floors to every block (-1–5)", GH_ParamAccess.item, 0);
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {

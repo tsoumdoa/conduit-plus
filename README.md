@@ -1,3 +1,5 @@
+<img src="assets/icon.svg" width="64" height="64" alt="Conduit+">
+
 # Conduit+
 
 Conduit+ displays result cards over Rhino viewports and on the Grasshopper canvas: metrics,
@@ -64,6 +66,13 @@ then restart Rhino and open Grasshopper. When a release is published, it can
 also be installed through Rhino's `PackageManager` using `conduit-plus`; tick
 **Include pre-releases** to see beta versions. Yak is the only supported install
 path, including during development.
+
+Component icons and the C+ logo are drawn in code by
+`src/ConduitPlus.Grasshopper/ConduitIcons.cs`, in the same dark-tile style as
+Panel+ and HopperFormat. After changing the logo, run `./tools/Generate-Icons.ps1`
+to regenerate `assets/icon.png` (the Yak icon), and keep `assets/icon.svg` (used
+by T3 Code and this README) in step. Add `-Sheet <file.png>` to also write a
+review sheet with every component icon.
 
 ## Examples
 

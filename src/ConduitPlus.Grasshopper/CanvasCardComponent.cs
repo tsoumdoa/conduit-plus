@@ -44,7 +44,7 @@ public sealed class CanvasCardComponent : GH_Component
         _privateRefresh.Watch(_privateLease, State.Current, false);
     }
     public override Guid ComponentGuid => new("b28d203e-2254-4b6f-94c0-d4db7e251c5a");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("C");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.CanvasCard);
     public override void CreateAttributes() => m_attributes = new CanvasCardAttributes(this);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {

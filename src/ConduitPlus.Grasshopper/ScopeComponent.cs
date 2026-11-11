@@ -35,7 +35,7 @@ public sealed class ScopeComponent() : GH_Component("Scope", "Scope", "Share mem
     private ScopeBroker? _broker;
     private Bitmap? _icon;
     public override Guid ComponentGuid => new("41140e0a-5669-460b-a6a9-59e583ecbaca");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("S");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Scope);
     protected override void RegisterInputParams(GH_InputParamManager p)
     { p.AddTextParameter("Name", "N", "Optional display label; never establishes sharing", GH_ParamAccess.item); p[0].Optional = true; }
     protected override void RegisterOutputParams(GH_OutputParamManager p) =>

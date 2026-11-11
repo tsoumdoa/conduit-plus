@@ -21,6 +21,18 @@ public sealed class AssemblyInfo : GH_AssemblyInfo
     public override string AuthorName => "Tomo S";
     public override string AuthorContact => "";
     public override GH_LibraryLicense License => GH_LibraryLicense.opensource;
+    public override Bitmap Icon => ConduitIcons.Logo(24);
+}
+
+/// <summary>Gives the Conduit+ ribbon tab its logo.</summary>
+public sealed class ConduitPlusPriority : GH_AssemblyPriority
+{
+    public override GH_LoadingInstruction PriorityLoad()
+    {
+        global::Grasshopper.Instances.ComponentServer.AddCategoryIcon("Conduit+", ConduitIcons.Logo(16));
+        global::Grasshopper.Instances.ComponentServer.AddCategorySymbolName("Conduit+", 'C');
+        return GH_LoadingInstruction.Proceed;
+    }
 }
 
 /// <summary>Opens files saved before inputs were appended: inputs missing from the archive are set aside
@@ -40,12 +52,8 @@ internal static class AppendedInputs
 public abstract class CardComponent(string name, string nickname, string description) : GH_Component(name, nickname, description, "Conduit+", "Cards")
 {
     private Bitmap? _icon;
-    protected override Bitmap Icon => _icon ??= CreateIcon(NickName[..1]);
-    internal static Bitmap CreateIcon(string letter)
-    {
-        var b = new Bitmap(24, 24); using var g = Graphics.FromImage(b); g.Clear(Color.FromArgb(43, 89, 240));
-        using var f = new Font("Segoe UI", 13, FontStyle.Bold, GraphicsUnit.Pixel); g.DrawString(letter, f, Brushes.White, 5, 3); return b;
-    }
+    protected abstract ComponentIcon IconKind { get; }
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(IconKind);
     protected void Output(IGH_DataAccess da, CardSpec c) { c.Validate(); da.SetData(0, new GH_ObjectWrapper(c)); }
     /// <summary>Files saved before an input was appended still open cleanly.</summary>
     public override bool Read(GH_IReader reader) => AppendedInputs.Read(this, reader, () => base.Read(reader));
@@ -69,6 +77,7 @@ public sealed class MetricComponent : CardComponent
 {
     public MetricComponent() : base("Metric", "Metric", "A result metric with optional numeric precision") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae201");
+    protected override ComponentIcon IconKind => ComponentIcon.Metric;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Value", "V", "Formatted value; missing displays an em dash", GH_ParamAccess.item); p[0].Optional = true;
@@ -94,6 +103,7 @@ public sealed class BarComponent : CardComponent
 {
     public BarComponent() : base("Bar", "Bar", "Keyed signed utilisation bars; NaN becomes a missing value") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae202");
+    protected override ComponentIcon IconKind => ComponentIcon.Bar;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddNumberParameter("Values", "V", "Member utilisation values", GH_ParamAccess.list);
@@ -121,6 +131,7 @@ public sealed class LineComponent : CardComponent
 {
     public LineComponent() : base("Line", "Line", "Keyed result samples; NaN becomes a gap") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae206");
+    protected override ComponentIcon IconKind => ComponentIcon.Line;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddNumberParameter("Values", "V", "Ordered sample values (at least two)", GH_ParamAccess.list);
@@ -145,6 +156,7 @@ public sealed class TitleComponent : CardComponent
 {
     public TitleComponent() : base("Title", "Title", "Viewport title, subtitle and description") { }
     public override Guid ComponentGuid => new("c40c6535-a998-498b-bb34-0070ff874646");
+    protected override ComponentIcon IconKind => ComponentIcon.Title;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Title", "T", "Title", GH_ParamAccess.item);
@@ -180,6 +192,7 @@ public sealed class TextComponent : CardComponent
 {
     public TextComponent() : base("Text", "Text", "A wrapped note with explicit newlines (up to 30 lines)") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae207");
+    protected override ComponentIcon IconKind => ComponentIcon.Text;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Title", "T", "Optional note title", GH_ParamAccess.item); p[0].Optional = true;
@@ -200,6 +213,7 @@ public sealed class LegendComponent : CardComponent
 {
     public LegendComponent() : base("Legend", "Legend", "Categorical swatches or a gradient scale when Min and Max are wired") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae208");
+    protected override ComponentIcon IconKind => ComponentIcon.Legend;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddColourParameter("Colors", "C", "Swatch colors or 2+ evenly spaced gradient stops", GH_ParamAccess.list);
@@ -227,6 +241,7 @@ public sealed class KeyLegendComponent : CardComponent
 {
     public KeyLegendComponent() : base("Key Legend", "KeyLegend", "Simple colour key: one swatch and label per key, with optional values") { }
     public override Guid ComponentGuid => new("f1deb262-9f13-4293-bc5f-cb98b926dc3c");
+    protected override ComponentIcon IconKind => ComponentIcon.KeyLegend;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Keys", "K", "Display label for each row", GH_ParamAccess.list);
@@ -253,6 +268,7 @@ public sealed class TableComponent : CardComponent
 {
     public TableComponent() : base("Table", "Table", "One branch per result row; optional stable row keys") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae203");
+    protected override ComponentIcon IconKind => ComponentIcon.Table;
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Headers", "H", "Column headers", GH_ParamAccess.list);
@@ -282,7 +298,7 @@ public sealed class LinkComponent : GH_Component
     private Bitmap? _icon;
     public LinkComponent() : base("Link", "Link", "Map geometry branches or items to stable card keys", "Conduit+", "Display") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae205");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("L");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Link);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Geometry", "G", "Points, lines, polylines, curves, breps, meshes, surfaces or extrusions", GH_ParamAccess.tree);
@@ -435,7 +451,7 @@ public sealed class OverlayComponent : GH_Component
         }
     }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae204");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("+");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Overlay);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards", GH_ParamAccess.list);

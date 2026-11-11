@@ -13,7 +13,7 @@ public sealed class DemoTrussComponent : GH_Component
     private Bitmap? _icon;
     public DemoTrussComponent() : base("Demo Truss", "Truss", "Illustrative truss dashboard data only — NOT structural analysis or design verification. Fixed fictitious capacities and stiffness.", "Conduit+", "Examples") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae209");
-    protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("D");
+    protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Truss);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddNumberParameter("Span", "S", "Span in metres (0–1000, exclusive zero)", GH_ParamAccess.item, 24);
