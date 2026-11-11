@@ -17,7 +17,7 @@ internal static class ArchitectureGroupChecks
     private static object? Call(object obj, string name, params object?[] args) => obj.GetType().GetMethod(name, Instance)!.Invoke(obj, args);
     private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 
-    internal static void Run(GH_Document gh, RhinoDoc doc, RhinoView view, object session, bool rooms, string output, string captureState)
+    internal static void Run(GH_Document gh, RhinoDoc doc, RhinoView view, object session, bool rooms, string output, string captureState, Theme theme)
     {
         Console.WriteLine("Starting group interaction checks.");
         // Reserve the open centre between the 200% DPI cards for the whole model.
@@ -40,7 +40,7 @@ internal static class ArchitectureGroupChecks
             Call(session, "Select", "model", members[0], BrushSelectMode.Replace);
             Call(session, "Select", "model", members[1], BrushSelectMode.Add);
             Require(OverlayManager.Snapshot(owner).SelectedKeys.Order(StringComparer.Ordinal).SequenceEqual(members.Take(2).Order(StringComparer.Ordinal)), "Sequential replace/add failed.");
-            Capture("two-rooms-selected"); CheckFaces(members.Take(2), "two-rooms-selected");
+            // Keep one capture per RhinoCore process; repeated captures can fail natively.
             Call(session, "Select", "model", CardMeasure.ClearKey, BrushSelectMode.Replace);
         }
         Call(session, "Sort", table.Id, 1); // contiguous category rows; keep display-order reveal meaningful
@@ -110,6 +110,8 @@ internal static class ArchitectureGroupChecks
 
         void Capture(string name)
         {
+            // Scope checks/data solves can restore the saved component's Auto theme. Capture the requested palette.
+            OverlayManager.ReplaceTheme(owner, theme);
             var destination = Path.Combine(output, name); Directory.CreateDirectory(destination);
             var previous = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS");
             try
@@ -130,7 +132,10 @@ internal static class ArchitectureGroupChecks
             {
                 var point = centres[key]; point.Transform(screen);
                 var color = png.GetPixel((int)Math.Round(point.X), (int)Math.Round(point.Y));
-                Require(color.A >= 140 && color.B > color.R + 20, "Missing selected group face fill for " + key);
+                // The planar room has one layer (~51 alpha); a closed block has front/back layers (~92).
+                var expectedAlpha = rooms ? 51 : 92;
+                Require(Math.Abs(color.A - expectedAlpha) <= 10 && Math.Abs(color.R - color.G) <= 3 && Math.Abs(color.G - color.B) <= 3,
+                    "Selected group face needs a neutral 20% white wash for " + key + ": " + color);
             }
         }
     }

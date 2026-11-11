@@ -67,7 +67,7 @@ public sealed class KeyLegendTests
         for (var i = 0; i < card.Colors.Length; i++)
         {
             var (rect, radius, fill) = canvas.Swatches[i];
-            Assert.Equal(new Rect2(theme.Padding, 36 + i * rowHeight + (rowHeight - 12) / 2, 12, 12), rect);
+            Assert.Equal(new Rect2(theme.Padding + 6, 36 + i * rowHeight + (rowHeight - 12) / 2, 12, 12), rect);
             Assert.Equal(theme.Radius == 0 ? 0 : 2, radius);
             Assert.Equal(card.Colors[i], fill);
             var edge = canvas.Edges[i];
@@ -99,7 +99,7 @@ public sealed class KeyLegendTests
         Assert.Equal(280 - theme.Padding, value.Position.X + canvas.MeasureText(value.Text, value.Size, value.Font).Width);
         Assert.Equal(theme.Muted, value.Color);
         var label = Assert.Single(canvas.Texts, t => t.Text.EndsWith('…'));
-        Assert.Equal(theme.Padding + 20, label.Position.X);
+        Assert.Equal(theme.Padding + 26, label.Position.X);
         Assert.Equal(theme.Ink, label.Color);
         Assert.Equal(value.Position.X - 8, label.Clip.X + label.Clip.Width);
         Assert.True(canvas.MeasureText(label.Text, label.Size, label.Font).Width <= label.Clip.Width);
@@ -144,7 +144,7 @@ public sealed class KeyLegendTests
         Assert.Empty(CardMeasure.Hits(state.Spec, Theme.Paper));
         var keyed = card with { Keys = ["a", "b"], HoverKey = "b" };
         var hits = CardMeasure.DataHits(keyed, Theme.Paper);
-        Assert.Equal(new HitRegion("b", 12, 58, 96, 22), hits[1]);
+        Assert.Equal(new HitRegion("b", 12, 58, CardMeasure.Measure(keyed, Theme.Paper).Width - 24, 22), hits[1]);
         var canvas = new RecordingCanvas();
         LegendCardPainter.Paint(canvas, keyed, Theme.Paper);
         Assert.Contains((new Rect2(hits[1].X, hits[1].Y, hits[1].W, hits[1].H), Theme.Paper.Track), canvas.Rects);

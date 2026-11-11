@@ -7,6 +7,17 @@ public static class TitleMetrics
     public const double PlainPadding = 4;
     /// <summary>Text colour of a plain Title with no Colour set.</summary>
     public const string PlainInk = "#000000";
+    /// <summary>Choose the higher-contrast black or white ink using relative sRGB luminance.</summary>
+    public static string InkForBackground(ColorRgba background)
+    {
+        static double Linear(byte channel)
+        {
+            var v = channel / 255d;
+            return v <= .04045 ? v / 12.92 : Math.Pow((v + .055) / 1.055, 2.4);
+        }
+        var luminance = .2126 * Linear(background.R) + .7152 * Linear(background.G) + .0722 * Linear(background.B);
+        return luminance > Math.Sqrt(.0525) - .05 ? PlainInk : "#FFFFFF";
+    }
     public static TitleLayout Layout(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
     {
         var padding = c.Background == TitleBackground.Plain ? PlainPadding : t.Padding;
@@ -53,8 +64,8 @@ public static class TitleMetrics
                 y += lineHeight;
             }
         }
-        // One colour per Title: set by its Colour input, else black on plain text and the theme's ink on a card.
-        var ink = c.Colors.FirstOrDefault() ?? (c.Background == TitleBackground.Card ? t.Ink : PlainInk);
+        // Explicit Colour wins; plain text follows its host background independently of the card palette.
+        var ink = c.Colors.FirstOrDefault() ?? (c.Background == TitleBackground.Card ? t.Ink : t.PlainTitleInk);
         Block(layout.Title, 26, 32, t.Font + " Semibold", ink);
         if (layout.Title.Length > 0 && layout.Subtitle.Length > 0) y += 2;
         Block(layout.Subtitle, 14, 20, t.Font, ink);

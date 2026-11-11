@@ -36,7 +36,7 @@ public sealed class GroupPresentationTests
         void Strong(RecordingCanvas canvas, bool selected)
         {
             if (selected) Assert.Contains((body, theme.Highlight), canvas.Rects);
-            Assert.Equal(selected, canvas.Rects.Contains((new(hit.X, hit.Y, 2, hit.H), theme.Accent)));
+            Assert.Equal(selected, canvas.Rects.Contains((new(hit.X, hit.Y, 3, hit.H), theme.Accent)));
         }
         var plain = Paint(); Strong(plain, false); Assert.Empty(plain.Outlines);
         brush.Hover("R1");
@@ -47,10 +47,15 @@ public sealed class GroupPresentationTests
         Assert.Contains((body, theme.Track), direct.Rects);
         brush.Hover(null); brush.Toggle("R1");
         var partial = Paint(); Strong(partial, false); Assert.Empty(partial.Outlines);
-        Assert.Contains(partial.Lines, l => l.Color == theme.Accent && l.Width == 2 && l.From.X > hit.X + hit.W);
+        Assert.Equal(kind != CardKind.Metric, partial.Rects.Contains((new(hit.X, hit.Y + hit.H / 4, 3, hit.H / 2), theme.Accent)));
+        Assert.DoesNotContain((body, theme.Highlight), partial.Rects);
+        Assert.DoesNotContain(partial.Lines, l => l.Color == theme.Accent);
+        brush.Hover("bedrooms");
+        var partialDirect = Paint();
+        Assert.DoesNotContain(partialDirect.Rects, r => r.Rect == body);
         brush.Hover("R2");
         var partialHover = Paint(); Strong(partialHover, false); Assert.Single(partialHover.Outlines);
-        Assert.Contains(partialHover.Lines, l => l.Color == theme.Accent && l.Width == 2);
+        Assert.Equal(kind != CardKind.Metric, partialHover.Rects.Contains((new(hit.X, hit.Y + hit.H / 4, 3, hit.H / 2), theme.Accent)));
         brush.Toggle("bedrooms");
         var fullHover = Paint(); Strong(fullHover, true); Assert.Single(fullHover.Outlines);
         brush.Hover(null); var full = Paint(); Strong(full, true); Assert.Empty(full.Outlines);
@@ -79,7 +84,8 @@ public sealed class GroupPresentationTests
         {
             var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, brush.Project([card])[0], theme);
             Assert.Equal(2, canvas.Outlines.Count(o => o.Color == theme.Accent && o.Points.Length == 5 && o.Points[0] == o.Points[^1]));
-            Assert.Contains(canvas.Lines, line => line.Color == theme.Ink && line.Width == 2);
+            Assert.Contains(canvas.Lines, line => line.Color == theme.Accent && line.Width == 1 && line.From.X == line.To.X);
+            Assert.Contains(canvas.Rects, r => r.Fill == theme.Accent && r.Rect.Width == 8 && r.Rect.Height == 8);
         }
         brush.Hover("R2");
         var direct = new RecordingCanvas(); CardPainter.Paint(direct, brush.Project([card])[0], Theme.Paper);

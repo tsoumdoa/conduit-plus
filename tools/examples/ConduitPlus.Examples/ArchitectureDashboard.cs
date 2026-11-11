@@ -76,6 +76,15 @@ internal static class ArchitectureDashboard
                         foreach (var geometry in new GeometryBase[] { extrusion, mesh })
                         {
                             var probe = new Link([b.Key], [(b.Key, (object)geometry)]);
+                            if (geometry is Mesh closedMesh)
+                            {
+                                var drawn = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(probe)!;
+                                var wire = ((Array)drawn[b.Key]!).GetValue(0)!;
+                                Require(((Line[])Get(wire, "Lines")).Length == 0, "Closed mesh must not draw interior topology edges.");
+                                var picks = (Array)typeof(Link).GetField("_picks", Instance)!.GetValue(probe)!;
+                                var proxy = ((Array)Get(picks.GetValue(0)!, "Proxies")).GetValue(0)!;
+                                Require(((Line[])Get(proxy, "Lines")).Length == closedMesh.TopologyEdges.Count, "Naked-edge drawing must retain all edge pick proxies.");
+                            }
                             session.GetType().GetMethod("SetLinks", Instance)!.Invoke(session, [new[] { probe }]);
                             var p = centres[0].Point; p.Transform(screen);
                             var picked = picker.Invoke(null, [view, onlySession, new System.Drawing.Point((int)Math.Round(p.X), (int)Math.Round(p.Y))]);
@@ -121,18 +130,19 @@ internal static class ArchitectureDashboard
                     {
                         Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", result);
                         ExportChecks.Run(doc, view, session, (CardSpec[])Get(session, "Cards"), result, args.Contains("--safe"), scale, geometry);
-                        // The selected face centre is far from any edge: blue here proves shaded fill, not just wires.
+                        // The selected face centre is far from any edge: neutral alpha proves the white wash.
                         var point = centres[^1].Point; point.Transform(view.ActiveViewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen));
                         using var png = new Bitmap(Path.Combine(result, "captures", $"raster-{scale}x.png"));
                         var pixel = png.GetPixel((int)Math.Round(point.X * scale), (int)Math.Round(point.Y * scale));
-                        Require(pixel.A >= 140 && pixel.A < 240 && pixel.B > pixel.R + 20 && pixel.B > pixel.G + 10, "Selected face interior needs readable, translucent blue shading.");
+                        Require(Math.Abs(pixel.A - (rooms ? 51 : 92)) <= 10 && Math.Abs(pixel.R - pixel.G) <= 3 && Math.Abs(pixel.G - pixel.B) <= 3,
+                            "Selected face interior needs a neutral 20% white wash.");
                         File.WriteAllText(Path.Combine(result, "surface-check.json"), CardJson.Serialize(new { key, x = point.X, y = point.Y, pixel.R, pixel.G, pixel.B, pixel.A }));
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
                 }
                 if (rooms) ScopeHostChecks.Run(gh, doc, view, result, args.Contains("--exports") && groupState == "scope");
                 session = ((Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!).Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
-                ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none");
+                ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none", theme);
                 if (rooms) ScopeRhinoCloseChecks.Run(doc, result);
                 Console.WriteLine($"Reopened {path}: {gh.ObjectCount} objects, 0 warnings/errors; {cards.Length} cards; {centres.Length} face-interior hits; sorted selection reveal passed.");
             }

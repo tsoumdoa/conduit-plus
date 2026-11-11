@@ -23,6 +23,36 @@ public static class ChartTicks
 
 public static class LineCardPainter
 {
+    public sealed record AxisLabel(int Index, string Text, double X, double Width);
+    /// <summary>Reserve inward-anchored endpoints before fitting centred interior labels with 4px gaps.</summary>
+    public static AxisLabel[] Labels(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
+    {
+        const double left = 44, gap = 4;
+        var right = c.Width - 20;
+        double Width(string text) => measure(text, 10, t.Font).Width;
+        string Fit(string text, double width)
+        {
+            if (Width(text) <= width) return text;
+            while (text.Length > 0 && Width(text + "…") > width) text = text[..^1];
+            return Width("…") <= width ? text + "…" : "";
+        }
+        var first = c.Labels[0]; var last = c.Labels[^1];
+        if (Width(first) + Width(last) + gap > right - left)
+        {
+            var half = Math.Max(0, (right - left - gap) / 2);
+            first = Fit(first, half); last = Fit(last, half);
+        }
+        var placed = new List<AxisLabel> { new(0, first, left, Width(first)), new(c.Labels.Length - 1, last, right - Width(last), Width(last)) };
+        for (var i = 1; i < c.Labels.Length - 1; i++)
+        {
+            var width = Width(c.Labels[i]);
+            var x = left + i * (right - left) / (c.Labels.Length - 1) - width / 2;
+            if (placed.Any(p => x < p.X + p.Width + gap && x + width > p.X - gap)) continue;
+            placed.Add(new(i, c.Labels[i], x, width));
+        }
+        return placed.OrderBy(p => p.Index).ToArray();
+    }
+
     public static HitRegion[] Hits(CardSpec c)
     {
         var step = (c.Width - 64) / (c.Values.Length - 1);
@@ -67,15 +97,20 @@ public static class LineCardPainter
             foreach (var p in segment) canvas.Rect(new(p.X - 2, p.Y - 2, 4, 4), t.Accent);
         }
         if (c.Threshold > 0) canvas.Line(new(44, Y(c.Threshold)), new(right, Y(c.Threshold)), t.Bad);
+        foreach (var label in Labels(c, t, canvas.MeasureText))
+            canvas.Text(label.Text, new(label.X, bottom + 6), 10, t.Muted, t.Font);
         for (var i = 0; i < c.Values.Length; i++)
         {
-            if (i == 0 || i == c.Values.Length - 1 || i % Math.Max(1, (int)Math.Ceiling(c.Values.Length / 4d)) == 0)
-            {
-                using var clip = canvas.Clip(new(X(i) - 12, bottom + 6, Math.Min(50, c.Width - X(i) + 12), 20));
-                canvas.Text(c.Labels[i], new(X(i) - 12, bottom + 6), 10, t.Muted, t.Font);
-            }
             var selected = c.SelectedKeys.Contains(c.Keys[i]);
-            if (selected) canvas.Line(new(X(i), 44), new(X(i), bottom), t.Ink, 2);
+            if (selected)
+            {
+                canvas.Line(new(X(i), 44), new(X(i), bottom), t.Accent);
+                if (c.Values[i] is { } value)
+                {
+                    canvas.Rect(new(X(i) - 6, Y(value) - 6, 12, 12), t.Surface);
+                    canvas.Rect(new(X(i) - 4, Y(value) - 4, 8, 8), t.Accent);
+                }
+            }
             if (c.HoveredKeys.Contains(c.Keys[i]) || c.HoverKey == c.Keys[i])
                 CardPainter.Outline(canvas, hits[i], t.Accent);
         }
