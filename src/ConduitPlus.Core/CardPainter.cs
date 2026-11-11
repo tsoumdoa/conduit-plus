@@ -137,7 +137,7 @@ public static class CardPainter
         var direct = group?.IsDirectTarget ?? c.HoverKey == h.Key;
         var hovered = group is not null ? group.HoveredMemberCount > 0 || direct : c.HoveredKeys.Contains(h.Key) || direct;
         // The selection stripe lives in existing card padding; it never consumes text width.
-        var left = h.X - 6;
+        var left = CardMeasure.TickLeft(h);
         var metric = c.Kind == CardKind.Metric;
         if (selected || (metric ? hovered : direct && group is not { IsPartiallySelected: true }))
         {

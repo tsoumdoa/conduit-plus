@@ -76,6 +76,20 @@ internal static class ArchitectureDashboard
                     var smoothWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(smoothLink)!;
                     var smoothWire = ((Array)smoothWires[b.Key]!).GetValue(0)!;
                     Require(((Line[])Get(smoothWire, "Lines")).Length == smooth.TopologyEdges.Count, "Smooth closed mesh must fall back to all edges.");
+                    // One Link item, one key, but both sharp and smooth disconnected components.
+                    using var joined = new Mesh();
+                    using var separatedBox = Mesh.CreateFromBox(new BoundingBox(10, 0, 0, 12, 2, 2), 1, 1, 1);
+                    joined.Append(separatedBox); joined.Append(smooth);
+                    Require(joined.IsValid && joined.IsClosed, "Joined box/sphere fixture must be valid and closed.");
+                    var joinedLink = new Link([b.Key], [(b.Key, (object)joined)]);
+                    var joinedWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(joinedLink)!;
+                    var joinedLines = (Line[])Get(((Array)joinedWires[b.Key]!).GetValue(0)!, "Lines");
+                    Require(joinedLines.Count(l => l.From.X < 3 && l.To.X < 3) == smooth.TopologyEdges.Count, "Joined smooth component lost fallback feedback.");
+                    Require(joinedLines.Count(l => l.From.X >= 10 && l.To.X >= 10) == 12, "Joined box must keep only its twelve feature edges.");
+                    var joinedPicks = (Array)typeof(Link).GetField("_picks", Instance)!.GetValue(joinedLink)!;
+                    var joinedProxy = ((Array)Get(joinedPicks.GetValue(0)!, "Proxies")).GetValue(0)!;
+                    Require(((Line[])Get(joinedProxy, "Lines")).Length == joined.TopologyEdges.Count, "Joined mesh must retain all edge pick proxies.");
+                    Console.WriteLine($"Joined mesh feedback: 12 box + {smooth.TopologyEdges.Count} sphere edges; {joined.TopologyEdges.Count} pick edges.");
                     using var planar = new Mesh();
                     planar.Vertices.Add(0, 0, 0); planar.Vertices.Add(1, 0, 0); planar.Vertices.Add(1, 1, 0); planar.Vertices.Add(0, 1, 0);
                     planar.Faces.AddFace(0, 1, 2); planar.Faces.AddFace(0, 2, 3);

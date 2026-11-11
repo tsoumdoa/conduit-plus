@@ -22,7 +22,7 @@ public static class TitleMetrics
         Luminance(background) > Math.Sqrt(.0525) - .05 ? PlainInk : "#FFFFFF";
 
     /// <summary>Maximise worst-case contrast over gradient corners / render background colours.
-    /// Mixed light and dark backgrounds need a narrow opaque surface halo at the glyph edges.</summary>
+    /// Mixed light and dark backgrounds need a thin translucent contrasting halo at the glyph edges.</summary>
     public static InkChoice ChooseInk(IEnumerable<ColorRgba> backgrounds, ColorRgba surface)
     {
         var luminances = backgrounds.Select(Luminance).ToArray();
@@ -31,8 +31,9 @@ public static class TitleMetrics
         var white = 1.05 / (luminances.Max() + .05);
         var ink = black == white ? InkForBackground(surface) : black > white ? PlainInk : "#FFFFFF";
         if (Math.Max(black, white) >= 3) return new(ink, null);
-        var surfaceContrast = ink == PlainInk ? (Luminance(surface) + .05) / .05 : 1.05 / (Luminance(surface) + .05);
-        var halo = surfaceContrast >= 3 ? surface.WithAlpha(255).ToHex() : ink == PlainInk ? "#FFFFFF" : "#12151C";
+        // 65% opposite ink keeps >3:1 even composited onto the worst black/white
+        // background, with less visual weight than the former opaque surface outline.
+        var halo = ink == PlainInk ? "#FFFFFFA6" : "#000000A6";
         return new(ink, halo);
     }
     public static TitleLayout Layout(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
@@ -78,7 +79,7 @@ public static class TitleMetrics
                 var x = c.WiredSlot switch { Slot.Tc or Slot.Bc => (size.Width - w) / 2, Slot.Tr or Slot.Br => size.Width - padding - w, _ => padding };
                 using var lineClip = canvas.Clip(new(padding - 1, y - 1, layout.ContentWidth + 2, lineHeight + 2));
                 if (c.Background == TitleBackground.Plain && c.Colors.Length == 0 && t.PlainTitleHalo is { } halo)
-                    foreach (var offset in new Point2[] { new(-1, 0), new(1, 0), new(0, -1), new(0, 1), new(-.7, -.7), new(.7, -.7), new(-.7, .7), new(.7, .7) })
+                    foreach (var offset in new Point2[] { new(-.6, 0), new(.6, 0), new(0, -.6), new(0, .6), new(-.4, -.4), new(.4, -.4), new(-.4, .4), new(.4, .4) })
                         canvas.Text(line, new(x + offset.X, y + offset.Y), fontSize, halo, font);
                 canvas.Text(line, new(x, y), fontSize, color, font);
                 y += lineHeight;

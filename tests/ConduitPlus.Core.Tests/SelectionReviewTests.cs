@@ -64,6 +64,27 @@ public sealed class SelectionReviewTests
         }
     }
 
+    [Theory]
+    [InlineData("Paper")]
+    [InlineData("Night")]
+    [InlineData("Smoke")]
+    [InlineData("Blueprint")]
+    public void TranslucentHaloKeepsThreeToOneContrastAcrossGradient(string name)
+    {
+        Theme.TryGet(name, out var theme);
+        var choice = TitleMetrics.ChooseInk([new(0, 0, 0), new(255, 255, 255)], ColorRgba.Parse(theme.Surface));
+        var halo = ColorRgba.Parse(choice.Halo!);
+        Assert.InRange(halo.A, (byte)1, (byte)254);
+        static double Linear(double v) => v <= .04045 ? v / 12.92 : Math.Pow((v + .055) / 1.055, 2.4);
+        for (var channel = 0; channel <= 255; channel++)
+        {
+            var composite = (halo.R * halo.A / 255d + channel * (1 - halo.A / 255d)) / 255;
+            var luminance = Linear(composite);
+            var contrast = choice.Ink == "#000000" ? (luminance + .05) / .05 : 1.05 / (luminance + .05);
+            Assert.True(contrast >= 3, $"{name}: halo contrast {contrast} over grey {channel}");
+        }
+    }
+
     [Fact]
     public void WorstCaseInkUsesEveryCornerRatherThanAverageOrSurfacePreference()
     {

@@ -259,6 +259,7 @@ internal sealed partial class OverlaySession : IDisposable
                     link.Draw(display, key, muted, 2, false, false);
         if ((!includeHover || _hoveredMembers.Count == 0) && _selectedMembers.Count == 0) return;
         var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
+        var casingColor = ConduitPlus.Rendering.GdiCanvas.ParseColor(GeometryHighlight.Casing(Theme.Accent));
         display.PushDepthTesting(false);
         try
         {
@@ -272,7 +273,7 @@ internal sealed partial class OverlaySession : IDisposable
                 // All casings precede all accents, including across touching keys and Links.
                 foreach (var casing in new[] { true, false })
                 {
-                    var ink = casing ? Color.White : color;
+                    var ink = casing ? casingColor : color;
                     foreach (var key in hovered)
                         foreach (var link in _links) link.Draw(display, key, ink, casing ? GeometryHighlight.Hover.CasingWidth : GeometryHighlight.Hover.AccentWidth, false, false);
                     foreach (var key in _selectedMembers)

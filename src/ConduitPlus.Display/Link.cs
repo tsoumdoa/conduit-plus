@@ -87,19 +87,7 @@ public sealed partial class Link
                 var curve = c.DuplicateCurve();
                 return new([curve], [], []);
             case Mesh m:
-                var edges = m.TopologyEdges;
-                m.FaceNormals.ComputeFaceNormals();
-                var featureEdges = new List<Line>();
-                var creaseCosine = Math.Cos(Math.PI / 6);
-                for (var i = 0; i < edges.Count; i++)
-                {
-                    var faces = edges.GetConnectedFaces(i);
-                    if (faces.Length != 2 || Vector3d.Multiply(m.FaceNormals[faces[0]], m.FaceNormals[faces[1]]) < creaseCosine)
-                        featureEdges.Add(edges.EdgeLine(i));
-                }
-                // Smooth closed meshes still need feedback. Cache the fallback once, alongside pick proxies.
-                var lines = featureEdges.Count > 0 ? featureEdges.ToArray() : Enumerable.Range(0, edges.Count).Select(edges.EdgeLine).ToArray();
-                return new([], lines, []);
+                return new([], MeshOutline(m), []);
             case Extrusion e:
                 using (var brep = e.ToBrep()) return BrepWires(brep);
             case Surface s:
@@ -107,6 +95,43 @@ public sealed partial class Link
             case Brep b: return BrepWires(b);
             default: throw new ArgumentException("Unsupported Link geometry.");
         }
+    }
+    // Prepare once for this privately owned mesh. Each connected topology component needs
+    // feedback, even when another component supplies sharp edges (e.g. a joined box + sphere).
+    private static Line[] MeshOutline(Mesh mesh)
+    {
+        var edges = mesh.TopologyEdges;
+        var parents = Enumerable.Range(0, mesh.TopologyVertices.Count).ToArray();
+        int Root(int vertex)
+        {
+            while (parents[vertex] != vertex)
+            {
+                parents[vertex] = parents[parents[vertex]];
+                vertex = parents[vertex];
+            }
+            return vertex;
+        }
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var pair = edges.GetTopologyVertices(i);
+            var a = Root(pair.I); var b = Root(pair.J);
+            // Deterministic union; path compression keeps subsequent lookups cheap.
+            parents[Math.Max(a, b)] = Math.Min(a, b);
+        }
+        mesh.FaceNormals.ComputeFaceNormals();
+        var features = new bool[edges.Count];
+        var hasFeatures = new bool[parents.Length];
+        var creaseCosine = Math.Cos(Math.PI / 6);
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var faces = edges.GetConnectedFaces(i);
+            features[i] = faces.Length != 2 || Vector3d.Multiply(mesh.FaceNormals[faces[0]], mesh.FaceNormals[faces[1]]) < creaseCosine;
+            if (features[i]) hasFeatures[Root(edges.GetTopologyVertices(i).I)] = true;
+        }
+        var lines = new List<Line>();
+        for (var i = 0; i < edges.Count; i++)
+            if (features[i] || !hasFeatures[Root(edges.GetTopologyVertices(i).I)]) lines.Add(edges.EdgeLine(i));
+        return lines.ToArray();
     }
     private static Wires BrepWires(Brep? brep)
     {

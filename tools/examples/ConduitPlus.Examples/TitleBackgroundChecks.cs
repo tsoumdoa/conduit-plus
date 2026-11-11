@@ -8,7 +8,7 @@ internal static class TitleBackgroundChecks
 {
     internal static void Run(RhinoDoc document)
     {
-        var render = document.RenderSettings;
+        using var render = document.RenderSettings;
         var originalStyle = render.BackgroundStyle;
         var originalTop = render.BackgroundColorTop;
         var originalBottom = render.BackgroundColorBottom;

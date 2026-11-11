@@ -1,4 +1,5 @@
 using ConduitPlus.Core;
+using System.Runtime.CompilerServices;
 using Rhino.Runtime;
 using Rhino.Display;
 using Rhino.ApplicationSettings;
@@ -8,6 +9,28 @@ namespace ConduitPlus.Rhino;
 /// <summary>Rhino UI appearance detection stays outside the pure Core theme policy.</summary>
 public static class RhinoTheme
 {
+    private sealed record RenderBackground(System.Drawing.Color[] Colors);
+    private static readonly ConditionalWeakTable<global::Rhino.RhinoDoc, RenderBackground> RenderBackgrounds = new();
+    static RhinoTheme()
+    {
+        // RenderSettings is a native snapshot. Read/dispose it only when document
+        // properties change, rather than allocating a new snapshot on every rendered frame.
+        global::Rhino.RhinoDoc.DocumentPropertiesChanged += (_, e) =>
+        {
+            if (e.Document is { } document) RenderBackgrounds.Remove(document);
+        };
+    }
+    private static RenderBackground ReadRenderBackground(global::Rhino.RhinoDoc document)
+    {
+        using var render = document.RenderSettings;
+        return new(render.BackgroundStyle switch
+        {
+            BackgroundStyle.SolidColor => [render.BackgroundColorTop],
+            BackgroundStyle.Gradient => [render.BackgroundColorTop, render.BackgroundColorBottom],
+            // Image/environment pixels aren't available here. Protect both extremes.
+            _ => [System.Drawing.Color.Black, System.Drawing.Color.White]
+        });
+    }
     // Verified in the pinned RhinoCommon 8.20.25147.11001-rc reference assembly with ILSpy.
     // Do not use UsingDefaultDarkModeColors: that tests an unmodified default color scheme.
     public static Theme Resolve(Theme selection) => selection == Theme.Auto
@@ -33,14 +56,7 @@ public static class RhinoTheme
                 };
                 break;
             case DisplayPipelineAttributes.FrameBufferFillMode.Renderer:
-                var render = document.RenderSettings;
-                backgrounds = render.BackgroundStyle switch
-                {
-                    BackgroundStyle.SolidColor => [render.BackgroundColorTop],
-                    BackgroundStyle.Gradient => [render.BackgroundColorTop, render.BackgroundColorBottom],
-                    // Image/environment pixels aren't available here. The halo protects either extreme.
-                    _ => [System.Drawing.Color.Black, System.Drawing.Color.White]
-                };
+                backgrounds = RenderBackgrounds.GetValue(document, ReadRenderBackground).Colors;
                 break;
             case DisplayPipelineAttributes.FrameBufferFillMode.Bitmap:
                 backgrounds = [System.Drawing.Color.Black, System.Drawing.Color.White];

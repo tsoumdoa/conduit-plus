@@ -310,8 +310,8 @@ sorted unique member keys, never group tokens. Partial groups show a half-height
 tick in the card's left padding; full groups and selected rows get a full tick and
 selection fill. Row hover outlines effective members and related groups; only
 the direct row target gets a light fill. Metric hover uses a soft fill. Line hover
-uses a neutral sample band and hollow point; selected samples use a 1 px accent
-rule and filled 8 px square with a surface ring. Missing samples have no point.
+uses a neutral band on the direct sample and hollow points on hovered members;
+selected samples use a 1 px accent rule and filled 8 px square with a surface ring. Missing samples have no point.
 Category colors stay visible. Member tooltips list containing labels (five plus
 a remainder); group tooltips report selected/hovered member counts. PNG, GH image
 and PDF card exports omit hover and retain selection. Displays stay independent
@@ -323,7 +323,7 @@ unless explicitly connected to the same Scope.
   colours and Rendered-mode render backgrounds. Mixed backgrounds get a subtle glyph
   halo when neither black nor white reaches 3:1 throughout. An explicit Colour still wins.
 - Mesh highlights use boundaries and feature edges instead of every triangulation edge;
-  smooth closed meshes retain all-edge feedback. Picking is unchanged.
+  each smooth closed component retains all-edge feedback. Picking is unchanged.
 - Selection uses padding ticks, distinct Paper fill, cased model outlines and a neutral
   white wash. Hover has no model face fill; Line hover uses hollow points and soft bands.
   Keyed Metric values, legend content and Table columns keep their original alignment.
@@ -333,9 +333,9 @@ unless explicitly connected to the same Scope.
 - Hover a bar/table row or linked viewport geometry to brush every card with the
   same key and draw linked geometry with a thin cased accent outline, without face fill.
   Plain click replaces selection; Shift adds, Ctrl removes, and Ctrl+Shift toggles.
-  Selected geometry gets a thicker cased accent x-ray outline and a neutral 20% white
-  wash, also in captures. Mesh outlines use naked and feature edges (30° creases),
-  falling back to all edges for smooth closed meshes; picking still uses every edge. Only real point geometry
+  Selected geometry gets a thicker accent x-ray outline with contrasting black/white
+  casing and a neutral 20% white wash, also in captures. Mesh outlines use naked and feature edges (30° creases),
+  falling back to all edges per smooth closed component; picking still uses every edge. Only real point geometry
   draws point dots. Alt does not change viewport selection mode. Plain empty viewport
   clicks clear selection on release within four pixels; drags and Shift/Ctrl clicks retain it. **Clear** in a keyed card's header clears that
   owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.

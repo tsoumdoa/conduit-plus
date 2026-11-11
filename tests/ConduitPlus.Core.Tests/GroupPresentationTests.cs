@@ -84,6 +84,7 @@ public sealed class GroupPresentationTests
         {
             var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, brush.Project([card])[0], theme);
             Assert.DoesNotContain(canvas.Outlines, o => o.Color == theme.Accent && o.Points.Length == 5 && o.Points[0] == o.Points[^1]);
+            Assert.DoesNotContain(canvas.Rects, r => r.Fill == theme.Track && r.Rect.Height > 40);
             Assert.Single(canvas.Rects, r => r.Fill == theme.Surface && r.Rect.Width == 6 && r.Rect.Height == 6);
             Assert.Contains(canvas.Lines, line => line.Color == theme.Accent && line.Width == 1 && line.From.X == line.To.X);
             Assert.Contains(canvas.Rects, r => r.Fill == theme.Accent && r.Rect.Width == 8 && r.Rect.Height == 8);

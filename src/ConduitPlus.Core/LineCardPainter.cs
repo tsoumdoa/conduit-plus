@@ -103,7 +103,7 @@ public static class LineCardPainter
         double X(int i) => 44 + i * (right - 44) / (c.Values.Length - 1);
         if (c.Threshold > 0) canvas.Rect(new(44, 44, right - 44, Y(c.Threshold) - 44), t.ThresholdBand);
         foreach (var hit in hits)
-            if (!c.SelectedKeys.Contains(hit.Key) && (hit.Key == c.HoverKey || c.HoveredKeys.Contains(hit.Key))) canvas.Rect(new(hit.X, hit.Y, hit.W, hit.H), t.Track);
+            if (!c.SelectedKeys.Contains(hit.Key) && hit.Key == c.HoverKey) canvas.Rect(new(hit.X, hit.Y, hit.W, hit.H), t.Track);
         foreach (var tick in ticks)
         {
             canvas.Line(new(44, Y(tick)), new(right, Y(tick)), t.Line);
