@@ -27,7 +27,7 @@ public sealed class TableInputTests
         Assert.Empty(TableInputs.Create(["A"], [], null).Rows);
         Assert.Equal("Set Rows or Columns.", TableInputs.Create(["A"], null, null).Warning);
         Assert.Equal("Use Rows or Columns, not both.", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A"], [], [])).Message);
-        Assert.Equal("Columns has 0 branches but there are 1 Headers.", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A"], null, [])).Message);
+        Assert.StartsWith("Columns has 0 branches but there is 1 Header.", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A"], null, [])).Message);
     }
 
     [Fact]
@@ -42,12 +42,33 @@ public sealed class TableInputTests
     [Fact]
     public void ShapeErrorsIncludeCountsAndNeverPad()
     {
-        Assert.Equal("Columns has 3 branches but there are 4 Headers.", Assert.Throws<ArgumentException>(() =>
+        Assert.StartsWith("Columns has 3 branches but there are 4 Headers.", Assert.Throws<ArgumentException>(() =>
             TableInputs.Create(["A", "B", "C", "D"], null, [[], [], []])).Message);
         var ragged = Assert.Throws<ArgumentException>(() => TableInputs.Create(["A", "B"], null, [["1"], ["2", "3"]])).Message;
-        Assert.Contains("branch 0: 1, branch 1: 2", ragged);
-        Assert.Contains("branch 0: 0, branch 1: 2", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A", "B"], [[], ["2", "3"]], null)).Message);
+        Assert.Contains("'A' has 1 item, 'B' has 2 items", ragged);
+        Assert.Contains("row 0 has 0", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A", "B"], [[], ["2", "3"]], null)).Message);
         Assert.Equal("Key count must match row count.", Assert.Throws<ArgumentException>(() => TableInputs.Create(["A"], [["a"]], null, [])).Message);
+    }
+
+    [Fact]
+    public void ShapeErrorsAreBoundedAndSuggestTheCorrectTreeOrientation()
+    {
+        var message = Assert.Throws<ArgumentException>(() => TableInputs.Create(["A", "B", "C", "D"],
+            Enumerable.Range(0, 300).Select(_ => new string?[] { "a", "b", "c" }).ToArray(), null)).Message;
+        Assert.Contains("300 of 300 rows don't", message);
+        Assert.Contains("row 2 has 3", message);
+        Assert.DoesNotContain("row 3 has", message);
+        Assert.True(message.Length < 250);
+        Assert.Equal("Columns has 1 branch but there are 4 Headers. Put each column in its own branch (e.g. Entwine the column lists).",
+            Assert.Throws<ArgumentException>(() => TableInputs.Create(["A", "B", "C", "D"], null, [["1"]])).Message);
+        Assert.Contains("wire the tree into Columns", Assert.Throws<ArgumentException>(() =>
+            TableInputs.Create(["Room", "DA", "UDI"], [["a", "b"], ["1", "2"], ["3", "4"]], null)).Message);
+        var unequal = Assert.Throws<ArgumentException>(() => TableInputs.Create(["Room", "DA", "UDI", "Area"], null,
+            [["a", "b"], ["1"], ["1", "2"], []])).Message;
+        Assert.Contains("'DA' has 1 item", unequal);
+        Assert.Contains("'Area' has 0 items", unequal);
+        Assert.DoesNotContain("'UDI'", unequal);
+        Assert.Contains("First column has empty cells", TableInputs.Create(["Room"], [[""]], null).Warning);
     }
 
     [Theory]

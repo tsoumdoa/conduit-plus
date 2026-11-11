@@ -28,13 +28,10 @@ public static partial class TablePresentation
     {
         ValidateDecimals(decimals);
         if (decimals is not { } d || !TryNumber(text, out var value)) return text ?? "—";
-        var formatted = value.ToString("F" + d.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-        // Test the rounded display, so this uses exactly the formatter's rounding at midpoint values.
-        if (formatted.StartsWith('-') && TryNumber(formatted, out var rounded) && rounded == 0) return formatted[1..];
-        return formatted.Replace('-', '−');
+        return NumericFormatting.Fixed(value, d).Replace('-', '−');
     }
 
-    // CardStore snapshots authored arrays; interaction/Rev changes retain those same arrays.
+    // CardStore carries its owned arrays across snapshots when authored table content is equal.
     // Weak ownership releases all measurements with the content, rather than retaining old revisions.
     private static readonly ConditionalWeakTable<TableRow[], ConditionalWeakTable<string[], ContentCache>> Cache = new();
     private sealed record ContentKey(int? Decimals, string Font, double FontSize,
@@ -74,27 +71,43 @@ public static partial class TablePresentation
         {
             headers = c.Headers;
             measure = text => measurer(text, t.FontSize, t.Font).Width;
-            desired = headers.Select(h => Measure(h) + 28).ToArray();
+            desired = headers.Select(h => Measure(h) + 12).ToArray();
             numeric = Enumerable.Repeat(c.Rows.Length > 0, headers.Length).ToArray();
-            var formatted = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var row in c.Rows)
+                for (var col = 0; col < headers.Length; col++) numeric[col] &= TryNumber(row.Cells[col], out _);
+            var precision = Enumerable.Repeat(c.Decimals, headers.Length).ToArray();
+            if (c.Decimals is null)
+                for (var col = 0; col < headers.Length; col++)
+                    if (numeric[col])
+                    {
+                        var values = c.Rows.Select(r => { TryNumber(r.Cells[col], out var v); return v; }).ToArray();
+                        if (values.Any(v => Math.Round(v, 2, MidpointRounding.AwayFromZero) != v))
+                            precision[col] = NumericFormatting.AutomaticDecimals(values);
+                    }
+            var longest = new string[headers.Length];
+            var formatted = new Dictionary<(string Raw, int? Decimals), string>();
             foreach (var row in c.Rows)
             {
                 var display = new string[headers.Length];
                 for (var col = 0; col < headers.Length; col++)
                 {
                     var raw = row.Cells[col];
-                    numeric[col] &= TryNumber(raw, out _);
                     if (raw is null) display[col] = "—";
                     else
                     {
-                        if (!formatted.TryGetValue(raw, out var text)) formatted.Add(raw, text = Format(raw, c.Decimals));
+                        var key = (raw, precision[col]);
+                        if (!formatted.TryGetValue(key, out var text)) formatted.Add(key, text = Format(raw, precision[col]));
                         display[col] = text;
                     }
+                    if (longest[col] is null || display[col].Length > longest[col].Length) longest[col] = display[col];
                 }
                 cells[row] = display;
             }
+            for (var col = 0; col < headers.Length; col++)
+                if (longest[col] is { } text) desired[col] = Math.Max(desired[col], Measure(text) + 12);
             // Evenly sample the full schedule (including its last row); offscreen text still
-            // participates in numeric classification, but does not require thousands of GDI calls.
+            // participates in numeric classification. Also measure each column's longest display
+            // string so an outlier between sample rows gets space without thousands of GDI calls.
             var sample = Math.Min(WidthSampleRows, c.Rows.Length);
             for (var i = 0; i < sample; i++)
             {
@@ -113,14 +126,16 @@ public static partial class TablePresentation
         {
             var key = (width, padding, rowHeight);
             if (layouts.TryGetValue(key, out var layout)) return layout;
-            var count = headers.Length;
             var available = width - 2 * padding;
-            var minimum = count == 0 ? 0 : Math.Min(32, available / count);
+            var headerWidths = headers.Select(h => Measure(h) + 12).ToArray();
+            var headerTotal = headerWidths.Sum();
+            var minimum = headerTotal <= available ? headerWidths : headerWidths.Select(w => w * available / headerTotal).ToArray();
+            var remaining = Math.Max(0, available - minimum.Sum());
             var total = desired.Sum();
-            var flexible = desired.Sum(w => Math.Max(0, w - minimum));
+            var flexible = desired.Select((w, i) => Math.Max(0, w - minimum[i])).Sum();
             var widths = total <= available
                 ? desired.Select(w => w + (available - total) * w / total)
-                : desired.Select(w => minimum + (available - minimum * count) * Math.Max(0, w - minimum) / flexible);
+                : desired.Select((w, i) => minimum[i] + (flexible == 0 ? 0 : remaining * Math.Max(0, w - minimum[i]) / flexible));
             var x = padding;
             var columns = widths.Select((w, i) =>
             {

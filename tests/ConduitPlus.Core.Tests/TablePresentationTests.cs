@@ -53,7 +53,9 @@ public sealed class TablePresentationTests
     public void TwoThousandRowsReuseMeasurementsAcrossPaintHitsAndInteraction()
     {
         var previous = TextMetrics.Measurer;
-        var canvas = new Commands { Estimate = true };
+        GdiCanvas.RegisterTextMetrics();
+        var gdi = TextMetrics.Measurer;
+        var canvas = new Commands { Measurer = gdi };
         TextMetrics.Measurer = canvas.MeasureText;
         try
         {
@@ -63,14 +65,31 @@ public sealed class TablePresentationTests
                 Rows = Enumerable.Range(0, 2000).Select(i => new TableRow($"r{i}",
                     [$"Room {i}", (i * 1.234).ToString(CultureInfo.InvariantCulture), "-0.01234", "Ordinary room schedule note"])).ToArray()
             };
+            var state = new CanvasCardState();
+            state.Replace(card);
+            card = state.Spec!;
             CardPainter.Paint(canvas, card, Theme.Paper);
+            // Warm both viewports' fitted strings, then require every real interaction repaint
+            // below to make zero measurements (including scroll/sort back into known content).
+            CardPainter.Paint(canvas, card with { ScrollOffset = 1000 }, Theme.Paper);
             var first = canvas.MeasureCalls;
             Assert.InRange(first, 1, 800); // Headers + bounded width sample + visible-cell fitting, not 8,004 measurements.
             CardPainter.Paint(canvas, card, Theme.Paper);
             Assert.Equal(first, canvas.MeasureCalls);
             var headers = TableSort.Headers(card, Theme.Paper);
-            var interacting = card with { Rev = 99, HoverKey = "r3", SelectedKeys = ["r4"], ScrollOffset = 1000, SortColumn = 1, SortDescending = true };
-            Assert.Same(headers, TableSort.Headers(interacting, Theme.Paper));
+            foreach (var interact in new Action[] { () => state.Hover("r1"), () => state.Hover("r2"),
+                () => state.Activate("r2"), () => state.Scroll(1000), () => state.Activate(TableSort.Key(1)) })
+            {
+                interact();
+                Assert.Same(card.Rows, state.Spec!.Rows);
+                Assert.Same(card.Headers, state.Spec.Headers);
+                Assert.Same(headers, TableSort.Headers(state.Spec, Theme.Paper));
+                Assert.Equal(first, canvas.MeasureCalls); // Actual CardStore snapshots, not a record-copy shortcut.
+                CardPainter.Paint(canvas, state.Spec, Theme.Paper);
+                Assert.Equal(first, canvas.MeasureCalls);
+            }
+            state.Scroll(1500); // A cold viewport may fit newly visible strings, but never resample widths.
+            var interacting = state.Spec!;
             for (var i = 0; i < 10; i++) CardMeasure.Hits(interacting, Theme.Paper);
             Assert.Equal(first, canvas.MeasureCalls);
             CardPainter.Paint(canvas, interacting, Theme.Paper);
@@ -110,6 +129,56 @@ public sealed class TablePresentationTests
     }
 
     [Fact]
+    public void StoreStillOwnsCallerArraysAndInvalidatesMutatedOffscreenData()
+    {
+        var input = Fixture();
+        var store = new CardStore(); store.Update([input]);
+        var owned = store.Snapshot[0];
+        Assert.NotSame(input.Rows, owned.Rows);
+        Assert.NotSame(input.Headers, owned.Headers);
+        var before = TablePresentation.Columns(owned, Theme.Paper);
+        input.Rows[^1].Cells[1] = "not numeric";
+        Assert.Equal("Room", owned.Headers[0]);
+        Assert.Equal("2", owned.Rows[^1].Cells[1]);
+        store.Update([input]);
+        Assert.NotSame(owned.Rows, store.Snapshot[0].Rows);
+        Assert.True(before[1].Numeric);
+        Assert.False(TablePresentation.Columns(store.Snapshot[0], Theme.Paper)[1].Numeric);
+        input.Headers[0] = "Space";
+        store.Update([input]);
+        Assert.Equal("Space", store.Snapshot[0].Headers[0]);
+    }
+
+    [Fact]
+    public void WidthsIncludeLongestDisplayTextOutsideTheSample()
+    {
+        var card = new CardSpec { Id = "outlier", Kind = CardKind.Table, Width = 600, Decimals = 2,
+            Headers = ["Room", "Value"], Rows = Enumerable.Range(0, 2000)
+                .Select(i => new TableRow($"r{i}", ["Room", i == 1 ? "1234567.89" : "1.23"])).ToArray() };
+        var columns = TablePresentation.Columns(card, Theme.Paper);
+        var ordinary = card with { Rows = card.Rows.Select(r => new TableRow(r.Key, ["Room", "1.23"])).ToArray() };
+        Assert.True(columns[1].Width > TablePresentation.Columns(ordinary, Theme.Paper)[1].Width);
+        Assert.True(columns[1].Width >= TextMetrics.Measurer("1234567.89", Theme.Paper.FontSize, Theme.Paper.Font).Width + 12);
+    }
+
+    [Theory]
+    [InlineData("1.123", "2.123", "1", "2")]
+    [InlineData("1.123", "1.223", "1.1", "1.2")]
+    [InlineData("1.123", "1.133", "1.12", "1.13")]
+    [InlineData("1.123", "1.124", "1.12", "1.12")]
+    [InlineData("1.20", "2.30", "1.20", "2.30")]
+    [InlineData("1.123", "text", "1.123", "text")]
+    public void UnsetPrecisionAutomaticallyFormatsOnlyHighPrecisionNumericColumns(string a, string b, string expectedA, string expectedB)
+    {
+        var card = new CardSpec { Id = "auto", Kind = CardKind.Table, Width = 600,
+            Headers = ["Analysis", "Text"], Rows = [new("a", [a, "48.74153519689177 m²"]), new("b", [b, "1,234.5678"])] };
+        var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
+        var cells = canvas.Texts.Where(t => t.Point.Y > CardMeasure.BodyTop + Theme.Paper.RowHeight).Select(t => t.Text).ToArray();
+        Assert.Equal(new[] { expectedA, "48.74153519689177 m²", expectedB, "1,234.5678" }, cells);
+        Assert.Equal(a, card.Rows[0].Cells[0]);
+    }
+
+    [Fact]
     public void LongCellsUseLogarithmicFittingAndReuseTheFittedText()
     {
         var previous = TextMetrics.Measurer;
@@ -140,23 +209,44 @@ public sealed class TablePresentationTests
     [InlineData(180, true)]
     [InlineData(440, false)]
     [InlineData(440, true)]
-    public void NumericHeaderAndAdjacentSortGlyphShareARightAlignedGroup(double width, bool sorted)
+    public void NumericHeaderAlignmentIsStableAndSortGlyphUsesThePadding(double width, bool sorted)
     {
         var card = Fixture() with { Width = width, SortColumn = sorted ? 1 : null };
         var columns = TablePresentation.Columns(card, Theme.Paper);
         var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
         var header = canvas.Texts.Where(t => t.Point.Y == CardMeasure.BodyTop + 2).ToArray()[1];
         var end = header.Point.X + canvas.MeasureText(header.Text, Theme.Paper.FontSize, Theme.Paper.Font).Width;
-        Assert.Equal(columns[1].X + columns[1].Width - 6 - 14, end, 6);
+        Assert.Equal(columns[1].X + columns[1].Width - 6, end, 6);
         Assert.InRange(header.Point.X, columns[1].X, columns[1].X + columns[1].Width);
         if (sorted)
         {
             var glyph = Assert.Single(canvas.Polygons);
-            Assert.Equal(end + 4, glyph.Min(p => p.X), 6);
-            Assert.True(glyph.Max(p => p.X) <= columns[1].X + columns[1].Width - 6);
+            Assert.Equal(end + 1, glyph.Min(p => p.X), 6);
+            Assert.True(glyph.Max(p => p.X) < columns[1].X + columns[1].Width);
         }
         else Assert.Empty(canvas.Polygons);
         Assert.Equal(TableSort.Headers(card, Theme.Paper), TableSort.Headers(TableSort.Cycle(card, 1), Theme.Paper));
+    }
+
+    private static CardSpec SixColumns() => new()
+    {
+        Id = "six", Kind = CardKind.Table, Title = "Room analysis", Width = 380, Decimals = 1,
+        Headers = ["Room", "Level", "Area m²", "DA %", "UDI %", "Glare"],
+        Rows = [new("R01", ["R01", "1", "25.5", "48.7", "61.4", "0.3"]),
+            new("R02", ["R02", "2", "52.5", "51.3", "72.8", "0.2"]),
+            new("R03", ["R03", "2", "6.5", "62.1", "81.5", "0.4"])]
+    };
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SixColumnsAtDefaultWidthKeepAllHeadersReadable(bool sorted)
+    {
+        var card = SixColumns() with { SortColumn = sorted ? 2 : null };
+        var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
+        Assert.Equal(card.Headers, canvas.Texts.Where(t => t.Point.Y == CardMeasure.BodyTop + 2).Select(t => t.Text));
+        Assert.All(canvas.Texts.Where(t => t.Point.Y >= CardMeasure.BodyTop + 2), text =>
+            Assert.True(text.Clip.X + text.Clip.Width - text.Point.X - canvas.MeasureText(text.Text, Theme.Paper.FontSize, Theme.Paper.Font).Width >= 1));
     }
 
     [Theory]
@@ -192,7 +282,10 @@ public sealed class TablePresentationTests
         var output = Path.Combine(AppContext.BaseDirectory, "artifacts", "pr-c"); Directory.CreateDirectory(output);
         foreach (var (label, card) in new[] { ("columns", Fixture()), ("narrow", Fixture() with { Width = 260 }),
             ("narrow-unsorted", Fixture() with { Width = 260, SortColumn = null }),
-            ("structural", StructuralDemo.Create().Single(c => c.Kind == CardKind.Table) with { SortColumn = 1 }) })
+            ("structural", StructuralDemo.Create().Single(c => c.Kind == CardKind.Table) with { SortColumn = 1 }),
+            ("six-380", SixColumns()), ("six-380-sorted", SixColumns() with { SortColumn = 2 }),
+            ("raw-analysis", SixColumns() with { Decimals = null, Rows = [new("R01", ["R01", "1", "48.74153519689177", "51.1234567", "62.1234567", "0.321987"]),
+                new("R02", ["R02", "2", "48.84276519358723", "51.2234567", "62.2234567", "0.421987"])] }) })
         {
             using var bitmap = RasterDrawing.Render(card, theme, 2);
             Assert.True(bitmap.Width > 0 && bitmap.Height > 0);
@@ -202,23 +295,29 @@ public sealed class TablePresentationTests
 
     private sealed class Commands : ICanvas2D
     {
-        public List<(string Text, Point2 Point)> Texts { get; } = [];
+        public List<(string Text, Point2 Point, Rect2 Clip)> Texts { get; } = [];
         public List<Point2[]> Polygons { get; } = [];
         public bool Estimate { get; init; }
+        public Func<string, double, string, Size2>? Measurer { get; init; }
+        private Rect2 currentClip;
         public int MeasureCalls { get; private set; }
         public Size2 MeasureText(string text, double size, string font)
         {
             MeasureCalls++;
-            return Estimate ? TextMetrics.Estimate(text, size, font) : TextMetrics.Measurer(text, size, font);
+            return Estimate ? TextMetrics.Estimate(text, size, font) : (Measurer ?? TextMetrics.Measurer)(text, size, font);
         }
-        public void Text(string text, Point2 topLeft, double size, string color, string font) => Texts.Add((text, topLeft));
+        public void Text(string text, Point2 topLeft, double size, string color, string font) => Texts.Add((text, topLeft, currentClip));
         public void Rect(Rect2 rect, string fill) { }
         public void Gradient(Rect2 rect, IReadOnlyList<string> colors) { }
         public void RoundedRect(Rect2 rect, double radius, string fill) { }
         public void Line(Point2 from, Point2 to, string color, double width = 1) { }
         public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) { }
         public void FillPolygon(IReadOnlyList<Point2> points, string fill) => Polygons.Add(points.ToArray());
-        public IDisposable Clip(Rect2 rect) => new Scope();
-        private sealed class Scope : IDisposable { public void Dispose() { } }
+        public IDisposable Clip(Rect2 rect)
+        {
+            var old = currentClip; currentClip = rect;
+            return new Scope(() => currentClip = old);
+        }
+        private sealed class Scope(Action restore) : IDisposable { public void Dispose() => restore(); }
     }
 }

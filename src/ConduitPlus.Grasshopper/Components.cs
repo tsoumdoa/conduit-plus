@@ -330,7 +330,7 @@ public sealed class TableComponent : CardComponent
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
         p.AddNumberParameter("Width", "W", "Table width in CSS pixels (180–1200)", GH_ParamAccess.item, 380);
         p.AddTextParameter("Columns", "Co", "One branch per column in path order, one item per row; set Rows or Columns", GH_ParamAccess.tree); p[7].Optional = true;
-        p.AddIntegerParameter("Decimals", "D", "Optional numeric display precision (0–12); unset preserves text and sorting always uses raw values", GH_ParamAccess.item); p[8].Optional = true;
+        p.AddIntegerParameter("Decimals", "D", "Optional numeric display precision (0–12); unset automatically formats high-precision numeric columns (0–2 places); sorting uses raw values", GH_ParamAccess.item); p[8].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -350,7 +350,8 @@ public sealed class TableComponent : CardComponent
         {
             var result = TableInputs.Create(headers.ToArray(), Supplied(1) ? Branches(rowTree) : null,
                 Supplied(7) ? Branches(columnTree) : null, Supplied(2) ? keys.ToArray() : null);
-            if (result.Warning is { } warning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, warning);
+            if (result.Warning is { } warning) AddRuntimeMessage(
+                !Supplied(1) && !Supplied(7) ? GH_RuntimeMessageLevel.Warning : GH_RuntimeMessageLevel.Remark, warning);
             if (!Supplied(1) && !Supplied(7)) return;
             Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Table, Title = title, Headers = headers.ToArray(), Rows = result.Rows, Decimals = hasDecimals ? decimals : null, Width = width, MaxRows = visibleRows, WiredSlot = ReadSlot(da, 4) });
         }

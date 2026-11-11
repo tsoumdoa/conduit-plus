@@ -103,14 +103,13 @@ public static class CardPainter
                 if (c.HoverKey == header.Key) canvas.Rect(new(header.X, header.Y, header.W, header.H), t.Track);
             for (var col = 0; col < c.Headers.Length; col++)
             {
-                // A fixed gutter keeps the right-aligned label/glyph group stable while sorting.
-                var headerEnd = Cell(c.Headers[col], col, CardMeasure.BodyTop, t.Muted, 14, columns[col].Numeric);
+                Cell(c.Headers[col], col, CardMeasure.BodyTop, t.Muted, columns[col].Numeric);
                 if (c.SortColumn != col) continue;
-                // Glyph hugs the header text so it can't be read as belonging to the next column.
-                var x = headerEnd + 8; var y = CardMeasure.BodyTop + 10;
+                // Overlay the triangle in the right padding; no per-column sort gutter.
+                var x = columns[col].X + columns[col].Width - 3; var y = CardMeasure.BodyTop + 10;
                 using var glyphClip = canvas.Clip(new(columns[col].X, CardMeasure.BodyTop, columns[col].Width, t.RowHeight));
-                canvas.FillPolygon(c.SortDescending ? [new(x - 4, y - 2), new(x + 4, y - 2), new(x, y + 3)] :
-                    [new(x - 4, y + 2), new(x + 4, y + 2), new(x, y - 3)], t.Muted);
+                canvas.FillPolygon(c.SortDescending ? [new(x - 2, y - 2), new(x + 2, y - 2), new(x, y + 2)] :
+                    [new(x - 2, y + 2), new(x + 2, y + 2), new(x, y - 2)], t.Muted);
             }
             var rows = TableSort.Rows(c);
             var offset = TableScroll.Offset(c);
@@ -126,15 +125,16 @@ public static class CardPainter
                 canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
                 canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
             }
-            double Cell(string text, int col, double y, string color, double reserve = 0, bool right = false)
+            void Cell(string text, int col, double y, string color, bool right = false)
             {
                 var column = columns[col];
-                var available = Math.Max(0, column.Width - 12 - reserve);
-                using var cellClip = canvas.Clip(new(column.X + 6, y, available, t.RowHeight));
+                var available = Math.Max(0, column.Width - 12);
+                // GDI uses the clip as its text layout box. Leave slack beyond the fitted
+                // right edge so float rounding cannot add a second, unwanted ellipsis.
+                using var cellClip = canvas.Clip(new(column.X + 6, y, available + 1.5, t.RowHeight));
                 var fitted = layout.Content.Fit(text, available);
                 var x = right ? column.X + 6 + available - fitted.Width : column.X + 6;
                 canvas.Text(fitted.Text, new(x, y + 2), t.FontSize, color, t.Font);
-                return x + fitted.Width;
             }
         }
     }
