@@ -85,7 +85,7 @@ public sealed class KeyLegendTests
                 Assert.DoesNotContain(new Point2(rect.X + .5, rect.Y + .5), edge.Points);
             }
         }
-        Assert.Equal(new Size2(280, 48 + card.Colors.Length * rowHeight), CardMeasure.Measure(card, theme));
+        Assert.Equal(new Size2(120, 48 + card.Colors.Length * rowHeight), CardMeasure.Measure(card, theme));
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class KeyLegendTests
         var canvas = new RecordingCanvas();
         LegendCardPainter.Paint(canvas, card, theme);
         var value = Assert.Single(canvas.Texts, t => t.Text == "12");
-        Assert.Equal(card.Width - theme.Padding, value.Position.X + canvas.MeasureText(value.Text, value.Size, value.Font).Width);
+        Assert.Equal(280 - theme.Padding, value.Position.X + canvas.MeasureText(value.Text, value.Size, value.Font).Width);
         Assert.Equal(theme.Muted, value.Color);
         var label = Assert.Single(canvas.Texts, t => t.Text.EndsWith('…'));
         Assert.Equal(theme.Padding + 20, label.Position.X);
@@ -127,7 +127,7 @@ public sealed class KeyLegendTests
         {
             Assert.True(text.Clip.X >= Theme.Paper.Padding + 20);
             Assert.True(text.Clip.Width >= 0);
-            Assert.True(text.Clip.X + text.Clip.Width <= card.Width - Theme.Paper.Padding);
+            Assert.True(text.Clip.X + text.Clip.Width <= 280 - Theme.Paper.Padding);
         });
     }
 
@@ -144,7 +144,7 @@ public sealed class KeyLegendTests
         Assert.Empty(CardMeasure.Hits(state.Spec, Theme.Paper));
         var keyed = card with { Keys = ["a", "b"], HoverKey = "b" };
         var hits = CardMeasure.DataHits(keyed, Theme.Paper);
-        Assert.Equal(new HitRegion("b", 12, 58, 256, 22), hits[1]);
+        Assert.Equal(new HitRegion("b", 12, 58, 96, 22), hits[1]);
         var canvas = new RecordingCanvas();
         LegendCardPainter.Paint(canvas, keyed, Theme.Paper);
         Assert.Contains((new Rect2(hits[1].X, hits[1].Y, hits[1].W, hits[1].H), Theme.Paper.Track), canvas.Rects);

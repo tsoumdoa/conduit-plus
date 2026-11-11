@@ -223,7 +223,8 @@ public sealed class CoreTests
             if (!BrushState.Keys(c).Any()) { Assert.DoesNotContain(hits, h => h.Key == CardMeasure.ClearKey); continue; }
             var clear = Assert.Single(hits, h => h.Key == CardMeasure.ClearKey);
             Assert.True(clear.Contains(clear.X + clear.W / 2, clear.Y + clear.H / 2));
-            Assert.True(clear.X >= c.Width / 2); Assert.True(clear.X + clear.W <= c.Width);
+            var width = CardMeasure.Measure(c, Theme.Paper).Width;
+            Assert.True(clear.X >= width / 2); Assert.True(clear.X + clear.W <= width);
             Assert.All(CardMeasure.DataHits(c, Theme.Paper), h => Assert.True(clear.Y + clear.H <= h.Y));
             if (TableScroll.Bar(c, Theme.Paper) is { } bar) Assert.True(clear.Y + clear.H <= bar.Track.Y);
             // A selected table/bar must still paint after adding the extra control hit.

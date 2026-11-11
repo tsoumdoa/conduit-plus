@@ -32,11 +32,11 @@ public static class CardMeasure
     public const string ClearKey = "\u0001clear";
     public static bool IsReserved(string key) => key.StartsWith('\u0001');
     public static HitRegion? Clear(CardSpec c, Theme t) => BrushState.Keys(c).Any() && (c.OwnerHasSelection || c.SelectedKeys.Length > 0)
-        ? new(ClearKey, c.Width - t.Padding - 40, 7, 40, 22) : null;
+        ? new(ClearKey, Measure(c, t).Width - t.Padding - 40, 7, 40, 22) : null;
     // Untitled Text starts at (12,12): keep its explicit grip in the unused left edge.
     public static Rect2 Grip(CardSpec c) => new(1, 5, 10, 24);
     public static bool IsTitle(CardSpec c, Theme t, double x, double y) =>
-        x >= 0 && x < c.Width && y >= 0 && y < 32 &&
+        x >= 0 && x < Measure(c, t).Width && y >= 0 && y < 32 &&
         !Hits(c, t).Any(h => h.Contains(x, y)) &&
         (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
     public static Size2 Measure(CardSpec c, Theme t) => FormMeasure.Size(c, t, c.Form, TextMetrics.Measurer);
@@ -49,9 +49,14 @@ public static class CardMeasure
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
         CardKind.Table => TableSort.Rows(c).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, BodyTop + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
-        CardKind.Legend when !c.Min.HasValue => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, BodyTop + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Legend when !c.Min.HasValue => LegendHits(c, t),
         _ => []
     };
+    private static HitRegion[] LegendHits(CardSpec c, Theme t)
+    {
+        var width = Measure(c, t).Width;
+        return c.Keys.Select((key, i) => new HitRegion(key, t.Padding, BodyTop + i * t.RowHeight, width - 2 * t.Padding, t.RowHeight)).ToArray();
+    }
 }
 
 public static class SlotLayout
