@@ -19,7 +19,7 @@ public interface ICanvas2D
     void Rect(Rect2 rect, string fill);
     /// <summary>Horizontal linear gradient with evenly spaced color stops, left to right.</summary>
     void Gradient(Rect2 rect, IReadOnlyList<string> colors);
-    /// <summary>Positioned stops; the default paints each interval separately (including PDF).</summary>
+    /// <summary>Positioned stops; the default paints each interval separately.</summary>
     void Gradient(Rect2 rect, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
     {
         if (positions.Count == 0) { Gradient(rect, colors); return; }

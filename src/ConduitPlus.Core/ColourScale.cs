@@ -13,17 +13,16 @@ public static class ColourRange
 public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, ColourMessage[] Messages,
     ColourPalette Palette, double Min, double Max, double Mid)
 {
-    public double PalettePosition(double position)
-    {
-        if (Min == Max) return .5;
-        var pivot = ColourRange.Fraction(Mid, Min, Max);
-        // A subnormal range may have no representable interior midpoint.
-        return pivot is <= 0 or >= 1 ? position : position <= pivot ? .5 * position / pivot : .5 + .5 * (position - pivot) / (1 - pivot);
-    }
     public string ColourAt(double? value)
     {
         if (value is not { } v || !double.IsFinite(v)) return Palettes.Missing;
-        return Palette.ColourAt(PalettePosition(Min == Max ? .5 : v <= Min ? 0 : v >= Max ? 1 : ColourRange.Fraction(v, Min, Max)));
+        // Work relative to each side: a global normalized pivot can round to 0 or 1
+        // even though Mid is an interior double in the original domain.
+        var position = Min == Max ? .5 : v <= Min ? 0 : v >= Max ? 1
+            : Mid <= Min || Mid >= Max ? ColourRange.Fraction(v, Min, Max)
+            : v <= Mid ? .5 * ColourRange.Fraction(v, Min, Mid)
+            : .5 + .5 * ColourRange.Fraction(v, Mid, Max);
+        return Palette.ColourAt(position);
     }
 }
 
@@ -73,17 +72,37 @@ public static class ColourScale
         }
         if (!double.IsFinite(min!.Value) || !double.IsFinite(max!.Value))
             throw new ArgumentException("Automatic bounds cannot include these controls; set finite Min and Max around Mid.");
+        var explicitMid = mid.HasValue;
         mid ??= scheme.Kind is PaletteKind.Diverging or PaletteKind.Status && min < 0 && max > 0 ? 0 : ColourRange.Lerp(min.Value, max.Value, .5);
         var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Unit = unit, Min = min, Max = max, WiredSlot = slot };
         var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value);
-        // Sample every knot, including the Mid slope change for even custom stop counts.
-        // Positioned stops give exact piecewise interpolation with at most 33 samples,
-        // even when an arbitrary Mid cannot fit any bounded uniform sampling grid.
-        var pivot = constant ? .5 : ColourRange.Fraction(mid.Value, min.Value, max.Value);
-        double Position(double p) => pivot is <= 0 or >= 1 ? p : p <= .5 ? pivot * (2 * p) : pivot + (1 - pivot) * (2 * p - 1);
-        var positions = Enumerable.Range(0, scheme.Colours.Length).Select(i => Position((double)i / (scheme.Colours.Length - 1)))
-            .Append(Position(.5)).Distinct().Order().ToArray();
-        legend = legend with { ColorPositions = positions, Colors = positions.Select(p => scheme.ColourAt(result.PalettePosition(p))).ToArray() };
+        // Compute the breakpoint from the nearer side, without subtracting two
+        // almost equal values at the far endpoint. Explicit controls must fit the
+        // positioned-stop transport; never silently discard an accepted Mid.
+        var lowerFraction = constant ? .5 : ColourRange.Fraction(mid.Value, min.Value, max.Value);
+        var upperFraction = constant ? .5 : ColourRange.Fraction(mid.Value, max.Value, min.Value);
+        var pivot = lowerFraction <= upperFraction ? lowerFraction : 1 - upperFraction;
+        if (explicitMid && pivot is <= 0 or >= 1)
+            throw new ArgumentException($"Mid ({F(mid)}) is too close to Min or Max to show; move it inside the range.");
+        var interior = mid > min && mid < max;
+        // A default zero can be interior in value space but closer to an end than
+        // normalized doubles can express. Retain its colour at the nearest interior
+        // legend position. Only a domain with no interior Mid uses the endpoint fallback.
+        if (interior) pivot = Math.Clamp(pivot, double.Epsilon, Math.BitDecrement(1d));
+        double Position(double p) => !interior ? p : p <= .5 ? pivot * (2 * p) : 1 - (1 - pivot) * (2 * (1 - p));
+        var stops = new SortedDictionary<double, string>();
+        for (var i = 0; i < scheme.Colours.Length; i++)
+        {
+            var p = (double)i / (scheme.Colours.Length - 1);
+            var position = Position(p);
+            // Sub-knots can round together near an endpoint. Reserve both ends and Mid.
+            if (position > 0 && position < 1 && position != pivot)
+                stops[position] = constant ? scheme.ColourAt(.5) : scheme.ColourAt(p);
+        }
+        stops[0] = constant ? scheme.ColourAt(.5) : scheme.Colours[0];
+        stops[1] = constant ? scheme.ColourAt(.5) : scheme.Colours[^1];
+        if (interior || constant) stops[pivot] = scheme.ColourAt(.5);
+        legend = legend with { ColorPositions = stops.Keys.ToArray(), Colors = stops.Values.ToArray() };
         legend.Validate();
         var missing = values.Count - finite.Length;
         if (missing > 0) messages.Add(new(ColourMessageLevel.Remark, $"{missing} missing {(missing == 1 ? "value" : "values")} shown in grey ({Palettes.Missing})."));

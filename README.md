@@ -230,7 +230,11 @@ a remark. Constant finite data gets a single-colour legend at that value.
 
 Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid maps to the middle
 palette colour, with each side linear. Explicit Mid extends automatic bounds to include it;
-explicit Min/Max must enclose Mid. RGB interpolation is linear in sRGB. The legend
+explicit Min/Max must enclose Mid. An explicit Mid too close to an end for the legend
+reports an error; move it farther inside. A default zero closer to an end than the
+legend can express uses the nearest interior legend position, while model zero
+still maps to neutral. If the range has no interior double, the default Mid keeps
+the endpoint mapping. RGB interpolation is linear in sRGB. The legend
 samples every palette knot and the Mid breakpoint (at most 33 positioned stops),
 so its interpolation agrees with model colours within one RGB byte per channel.
 Each component produces one legend per solve; give scalar inputs a single value.

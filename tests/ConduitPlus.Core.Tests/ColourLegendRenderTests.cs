@@ -74,10 +74,107 @@ public sealed class ColourLegendRenderTests
         };
         foreach (var (label, scale) in cases)
         {
+            if (scale.Mid > scale.Min && scale.Mid < scale.Max)
+                Assert.Equal(scale.Palette.ColourAt(.5), scale.ColourAt(scale.Mid));
             using var image = RasterDrawing.Render(scale.Legend, theme, 2);
             Assert.True(image.Width > 0 && image.Height > 0);
             Save(image, $"scale-{label}-{name}.png");
         }
+    }
+
+    [Theory]
+    [InlineData("Paper", 1d)]
+    [InlineData("Paper", 2d)]
+    [InlineData("Night", 1d)]
+    [InlineData("Night", 2d)]
+    public void DevicePixelCentresAgreeWithModelAcrossOffGridBreakpoints(string name, double resolution)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        var custom = Enumerable.Range(0, 32).Select(i => i % 2 == 0 ? "#000000" : "#FFFFFF").ToArray();
+        foreach (var scale in new[] { ColourScale.Create([], ["Status"], 0, 1, .99),
+            ColourScale.Create([], ["Blue-Red"], -1, 9), ColourScale.Create([], custom, 0, 1, .373) })
+        {
+            using var image = RasterDrawing.Render(scale.Legend, theme, resolution);
+            var (left, right) = BarBounds(scale.Legend, theme);
+            var margin = RasterDrawing.Margin(theme, resolution);
+            var y = margin + (int)(45 * resolution);
+            // Assert requested probes on both sides of Mid, plus every interior
+            // column (also detects uncovered seams at custom knots). The expected
+            // value belongs to the sampled device centre, not the nominal probe:
+            // a sharp ramp can change many bytes between those two positions.
+            var probes = new[] { .98, .99, .995, .05, .1, .15, .372, .373, .374 }
+                .Select(t => (int)Math.Floor(margin + (left + (right - left) * t) * resolution));
+            var columns = Enumerable.Range((int)Math.Ceiling(margin + left * resolution),
+                (int)Math.Floor(margin + right * resolution) - (int)Math.Ceiling(margin + left * resolution));
+            foreach (var x in probes.Concat(columns).Distinct())
+            {
+                var t = ((x + .5 - margin) / resolution - left) / (right - left);
+                var value = ColourRange.Lerp(scale.Min, scale.Max, t);
+                var expected = scale.ColourAt(value); var pixel = image.GetPixel(x, y);
+                var rgb = ColorRgba.Parse(expected);
+                Assert.True(Math.Abs(pixel.R - rgb.R) <= 3 && Math.Abs(pixel.G - rgb.G) <= 3 && Math.Abs(pixel.B - rgb.B) <= 3,
+                    $"{name} {resolution}x {scale.Palette.Name} Mid={scale.Mid} x={x} t={t} bounds={left}..{right}: expected {expected}, actual {pixel}");
+                Assert.Equal(255, pixel.A);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1d)]
+    [InlineData(2d)]
+    [InlineData(1.25d)]
+    public void DeviceColumnsRespectTranslationClippingAndRestoreGraphicsState(double resolution)
+    {
+        using var image = new Bitmap(720, 120);
+        using var graphics = Graphics.FromImage(image);
+        graphics.Clear(Color.Magenta);
+        graphics.TranslateTransform(7.25f, 3.5f);
+        graphics.ScaleTransform((float)resolution, (float)resolution);
+        using var canvas = new GdiCanvas(graphics);
+        var scale = ColourScale.Create([], ["Status"], 0, 1, .99);
+        var rect = new Rect2(10.2, 12.3, 250.7, 10);
+        var before = graphics.Transform.Elements;
+        // Rounded clip supplied by the caller must survive the device-space fill.
+        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddEllipse((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height);
+        graphics.SetClip(path);
+        canvas.Gradient(rect, scale.Legend.Colors, scale.Legend.ColorPositions);
+        Assert.Equal(before, graphics.Transform.Elements);
+        var left = 7.25 + rect.X * resolution; var right = 7.25 + (rect.X + rect.Width) * resolution;
+        var y = (int)(3.5 + (rect.Y + rect.Height / 2) * resolution);
+        for (var x = (int)Math.Ceiling(left) + 5; x < (int)Math.Floor(right) - 5; x++)
+            Near(scale.ColourAt((x + .5 - left) / (right - left)), image.GetPixel(x, y), 3);
+        Assert.Equal(Color.Magenta.ToArgb(), image.GetPixel((int)Math.Ceiling(left), (int)Math.Ceiling(3.5 + rect.Y * resolution)).ToArgb());
+    }
+
+    [Fact]
+    public void PdfBandsUseExactStopIntervalsAndAgreeWithModel()
+    {
+        var custom = Enumerable.Range(0, 32).Select(i => i % 2 == 0 ? "#000000" : "#FFFFFF").ToArray();
+        foreach (var scale in new[] { ColourScale.Create([], ["Status"], 0, 1, .99),
+            ColourScale.Create([], ["Blue-Red"], -1, 9), ColourScale.Create([], custom, 0, 1, .373) })
+        {
+            var rect = new Rect2(20, 40, 240, 10);
+            var bands = ColourGradient.Bands(rect, scale.Legend.Colors, scale.Legend.ColorPositions).ToArray();
+            Assert.Equal(128 * (scale.Legend.Colors.Length - 1), bands.Length);
+            Assert.Equal(rect.X, bands[0].Rect.X);
+            Assert.Equal(rect.X + rect.Width, bands[^1].Rect.X + bands[^1].Rect.Width);
+            for (var i = 0; i < bands.Length; i++)
+            {
+                var (band, colour) = bands[i];
+                if (i > 0) Assert.Equal(bands[i - 1].Rect.X + bands[i - 1].Rect.Width, band.X);
+                var t = (band.X + band.Width / 2 - rect.X) / rect.Width;
+                Near(scale.ColourAt(ColourRange.Lerp(scale.Min, scale.Max, t)),
+                    Color.FromArgb(colour.A, colour.R, colour.G, colour.B), 1);
+            }
+        }
+    }
+
+    private static (double Left, double Right) BarBounds(CardSpec card, Theme theme)
+    {
+        string Label(double v) => v.ToString("G4", System.Globalization.CultureInfo.InvariantCulture);
+        return (theme.Padding + Math.Max(2, TextMetrics.Measurer(Label(card.Min!.Value), 10, theme.Font).Width / 2),
+            card.Width - theme.Padding - Math.Max(2, TextMetrics.Measurer(Label(card.Max!.Value), 10, theme.Font).Width / 2));
     }
 
     private static void Near(string expected, Color pixel, int tolerance)
