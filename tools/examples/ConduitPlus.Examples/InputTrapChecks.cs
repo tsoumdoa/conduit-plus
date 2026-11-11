@@ -156,7 +156,7 @@ internal static class InputTrapChecks
         Check(Has(treeOverlay, GH_RuntimeMessageLevel.Warning, "2 are empty because their components have errors (Bar, Legend)."), "Skipped-card warning names both errored components and uses plural grammar.");
         var foreign = Add(new Param_GenericObject()); foreign.PersistentData.AppendRange(new IGH_Goo[] { new GH_Integer(2), new GH_String("hello"), new GH_Point(new Point3d(0, 0, 0)) });
         treeOverlay.Params.Input[0].RemoveAllSources(); treeOverlay.Params.Input[0].AddSource(foreign); Solve(treeOverlay);
-        Check(Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 0 is an integer") && Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 1 is a text") && Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 2 is a geometry"), "Foreign items use friendly integer, text and geometry names.");
+        Check(Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 0 is an integer") && Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 1 is text") && Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Cards item 2 is geometry"), "Foreign items use friendly integer, text and geometry names.");
         treeOverlay.Params.Input[1].RemoveAllSources(); treeOverlay.Params.Input[1].AddSource(singleMetric.Params.Output[0]); Solve(treeOverlay);
         Check(Has(treeOverlay, GH_RuntimeMessageLevel.Error, "Links item 0 is a card, not a Conduit+ Link."), "Cards in Links have a friendly type name.");
         treeOverlay.Params.Input[0].RemoveAllSources(); treeOverlay.Params.Input[0].AddSource(treeBar.Params.Output[0]);
