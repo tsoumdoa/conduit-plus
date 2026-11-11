@@ -13,24 +13,46 @@ public static class RhinoTheme
     public static Theme Resolve(Theme selection) => selection == Theme.Auto
         ? selection.Resolve(HostUtils.RunningInDarkMode) : selection;
 
-    public static Theme ForViewport(Theme selection, RhinoViewport viewport)
+    public static Theme ForViewport(Theme selection, RhinoViewport viewport, global::Rhino.RhinoDoc document)
+        => ForAttributes(selection, viewport.DisplayMode.DisplayAttributes, document);
+
+    internal static Theme ForAttributes(Theme selection, DisplayPipelineAttributes attributes, global::Rhino.RhinoDoc document)
     {
-        var background = AppearanceSettings.ViewportBackgroundColor;
-        var attributes = viewport.DisplayMode.DisplayAttributes;
-        if (attributes.FillMode is DisplayPipelineAttributes.FrameBufferFillMode.SolidColor
-            or DisplayPipelineAttributes.FrameBufferFillMode.Gradient2Color or DisplayPipelineAttributes.FrameBufferFillMode.Gradient4Color)
+        System.Drawing.Color[] backgrounds;
+        switch (attributes.FillMode)
         {
-            attributes.GetFill(out var topLeft, out var bottomLeft, out var topRight, out var bottomRight);
-            // A representative background for plain titles; captures retain the resolved ink even when transparent.
-            background = attributes.FillMode switch
-            {
-                DisplayPipelineAttributes.FrameBufferFillMode.SolidColor => topLeft,
-                DisplayPipelineAttributes.FrameBufferFillMode.Gradient2Color => System.Drawing.Color.FromArgb(
-                    (topLeft.R + bottomLeft.R) / 2, (topLeft.G + bottomLeft.G) / 2, (topLeft.B + bottomLeft.B) / 2),
-                _ => System.Drawing.Color.FromArgb((topLeft.R + bottomLeft.R + topRight.R + bottomRight.R) / 4,
-                    (topLeft.G + bottomLeft.G + topRight.G + bottomRight.G) / 4, (topLeft.B + bottomLeft.B + topRight.B + bottomRight.B) / 4)
-            };
+            case DisplayPipelineAttributes.FrameBufferFillMode.SolidColor:
+            case DisplayPipelineAttributes.FrameBufferFillMode.Gradient2Color:
+            case DisplayPipelineAttributes.FrameBufferFillMode.Gradient4Color:
+                attributes.GetFill(out var topLeft, out var bottomLeft, out var topRight, out var bottomRight);
+                backgrounds = attributes.FillMode switch
+                {
+                    DisplayPipelineAttributes.FrameBufferFillMode.SolidColor => [topLeft],
+                    DisplayPipelineAttributes.FrameBufferFillMode.Gradient2Color => [topLeft, bottomLeft],
+                    _ => [topLeft, bottomLeft, topRight, bottomRight]
+                };
+                break;
+            case DisplayPipelineAttributes.FrameBufferFillMode.Renderer:
+                var render = document.RenderSettings;
+                backgrounds = render.BackgroundStyle switch
+                {
+                    BackgroundStyle.SolidColor => [render.BackgroundColorTop],
+                    BackgroundStyle.Gradient => [render.BackgroundColorTop, render.BackgroundColorBottom],
+                    // Image/environment pixels aren't available here. The halo protects either extreme.
+                    _ => [System.Drawing.Color.Black, System.Drawing.Color.White]
+                };
+                break;
+            case DisplayPipelineAttributes.FrameBufferFillMode.Bitmap:
+                backgrounds = [System.Drawing.Color.Black, System.Drawing.Color.White];
+                break;
+            default:
+                backgrounds = [AppearanceSettings.ViewportBackgroundColor];
+                break;
         }
-        return Resolve(selection) with { PlainTitleInk = TitleMetrics.InkForBackground(new(background.R, background.G, background.B)) };
+        var theme = Resolve(selection);
+        // Compare all configured colours, never their average: a reversed gradient must stay readable.
+        // Resolved ink AND halo participate in Theme equality / raster invalidation and survive exports.
+        var choice = TitleMetrics.ChooseInk(backgrounds.Select(c => new ColorRgba(c.R, c.G, c.B)), ColorRgba.Parse(theme.Surface));
+        return theme with { PlainTitleInk = choice.Ink, PlainTitleHalo = choice.Halo };
     }
 }

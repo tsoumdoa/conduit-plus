@@ -149,6 +149,7 @@ public sealed record Theme
     public string Highlight { get; init; } = "#DCE5FF";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
+    public string? PlainTitleHalo { get; init; }
     public string TooltipSurface { get; init; } = "#1F2329";
     public string TooltipInk { get; init; } = "#FFFFFF";
     public double TooltipRadius { get; init; } = 4;

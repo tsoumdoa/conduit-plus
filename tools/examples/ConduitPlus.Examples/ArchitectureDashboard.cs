@@ -71,6 +71,17 @@ internal static class ArchitectureDashboard
                     using var outline = new Rectangle3d(Plane.WorldXY, new Interval(b.X, b.X + b.Width), new Interval(b.Y, b.Y + b.Depth)).ToNurbsCurve();
                     using var extrusion = Extrusion.Create(outline, b.Height, true);
                     using var mesh = Mesh.CreateFromBox(new BoundingBox(b.X, b.Y, 0, b.X + b.Width, b.Y + b.Depth, b.Height), 1, 1, 1);
+                    using var smooth = Mesh.CreateFromSphere(new Sphere(Point3d.Origin, 2), 32, 32);
+                    var smoothLink = new Link([b.Key], [(b.Key, (object)smooth)]);
+                    var smoothWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(smoothLink)!;
+                    var smoothWire = ((Array)smoothWires[b.Key]!).GetValue(0)!;
+                    Require(((Line[])Get(smoothWire, "Lines")).Length == smooth.TopologyEdges.Count, "Smooth closed mesh must fall back to all edges.");
+                    using var planar = new Mesh();
+                    planar.Vertices.Add(0, 0, 0); planar.Vertices.Add(1, 0, 0); planar.Vertices.Add(1, 1, 0); planar.Vertices.Add(0, 1, 0);
+                    planar.Faces.AddFace(0, 1, 2); planar.Faces.AddFace(0, 2, 3);
+                    var planarLink = new Link([b.Key], [(b.Key, (object)planar)]);
+                    var planarWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(planarLink)!;
+                    Require(((Line[])Get(((Array)planarWires[b.Key]!).GetValue(0)!, "Lines")).Length == 4, "Planar mesh must omit the triangulation diagonal.");
                     try
                     {
                         foreach (var geometry in new GeometryBase[] { extrusion, mesh })
@@ -80,10 +91,10 @@ internal static class ArchitectureDashboard
                             {
                                 var drawn = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(probe)!;
                                 var wire = ((Array)drawn[b.Key]!).GetValue(0)!;
-                                Require(((Line[])Get(wire, "Lines")).Length == 0, "Closed mesh must not draw interior topology edges.");
+                                Require(((Line[])Get(wire, "Lines")).Length == 12, "Closed box mesh must draw its twelve feature edges.");
                                 var picks = (Array)typeof(Link).GetField("_picks", Instance)!.GetValue(probe)!;
                                 var proxy = ((Array)Get(picks.GetValue(0)!, "Proxies")).GetValue(0)!;
-                                Require(((Line[])Get(proxy, "Lines")).Length == closedMesh.TopologyEdges.Count, "Naked-edge drawing must retain all edge pick proxies.");
+                                Require(((Line[])Get(proxy, "Lines")).Length == closedMesh.TopologyEdges.Count, "Feature-edge drawing must retain all edge pick proxies.");
                             }
                             session.GetType().GetMethod("SetLinks", Instance)!.Invoke(session, [new[] { probe }]);
                             var p = centres[0].Point; p.Transform(screen);

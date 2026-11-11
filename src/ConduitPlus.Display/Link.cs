@@ -44,7 +44,7 @@ public sealed partial class Link
                     bounds.Union(copy.GetBoundingBox(true));
                     var wire = Prepare(copy);
                     wires.Add((key, wire));
-                    // Drawing only naked mesh edges must not remove the existing edge-picking tolerance.
+                    // Drawing boundary/feature mesh edges must not remove the existing edge-picking tolerance.
                     var pickWire = copy is Mesh mesh ? wire with
                     { Lines = Enumerable.Range(0, mesh.TopologyEdges.Count).Select(mesh.TopologyEdges.EdgeLine).ToArray() } : wire;
                     picks.Add((key, PreparePick(copy, pickWire, geometry)));
@@ -88,7 +88,17 @@ public sealed partial class Link
                 return new([curve], [], []);
             case Mesh m:
                 var edges = m.TopologyEdges;
-                var lines = Enumerable.Range(0, edges.Count).Where(i => edges.GetConnectedFaces(i).Length == 1).Select(edges.EdgeLine).ToArray();
+                m.FaceNormals.ComputeFaceNormals();
+                var featureEdges = new List<Line>();
+                var creaseCosine = Math.Cos(Math.PI / 6);
+                for (var i = 0; i < edges.Count; i++)
+                {
+                    var faces = edges.GetConnectedFaces(i);
+                    if (faces.Length != 2 || Vector3d.Multiply(m.FaceNormals[faces[0]], m.FaceNormals[faces[1]]) < creaseCosine)
+                        featureEdges.Add(edges.EdgeLine(i));
+                }
+                // Smooth closed meshes still need feedback. Cache the fallback once, alongside pick proxies.
+                var lines = featureEdges.Count > 0 ? featureEdges.ToArray() : Enumerable.Range(0, edges.Count).Select(edges.EdgeLine).ToArray();
                 return new([], lines, []);
             case Extrusion e:
                 using (var brep = e.ToBrep()) return BrepWires(brep);
@@ -119,12 +129,5 @@ public sealed partial class Link
             foreach (var p in w.Points) display.DrawPoint(p, PointStyle.RoundSimple, width + 1, color);
         }
         GC.KeepAlive(_geometry);
-    }
-    internal void DrawHighlight(DisplayPipeline display, string key, Color accent, bool selected)
-    {
-        // Draw the whole casing first so connected edges cannot cut into each other's accent stroke.
-        var style = GeometryHighlight.Resolve(selected, hovered: true)!;
-        Draw(display, key, Color.White, style.CasingWidth, selected, false);
-        Draw(display, key, accent, style.AccentWidth, selected, false);
     }
 }

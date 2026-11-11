@@ -7,16 +7,33 @@ public static class TitleMetrics
     public const double PlainPadding = 4;
     /// <summary>Text colour of a plain Title with no Colour set.</summary>
     public const string PlainInk = "#000000";
-    /// <summary>Choose the higher-contrast black or white ink using relative sRGB luminance.</summary>
-    public static string InkForBackground(ColorRgba background)
+    public sealed record InkChoice(string Ink, string? Halo);
+    private static double Luminance(ColorRgba color)
     {
         static double Linear(byte channel)
         {
             var v = channel / 255d;
             return v <= .04045 ? v / 12.92 : Math.Pow((v + .055) / 1.055, 2.4);
         }
-        var luminance = .2126 * Linear(background.R) + .7152 * Linear(background.G) + .0722 * Linear(background.B);
-        return luminance > Math.Sqrt(.0525) - .05 ? PlainInk : "#FFFFFF";
+        return .2126 * Linear(color.R) + .7152 * Linear(color.G) + .0722 * Linear(color.B);
+    }
+    /// <summary>Choose the higher-contrast black or white ink using relative sRGB luminance.</summary>
+    public static string InkForBackground(ColorRgba background) =>
+        Luminance(background) > Math.Sqrt(.0525) - .05 ? PlainInk : "#FFFFFF";
+
+    /// <summary>Maximise worst-case contrast over gradient corners / render background colours.
+    /// Mixed light and dark backgrounds need a narrow opaque surface halo at the glyph edges.</summary>
+    public static InkChoice ChooseInk(IEnumerable<ColorRgba> backgrounds, ColorRgba surface)
+    {
+        var luminances = backgrounds.Select(Luminance).ToArray();
+        if (luminances.Length == 0) throw new ArgumentException("At least one background is required.", nameof(backgrounds));
+        var black = (luminances.Min() + .05) / .05;
+        var white = 1.05 / (luminances.Max() + .05);
+        var ink = black == white ? InkForBackground(surface) : black > white ? PlainInk : "#FFFFFF";
+        if (Math.Max(black, white) >= 3) return new(ink, null);
+        var surfaceContrast = ink == PlainInk ? (Luminance(surface) + .05) / .05 : 1.05 / (Luminance(surface) + .05);
+        var halo = surfaceContrast >= 3 ? surface.WithAlpha(255).ToHex() : ink == PlainInk ? "#FFFFFF" : "#12151C";
+        return new(ink, halo);
     }
     public static TitleLayout Layout(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
     {
@@ -59,7 +76,10 @@ public static class TitleMetrics
             {
                 var w = canvas.MeasureText(line, fontSize, font).Width;
                 var x = c.WiredSlot switch { Slot.Tc or Slot.Bc => (size.Width - w) / 2, Slot.Tr or Slot.Br => size.Width - padding - w, _ => padding };
-                using var lineClip = canvas.Clip(new(padding, y, layout.ContentWidth, lineHeight));
+                using var lineClip = canvas.Clip(new(padding - 1, y - 1, layout.ContentWidth + 2, lineHeight + 2));
+                if (c.Background == TitleBackground.Plain && c.Colors.Length == 0 && t.PlainTitleHalo is { } halo)
+                    foreach (var offset in new Point2[] { new(-1, 0), new(1, 0), new(0, -1), new(0, 1), new(-.7, -.7), new(.7, -.7), new(-.7, .7), new(.7, .7) })
+                        canvas.Text(line, new(x + offset.X, y + offset.Y), fontSize, halo, font);
                 canvas.Text(line, new(x, y), fontSize, color, font);
                 y += lineHeight;
             }

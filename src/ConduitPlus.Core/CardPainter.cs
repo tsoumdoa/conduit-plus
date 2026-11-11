@@ -62,10 +62,9 @@ public static class CardPainter
         {
             foreach (var hit in CardMeasure.DataHits(c, t)) Highlight(canvas, c, t, hit);
             var value = c.Value ?? "—";
-            var inset = c.Keys.Length == 1 ? 6 : 0;
-            canvas.Text(value, new(t.Padding + inset, 36), 28, t.Ink, t.Font);
+            canvas.Text(value, new(t.Padding, 36), 28, t.Ink, t.Font);
             var measured = canvas.MeasureText(value, 28, t.Font);
-            canvas.Text(c.Unit, new(Math.Min(c.Width - 45, t.Padding + inset + measured.Width + 8), 51), t.FontSize, t.Muted, t.Font);
+            canvas.Text(c.Unit, new(Math.Min(c.Width - 45, t.Padding + measured.Width + 8), 51), t.FontSize, t.Muted, t.Font);
             return;
         }
         var hits = CardMeasure.DataHits(c, t);
@@ -73,13 +72,13 @@ public static class CardPainter
         if (c.Kind == CardKind.Bar)
         {
             var labelWidth = Math.Min((c.Width - 2 * t.Padding - 55) * .55,
-                Math.Max(55, c.Labels.Select(label => canvas.MeasureText(label, t.FontSize, t.Font).Width + 12).DefaultIfEmpty(55).Max()));
+                Math.Max(55, c.Labels.Select(label => canvas.MeasureText(label, t.FontSize, t.Font).Width + 8).DefaultIfEmpty(55).Max()));
             for (var i = 0; i < hits.Length; i++)
             {
                 var dataIndex = TableScroll.Offset(c) + i;
                 var h = hits[i]; Highlight(canvas, c, t, h);
                 using (canvas.Clip(new(h.X, h.Y, labelWidth - 4, h.H)))
-                    canvas.Text(c.Labels[dataIndex], new(h.X + 6, h.Y + 2), t.FontSize, t.Ink, t.Font);
+                    canvas.Text(c.Labels[dataIndex], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
                 var x = h.X + labelWidth; var w = h.W - labelWidth - 55; var y = h.Y + 7;
                 canvas.Rect(new(x, y, w, 8), t.Track);
                 var value = c.Values[dataIndex];
@@ -106,7 +105,7 @@ public static class CardPainter
                 if (c.SortColumn != col) continue;
                 // Glyph hugs the header text so it can't be read as belonging to the next column.
                 var textWidth = Math.Min(canvas.MeasureText(c.Headers[col], t.FontSize, t.Font).Width, width - 3 - 14 - 2);
-                var x = t.Padding + col * width + (col == 0 ? 6 : 2) + textWidth + 8; var y = CardMeasure.BodyTop + 10;
+                var x = t.Padding + col * width + 2 + textWidth + 8; var y = CardMeasure.BodyTop + 10;
                 canvas.FillPolygon(c.SortDescending ? [new(x - 4, y - 2), new(x + 4, y - 2), new(x, y + 3)] :
                     [new(x - 4, y + 2), new(x + 4, y + 2), new(x, y - 3)], t.Muted);
             }
@@ -126,7 +125,7 @@ public static class CardPainter
             void Cell(string text, int col, double y, string color, double reserve = 0)
             {
                 using var cellClip = canvas.Clip(new(t.Padding + col * width, y, width - 3 - reserve, t.RowHeight));
-                canvas.Text(text, new(t.Padding + col * width + (col == 0 ? 6 : 2), y + 2), t.FontSize, color, t.Font);
+                canvas.Text(text, new(t.Padding + col * width + 2, y + 2), t.FontSize, color, t.Font);
             }
         }
     }
@@ -137,11 +136,18 @@ public static class CardPainter
         var selected = group?.IsFullySelected ?? c.SelectedKeys.Contains(h.Key);
         var direct = group?.IsDirectTarget ?? c.HoverKey == h.Key;
         var hovered = group is not null ? group.HoveredMemberCount > 0 || direct : c.HoveredKeys.Contains(h.Key) || direct;
-        if (selected || direct && group is not { IsPartiallySelected: true }) canvas.Rect(new(h.X, h.Y, h.W, h.H), selected ? t.Highlight : t.Track);
-        if (selected) canvas.Rect(new(h.X, h.Y, 3, h.H), t.Accent);
+        // The selection stripe lives in existing card padding; it never consumes text width.
+        var left = h.X - 6;
+        var metric = c.Kind == CardKind.Metric;
+        if (selected || (metric ? hovered : direct && group is not { IsPartiallySelected: true }))
+        {
+            var fillLeft = metric && !c.Form.Compact ? left : h.X;
+            canvas.Rect(new(fillLeft, h.Y, h.W + h.X - fillLeft, h.H), selected ? t.Highlight : t.Track);
+        }
+        if (selected) canvas.Rect(new(left, h.Y, 3, h.H), t.Accent);
         if (c.Kind != CardKind.Metric && group is { IsPartiallySelected: true })
-            canvas.Rect(new(h.X, h.Y + h.H / 4, 3, h.H / 2), t.Accent);
-        if (hovered) Outline(canvas, h, t.Accent);
+            canvas.Rect(new(left, h.Y + h.H / 4, 3, h.H / 2), t.Accent);
+        if (hovered && c.Kind != CardKind.Metric) Outline(canvas, h, t.Accent);
     }
     internal static void Outline(ICanvas2D canvas, HitRegion h, string color) =>
         canvas.Polyline([new(h.X + .5, h.Y + .5), new(h.X + h.W - .5, h.Y + .5),
