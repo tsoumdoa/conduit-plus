@@ -6,6 +6,7 @@ public static class CardPainter
 {
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
+        if (c.Kind == CardKind.Title) { TitleMetrics.Paint(canvas, c, t); return; }
         var size = CardMeasure.Measure(c, t);
         ThemePainter.Shadow(canvas, size, t);
         using var clip = canvas.Clip(new(0, 0, size.Width, size.Height));
@@ -37,7 +38,10 @@ public static class CardPainter
             }
             return;
         }
-        using (canvas.Clip(new(t.Padding, 7, (clear?.X ?? (c.Width - t.Padding)) - t.Padding - 4, 24)))
+        // A gradient legend shows its unit at the right of the title row; keep the title clear of it.
+        var titleRight = clear?.X ?? (c.Width - t.Padding);
+        if (c.Kind == CardKind.Legend && c.Min.HasValue && !string.IsNullOrWhiteSpace(c.Unit)) titleRight = Math.Min(titleRight, c.Width - t.Padding - canvas.MeasureText(c.Unit, t.FontSize, t.Font).Width - 8);
+        using (canvas.Clip(new(t.Padding, 7, titleRight - t.Padding - 4, 24)))
             canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
         if (clear is not null)
         {

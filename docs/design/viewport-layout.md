@@ -25,7 +25,7 @@ The behaviour was agreed with the user through interactive mocks. Values marked 
 5. **Last-wired cards hide first.** No Priority input. "Last-wired" means last in the collected input order, not connection time.
 6. Overlay gets **Size**, 0.75–1.5×.
 7. New **Title** component: Title, Subtitle, Description, six positions.
-8. Titles default to **plain text with a soft outline**; a card background is an option.
+8. Titles default to **plain black text** (no outline, glow or shadow); a Colour input sets the text colour per Title, and a card background is an option.
 9. Top middle and bottom middle are **Title-only**.
 10. **No drag editing** (2026-11-10). Card order is the Cards input order and the Slot input picks the side. Saved drag layouts in old files are ignored silently.
 
@@ -107,7 +107,7 @@ Presentation changes (hover, scroll, sort) refresh rasters without re-solving. W
 
 **Resizing.** While size is changing, reuse the last settled zoom, forms and hidden set, and only reposition against the viewport edges. `DrawBitmap` can't scale, so bitmaps are reused as they are and cards may clip briefly. One UI timer per coordinator settles about 120 ms after the last change and is disposed with the view. A draw that sees a size mismatch only arms the timer. Overflow isn't reported until settled. `DrawSprite(bitmap, point, w, h)` scales and is worth trying later, but its alpha behaviour is unverified.
 
-**Export.** A capture settles first if needed, then snapshots eligible participants and the frame **before** suppressing conduits, because `PdfCommand` sets every session invisible first (`:41`). Export scales that snapshot, keeps the chip reservation so nothing reflows, and omits chip, list and shown cards. The command prints how many cards were omitted. `PdfCanvas` font size becomes `size × unit × 72 / (96 × dpi)`, because it's hard-coded today (`PdfCanvas.cs:104`). Capture never changes live overflow, drag or scroll state. PDF has no Title halo, so exported text stays searchable.
+**Export.** A capture settles first if needed, then snapshots eligible participants and the frame **before** suppressing conduits, because `PdfCommand` sets every session invisible first (`:41`). Export scales that snapshot, keeps the chip reservation so nothing reflows, and omits chip, list and shown cards. The command prints how many cards were omitted. `PdfCanvas` font size becomes `size × unit × 72 / (96 × dpi)`, because it's hard-coded today (`PdfCanvas.cs:104`). Capture never changes live overflow, drag or scroll state. Plain Titles are ordinary text, so exported text stays searchable.
 
 **Tooltips** stay at DPI scale so they remain readable at the floor.
 
@@ -166,7 +166,7 @@ Overflow text: "3 of 9 cards hidden in Perspective (640 × 400). Enlarge the vie
 
 ## Title component
 
-New component, new GUID, under **Cards**. Inputs: Title, Subtitle, Description (at least one required), Position (`tl tc tr bl bc br`, its own option list), Background (Plain or Card). `InputOptions.Slots` stays at six.
+New component, new GUID, under **Cards**. Inputs: Title, Subtitle, Description (at least one required), Position (`tl tc tr bl bc br`, its own option list), Background (Plain or Card), Colour (one text colour for the whole Title; plain defaults to black, Card to the theme's ink and muted colours; stored in `Colors[0]`). `InputOptions.Slots` stays at six.
 
 - New `CardKind.Title`. `Slot` gains `Tc` and `Bc`, appended, with `Zone` handling them.
 - `Resolve` is kind-aware: Title defaults to `Tl`, has no `WiredSlot` unless set, and is **excluded from the automatic `index % 6`**, so adding a Title doesn't move other cards. Stored values count as wired today (`ReadSlot` doesn't check `SourceCount`), so an unset Position must stay unset to remain draggable.
@@ -177,7 +177,7 @@ New component, new GUID, under **Cards**. Inputs: Title, Subtitle, Description (
 - Text alignment follows the position column.
 - Space: a side Title pushes only its rail. A middle Title wraps to fit between rails and side Titles, without pushing rails. In portrait, Titles sit above or below the bands.
 - `CardPainter` handles Title before the surface, shadow and border.
-- Outline: a default interface method on `ICanvas2D` that falls back to `Text`, so PDF and test canvases are unchanged. `GdiCanvas` builds one alpha mask (`GraphicsPath.AddString` with a round-join pen), blurs it, composites one solid colour correctly premultiplied, then draws the fill. Stacked low-alpha strokes already failed for shadows (`Cards.cs:173`). Raster margin includes halo extent; it's 0 today without a shadow.
+- No outline: plain Titles draw ordinary text in the theme's ink colour. A hard outline and then a blurred glow were both tried and dropped because they looked poor; use the Card background when the text must stand out from busy geometry.
 - Interaction: Titles report text regions, used for drag and hit testing, so subtitle-only Titles work and transparent space passes through to Rhino.
 
 ## Compact and Bar forms
@@ -231,7 +231,7 @@ Core xUnit (put logic here, since tests can't load RhinoCommon): no placed item 
 
 Harness: frozen old `.gh` fixture; menu persistence and undo; non-finite Size. `DisplayLifecycleChecks`: constructing `OverlayComponent` doesn't start Display, `Detach` keeps the binding, `Stop` clears it, a pending rebind doesn't survive `Stop`, document close or lock.
 
-Rhino by hand: 4-up, maximised, floating and DPI change; resize smoothness and the settle timer; named view close, reopen, rename, rename-away; whether `_SetView` retitles a viewport and fires `Rename`; runtime-message refresh; chip clicks versus model picks; drag at the floor; shared viewport; scope selection while hidden; halo over light and dark geometry; PNG and PDF match the screen and restore state after failure.
+Rhino by hand: 4-up, maximised, floating and DPI change; resize smoothness and the settle timer; named view close, reopen, rename, rename-away; whether `_SetView` retitles a viewport and fires `Rename`; runtime-message refresh; chip clicks versus model picks; drag at the floor; shared viewport; scope selection while hidden; plain Title legibility over light and dark geometry; PNG and PDF match the screen and restore state after failure.
 
 ## Review record
 

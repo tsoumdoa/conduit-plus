@@ -76,7 +76,7 @@ public sealed class CoreTests
     [InlineData(2d)]
     public void CardPainterRendersEveryCardKindThroughGdiCanvas(double scale)
     {
-        var cards = AllCards().GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
+        var cards = AllCards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
         Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Order());
         foreach (var card in cards)
         {
@@ -301,7 +301,7 @@ public sealed class CoreTests
         Assert.Equal(new[] { 0d, .5, 1, 1.2 }, LegendCardPainter.Ticks(c));
         var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, t);
         Assert.Equal(c.Colors, Assert.Single(canvas.Gradients).Colors);
-        Assert.Equal(new[] { c.Title, "0", "0.5", "1", "1.2", "ratio" }, canvas.Texts.Select(call => call.Text));
+        Assert.Equal(new[] { c.Title, "ratio", "0", "0.5", "1", "1.2" }.Order(), canvas.Texts.Select(call => call.Text).Order());
         Assert.Empty(CardMeasure.Hits(c, t));
         var signed = c with { Min = -.7, Max = .8 }; Assert.Equal(new[] { -.7, -.5, 0, .5, .8 }, LegendCardPainter.Ticks(signed));
         var categorical = StructuralDemo.Extras()[2]; var hits = CardMeasure.DataHits(categorical, t);

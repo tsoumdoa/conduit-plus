@@ -5,8 +5,9 @@ using System.Text.Json.Serialization;
 
 namespace ConduitPlus.Core;
 
-public enum CardKind { Metric, Bar, Table, Line, Text, Legend }
-public enum Slot { Tl, Tr, Bl, Br, Lc, Rc }
+public enum CardKind { Metric, Bar, Table, Line, Text, Legend, Title }
+public enum Slot { Tl, Tr, Bl, Br, Lc, Rc, Tc, Bc }
+public enum TitleBackground { Plain, Card }
 public sealed record TableRow(string Key, string?[] Cells);
 public sealed record CardSpec
 {
@@ -14,6 +15,8 @@ public sealed record CardSpec
     public long Rev { get; init; }
     public CardKind Kind { get; init; }
     public string Title { get; init; } = "";
+    public string Subtitle { get; init; } = "";
+    public TitleBackground Background { get; init; } = TitleBackground.Plain;
     public string? Value { get; init; }
     public string Unit { get; init; } = "";
     public string Text { get; init; } = "";
@@ -55,6 +58,13 @@ public sealed record CardSpec
     {
         if (string.IsNullOrWhiteSpace(Id)) throw new ArgumentException("Card ID is required.");
         if (WiredSlot is { } wired && !Enum.IsDefined(wired)) throw new ArgumentException("Invalid card layout.");
+        if (Kind == CardKind.Title)
+        {
+            if (new[] { Title, Subtitle, Text }.All(string.IsNullOrWhiteSpace) || Keys.Length > 0) throw new ArgumentException("Titles need text and cannot have keys.");
+            if (WiredSlot is Slot.Lc or Slot.Rc) throw new ArgumentException("Invalid title position.");
+            if (Colors.Length > 1 || Colors.Any(color => color is null || color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit))) throw new ArgumentException("A title takes one #RRGGBB text colour.");
+        }
+        else if (WiredSlot is Slot.Tc or Slot.Bc) throw new ArgumentException("Title-only position.");
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
         if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");

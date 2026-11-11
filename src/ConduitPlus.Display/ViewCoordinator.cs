@@ -56,7 +56,7 @@ public static partial class OverlayManager
             { c.Reports.Remove(owner); OverflowChanged?.Invoke(owner, null); }
             foreach (var session in sessions.Where(s => s.Visible))
             {
-                var text = OverflowText.For(c.Frame.Hidden.Count(h => h.Owner == session.Owner), session.Cards.Length, view.MainViewport.Name, view.MainViewport.Size.Width, view.MainViewport.Size.Height);
+                var text = OverflowText.For(c.Frame.Hidden.Count(h => h.Owner == session.Owner), session.Cards.Length, view.MainViewport.Name, view.MainViewport.Size.Width, view.MainViewport.Size.Height, session.Cards.Any(card => card.Kind == CardKind.Title && c.Frame.Hidden.Any(h => h.Owner == session.Owner && h.CardId == card.Id)));
                 if (!c.Reports.TryGetValue(session.Owner, out var previous) || previous != text)
                 { c.Reports[session.Owner] = text; OverflowChanged?.Invoke(session.Owner, text); }
             }
@@ -99,14 +99,15 @@ public static partial class OverlayManager
         if (includeShown && Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var coordinator) && coordinator.Shown is { } shown && shown.Owner == session.Owner && session.Card(shown.CardId) is { } floating)
         {
             var unit = frame.Unit[session.Owner]; var size = CardMeasure.Measure(floating, session.Theme);
-            bool LeftRail(CardPlacement placement)
+            // Only card columns bound the clear gap; Titles (top or bottom rows) don't.
+            Slot? SlotOf(CardPlacement placement)
             {
                 var cards = InView(session.Document, session.View).First(s => s.Owner == placement.Owner).AuthoredCards;
                 var index = Array.FindIndex(cards, card => card.Id == placement.CardId);
-                return index >= 0 && SlotLayout.Resolve(cards[index], index) is Slot.Tl or Slot.Lc or Slot.Bl;
+                return index < 0 || cards[index].Kind == CardKind.Title ? null : SlotLayout.ResolveAll(cards)[index];
             }
-            var left = frame.Placements.Where(LeftRail).Select(p => p.X + p.Width).DefaultIfEmpty(0).Max();
-            var right = frame.Placements.Where(p => !LeftRail(p)).Select(p => p.X).DefaultIfEmpty(coordinator.Size.Width).Min();
+            var left = frame.Placements.Where(p => SlotOf(p) is Slot.Tl or Slot.Lc or Slot.Bl).Select(p => p.X + p.Width).DefaultIfEmpty(0).Max();
+            var right = frame.Placements.Where(p => SlotOf(p) is Slot.Tr or Slot.Rc or Slot.Br).Select(p => p.X).DefaultIfEmpty(coordinator.Size.Width).Min();
             var rect = ShownCard.Place(new(size.Width * unit, size.Height * unit), coordinator.Size, 12 * coordinator.Dpi, left, right);
             placements = placements.Append(new(session.Owner, floating.Id, rect.X, rect.Y, rect.Width, rect.Height, floating.Form));
         }

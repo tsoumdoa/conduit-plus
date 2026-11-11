@@ -8,10 +8,13 @@ public sealed class CompactPaintTests
 {
     private static CardSpec[] Cards() =>
     [
+        new() { Id = "title", Kind = CardKind.Title, Title = "Heading", Subtitle = "Subtitle", Text = "Description" },
         .. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras(),
         new() { Id = "keyed", Kind = CardKind.Metric, Title = "Rooms below minimum with a long title", Keys = ["k"], Value = "1234.5", Unit = "m²" },
         new() { Id = "selected", Kind = CardKind.Metric, Title = "Selected", Keys = ["k"], Value = "8", SelectedKeys = ["k"] },
         new() { Id = "text", Kind = CardKind.Text, Title = "Note", Text = string.Join(" ", Enumerable.Repeat("long text", 100)) },
+        new() { Id = "title-plain", Kind = CardKind.Title, Title = "Truss utilisation review with a long heading", Subtitle = "4 bays · 24 m span · ULS-01", Text = string.Join(" ", Enumerable.Repeat("Members above 1.0 need review.", 8)), WiredSlot = Slot.Tc },
+        new() { Id = "title-card", Kind = CardKind.Title, Title = "Review", Text = "Short description", Background = TitleBackground.Card, WiredSlot = Slot.Br },
         new() { Id = "table", Kind = CardKind.Table, Title = "Rows", Headers = ["Name", "Value"], MaxRows = 12, Rows = Enumerable.Range(0, 12).Select(i => new TableRow($"r{i}", [$"Row {i}", i.ToString()])).ToArray() }
     ];
 

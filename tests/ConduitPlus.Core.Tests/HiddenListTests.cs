@@ -65,6 +65,16 @@ public class HiddenListTests
         Assert.True(Measure(fitted) <= 60);
     }
 
+    [Theory]
+    [InlineData("Heading", "Sub", "Heading")]
+    [InlineData("", "Sub", "Sub")]
+    [InlineData("", "", "Title 1")]
+    public void TitleRowsUseHeadingThenSubtitle(string title, string subtitle, string expected)
+    {
+        var card = Card("a", title, CardKind.Title) with { Subtitle = subtitle };
+        Assert.Equal(expected, HiddenList.Build([P("Overlay", A, [card], "a")]).Single().Text);
+    }
+
     [Fact]
     public void EmptyParticipantsProduceNoRows() => Assert.Empty(HiddenList.Build([]));
 }

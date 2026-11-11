@@ -23,6 +23,20 @@ public sealed class AssemblyInfo : GH_AssemblyInfo
     public override GH_LibraryLicense License => GH_LibraryLicense.opensource;
 }
 
+/// <summary>Opens files saved before inputs were appended: inputs missing from the archive are set aside
+/// while Grasshopper reads it (it would otherwise report a corrupt archive), then restored with defaults.</summary>
+internal static class AppendedInputs
+{
+    public static bool Read(GH_Component component, GH_IReader reader, Func<bool> read)
+    {
+        var inputs = component.Params.Input; var removed = new List<(IGH_Param Param, int Index)>();
+        for (var i = inputs.Count - 1; i >= 0 && !reader.ChunkExists("param_input", i); i--)
+        { var parameter = inputs[i]; removed.Add((parameter, i)); component.Params.UnregisterInputParameter(parameter, false); }
+        try { return read(); }
+        finally { foreach (var entry in removed.OrderBy(e => e.Index)) component.Params.RegisterInputParam(entry.Param, entry.Index); }
+    }
+}
+
 public abstract class CardComponent(string name, string nickname, string description) : GH_Component(name, nickname, description, "Conduit+", "Cards")
 {
     private Bitmap? _icon;
@@ -33,6 +47,8 @@ public abstract class CardComponent(string name, string nickname, string descrip
         using var f = new Font("Segoe UI", 13, FontStyle.Bold, GraphicsUnit.Pixel); g.DrawString(letter, f, Brushes.White, 5, 3); return b;
     }
     protected void Output(IGH_DataAccess da, CardSpec c) { c.Validate(); da.SetData(0, new GH_ObjectWrapper(c)); }
+    /// <summary>Files saved before an input was appended still open cleanly.</summary>
+    public override bool Read(GH_IReader reader) => AppendedInputs.Read(this, reader, () => base.Read(reader));
     protected bool HasInput(int index) => Params.Input[index].SourceCount > 0 || Params.Input[index].VolatileData.PathCount > 0;
     protected ImmutableDictionary<string, GroupDefinition> ReadMembers(IGH_DataAccess da, int index,
         string[] keys, int entries, bool explicitKeys, bool gradient = false)
@@ -121,6 +137,41 @@ public sealed class LineComponent : CardComponent
         if (Params.Input[4].SourceCount > 0) da.GetData(4, ref threshold);
         if (labels.Count == 0) labels = Enumerable.Range(1, values.Count).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList(); if (keys.Count == 0) keys = [.. labels];
         try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Line, Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Threshold = threshold <= 0 ? 0 : threshold, WiredSlot = ReadSlot(da, 5) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
+public sealed class TitleComponent : CardComponent
+{
+    public TitleComponent() : base("Title", "Title", "Viewport title, subtitle and description") { }
+    public override Guid ComponentGuid => new("c40c6535-a998-498b-bb34-0070ff874646");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddTextParameter("Title", "T", "Title", GH_ParamAccess.item);
+        p.AddTextParameter("Subtitle", "S", "Subtitle", GH_ParamAccess.item);
+        p.AddTextParameter("Description", "D", "Description; newlines are preserved", GH_ParamAccess.item);
+        p.AddParameter(new Param_TextOption { Options = InputOptions.TitlePositions }, "Position", "P", "Right-click to choose, or wire tl, tc, tr, bl, bc or br", GH_ParamAccess.item);
+        p.AddParameter(new Param_TextOption { Options = new InputOption[] { new("Plain", "Plain"), new("Card", "Card") } }, "Background", "B", "Plain or Card", GH_ParamAccess.item);
+        p.AddColourParameter("Colour", "C", "Text colour. Plain titles default to black; Card titles default to the theme's text colours", GH_ParamAccess.item);
+        for (var i = 0; i < 6; i++) p[i].Optional = true;
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        string title = "", subtitle = "", description = "", position = "", background = "";
+        da.GetData(0, ref title); da.GetData(1, ref subtitle); da.GetData(2, ref description); da.GetData(3, ref position); da.GetData(4, ref background);
+        var colour = System.Drawing.Color.Empty; string[] colours = da.GetData(5, ref colour) ? [$"#{colour.R:X2}{colour.G:X2}{colour.B:X2}"] : [];
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(subtitle) && string.IsNullOrWhiteSpace(description))
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Add a title, subtitle or description."); return; }
+        Slot? slot = null;
+        if (!string.IsNullOrEmpty(position))
+        {
+            if (InputOptions.TitlePositions.Any(o => o.Matches(position))) slot = Enum.Parse<Slot>(position, true);
+            else AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Unknown position; using top left.");
+        }
+        var card = string.Equals(background, "Card", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(background) && !card && !string.Equals(background, "Plain", StringComparison.OrdinalIgnoreCase))
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Unknown background; using Plain.");
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Title, Title = title, Subtitle = subtitle, Text = description, WiredSlot = slot, Background = card ? TitleBackground.Card : TitleBackground.Plain, Colors = colours }); }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
@@ -295,12 +346,7 @@ public sealed class OverlayComponent : GH_Component
     }
     public override bool Read(GH_IReader reader)
     {
-        var removed = new List<(IGH_Param Param, int Index)>();
-        for (var i = Params.Input.Count - 1; i >= 0 && !reader.ChunkExists("param_input", i); i--)
-        { var parameter = Params.Input[i]; removed.Add((parameter, i)); Params.UnregisterInputParameter(parameter, false); }
-        bool result;
-        try { result = base.Read(reader); }
-        finally { foreach (var entry in removed.OrderBy(e => e.Index)) Params.RegisterInputParam(entry.Param, entry.Index); }
+        var result = AppendedInputs.Read(this, reader, () => base.Read(reader));
         var themeName = "";
         var themeFound = reader.TryGetString("ConduitPlus.Theme", ref themeName);
         _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);

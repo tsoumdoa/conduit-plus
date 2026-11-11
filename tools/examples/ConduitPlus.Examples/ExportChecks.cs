@@ -84,16 +84,20 @@ internal static class ExportChecks
         var regions = layouts.Select(l =>
         {
             Require(l.X >= 0 && l.Y >= 0 && l.X + l.W <= image.Width && l.Y + l.H <= image.Height, "Card outside capture.");
+            // A plain Title has no surface by design: it only needs visible text on the transparent capture.
+            var plain = cards.FirstOrDefault(c => c.Id == l.Id) is { Kind: CardKind.Title, Background: TitleBackground.Plain };
             var samples = 0; var covered = 0; var ink = 0;
             for (var y = (int)l.Y + 5 * scale; y < l.Y + l.H - 5 * scale; y += 3 * scale)
             for (var x = (int)l.X + 5 * scale; x < l.X + l.W - 5 * scale; x += 3 * scale)
             {
-                samples++; var c = image.GetPixel(x, y); if (c.A >= surface.A * .98) covered++;
+                samples++; var c = image.GetPixel(x, y);
+                if (plain) { if (c.A > 128) ink++; continue; }
+                if (c.A >= surface.A * .98) covered++;
                 if (c.A >= surface.A * .98 && Math.Abs(c.R - surface.R) + Math.Abs(c.G - surface.G) + Math.Abs(c.B - surface.B) > 90) ink++;
             }
-            var fraction = covered / (double)samples;
-            Require(fraction > .98 && ink > 5, "Missing card pixels/text.");
-            return new { l.Id, l.X, l.Y, l.W, l.H, samples, covered, ink, fraction };
+            var fraction = plain ? 1 : covered / (double)samples;
+            Require(fraction > .98 && ink > 5, plain ? "Missing title text." : "Missing card pixels/text.");
+            return new { l.Id, l.X, l.Y, l.W, l.H, samples, covered, ink, fraction, plain };
         }).ToArray();
         Console.WriteLine($"PNG {scale}x: {image.Width}x{image.Height}, frames {before}->{after}, {regions.Length} card regions.");
         return new { scale, image.Width, image.Height, before, after, regions };

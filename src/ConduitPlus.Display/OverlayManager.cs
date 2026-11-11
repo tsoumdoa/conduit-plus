@@ -306,7 +306,7 @@ public static partial class OverlayManager
             var n = frame.Hidden.Count;
             var unit = frame.Unit.Values.Min();
             e.Display.DrawRoundedRectangle(new System.Drawing.PointF((float)(chip.X + chip.Width / 2), (float)(chip.Y + chip.Height / 2)), (float)chip.Width, (float)chip.Height, (float)(chip.Height / 2), System.Drawing.Color.FromArgb(229, 163, 61), 0, System.Drawing.Color.FromArgb(229, 163, 61));
-            e.Display.Draw2dText($"+{n} {(n == 1 ? "card" : "cards")}", System.Drawing.Color.FromArgb(23, 25, 30), new global::Rhino.Geometry.Point2d(chip.X + chip.Width / 2, chip.Y + chip.Height / 2), true, (int)Math.Round(11 * unit));
+            e.Display.Draw2dText($"+{n} {(sessions.Any(s => s.Cards.Any(c => c.Kind == CardKind.Title && frame.Hidden.Any(h => h.Owner == s.Owner && h.CardId == c.Id))) ? "items" : n == 1 ? "card" : "cards")}", System.Drawing.Color.FromArgb(23, 25, 30), new global::Rhino.Geometry.Point2d(chip.X + chip.Width / 2, chip.Y + chip.Height / 2), true, (int)Math.Round(11 * unit));
         }
         if (!e.Display.IsInViewCapture)
             foreach (var session in sessions) session.DrawTooltip(e.Display);

@@ -40,7 +40,7 @@ public static class CardMeasure
         !Hits(c, t).Any(h => h.Contains(x, y)) &&
         (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
     public static Size2 Measure(CardSpec c, Theme t) => FormMeasure.Size(c, t, c.Form, TextMetrics.Measurer);
-    public static HitRegion[] Hits(CardSpec c, Theme t) => [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
+    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],
@@ -56,5 +56,10 @@ public static class CardMeasure
 
 public static class SlotLayout
 {
-    public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (Slot)(index % 6);
+    public static Slot[] ResolveAll(IReadOnlyList<CardSpec> cards)
+    {
+        var n = 0;
+        return cards.Select(c => c.Kind == CardKind.Title ? c.WiredSlot ?? Slot.Tl : Resolve(c, n++)).ToArray();
+    }
+    public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (c.Kind == CardKind.Title ? Slot.Tl : (Slot)(index % 6));
 }

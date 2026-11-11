@@ -54,8 +54,9 @@ def main():
     assert highlights > 10, highlights
 
     full = read(args.full / "full-capture-checks.json")[0]
-    assert len(full["regions"]) == 9 and full["after"] > full["before"]
+    assert len(full["regions"]) == 10 and full["after"] > full["before"]
     # Every surface must contain opaque pixels AND ink; a flat white rectangle does not pass.
+    # A plain Title has no surface by design; ExportChecks only requires its text to be visible.
     assert all(r["fraction"] > .98 and r["ink"] > 5 for r in full["regions"])
     # The example's slot arrangement must not cover other cards.
     for i, a in enumerate(full["regions"]):
@@ -80,7 +81,8 @@ def main():
         spans = [span for block in page.get_text("dict")["blocks"] if "lines" in block
                  for line in block["lines"] for span in line["spans"]]
         errors = []
-        for title, region in zip(titles, full["regions"]):
+        # Card titles sit at the card padding; a plain Title's heading is laid out by its own alignment, so skip it here.
+        for title, region in ((t, r) for t, r in zip(titles, full["regions"]) if not r.get("plain")):
             span = next(s for s in spans if s["text"] == title)
             expected = ((region["x"] + 12 * capture["dpi"] * zoom) * point_scale,
                         (region["y"] + 10 * capture["dpi"] * zoom) * point_scale)
@@ -89,7 +91,7 @@ def main():
         assert max(errors) < .01, errors
         page.get_pixmap(matrix=pymupdf.Matrix(1, 1)).save(args.full / "captures" / "pdf-page.png")
         (args.full / "captures" / "pdf-text.txt").write_text(text, encoding="utf-8")
-        result = dict(png_dimensions=dimensions, compact_zoom=zooms[0], full_zoom=zoom, full_card_regions=9, minimum_opaque_fraction=min(r["fraction"] for r in full["regions"]),
+        result = dict(png_dimensions=dimensions, compact_zoom=zooms[0], full_zoom=zoom, full_card_regions=10, minimum_opaque_fraction=min(r["fraction"] for r in full["regions"]),
                       tooltip_difference=tooltip_difference, selected_wire_pixels=highlights,
                       pdf_pages=len(pdf), pdf_points=[page.rect.width, page.rect.height], searchable_titles=len(titles),
                       maximum_title_position_error_points=max(errors), pdf_bytes=pdf_path.stat().st_size)

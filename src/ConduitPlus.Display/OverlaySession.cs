@@ -158,6 +158,7 @@ internal sealed partial class OverlaySession : IDisposable
         var size = View.MainViewport.Size;
         foreach (var layout in OverlayManager.Placements(this).AsEnumerable().Reverse())
         {
+            if (Cards.Any(c => c.Id == layout.Id && c.Kind == CardKind.Title)) continue;
             if (!new Rect2(layout.X, layout.Y, layout.W, layout.H).Contains(x, y)) continue;
             var dpi = Unit;
             if (Cards.FirstOrDefault(c => c.Id == layout.Id) is { } spec && TableScroll.Bar(spec, Theme) is { } bar)
