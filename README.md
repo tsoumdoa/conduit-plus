@@ -161,6 +161,8 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
+| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title and Slot → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
+| Colour Categories | Colour: Categories tree, optional member Keys, Palette (Categorical), Order, Title and Slot → Colours tree, Legend, distinct Categories, Category colours, Group keys and Members for a grouped Bar. Order pins colours across filtering; right-click Show counts defaults on. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
@@ -171,6 +173,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link, Scope, Overlay and Canvas Card are under **Display**.
+Colour Scale and Colour Categories are under **Colour**.
 Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the right-click menu.
 New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light
 UI, Night for its dark UI. Auto follows Rhino settings changes without a solve.
@@ -198,6 +201,93 @@ Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pic
 connected wire always takes priority.
 
 Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise cards use input index % 6. Cards stack in input order within each slot.
+
+## Colour helpers
+
+**Conduit+ → Colour → Colour Scale** maps numbers to colours and a finished ordinary
+Legend. Connect **Colours** to Custom Preview (or Bar → Colors), and **Legend** to
+Overlay or Canvas Card. Values retain their tree paths, item counts and empty
+branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
+of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
+set both for a legend with no Values. Out-of-range values use the end colours.
+Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
+a remark. Constant finite data gets a small nice range around the value.
+
+| Colour Scale input | Nick | Access | Default / meaning |
+|---|---|---|---|
+| Values | V | Number tree, optional | Numbers to colour; one scale across branches. |
+| Palette | P | Text list, optional | Blue; right-click a name, or wire 2–32 colours. |
+| Min | Mn | Number, optional | Nice floor of the finite data; value at the first colour. |
+| Max | Mx | Number, optional | Nice ceiling of the finite data; value at the last colour. |
+| Mid | Md | Number, optional | Centre, except diverging/Status ranges spanning zero use 0. Must be strictly between Min and Max. |
+| Unit | U | Text | Empty; shown on the legend. |
+| Title | T | Text | Legend. |
+| Slot | S | Text option, optional | Automatic. |
+
+Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid maps to the middle
+palette colour, with each side linear; for utilisation use Status, Min 0, Max 1.2,
+Mid 1. RGB interpolation is linear in sRGB. The gradient card has 17 evenly spaced
+samples of the same mapping. Between samples it interpolates, so arbitrary Mid
+positions and custom stop counts can introduce a small approximation in the legend.
+
+**Colour Categories** maps text to swatches. Wire the complete category list to
+**Order** to pin each category's colour and row even when filtering removes its
+items. Absent categories keep a zero-count row and, when keyed, an empty Members
+branch. Unlisted categories append with a warning. Without Order, colours follow
+first appearance. Category names are case-sensitive; blank values become **No data**,
+always last and grey. Ordered palettes sample first to last category (Status with
+two categories is Good/Bad; with three it adds Warning). Categorical and custom
+palettes repeat when exhausted and warn; they do not invent extra hues.
+
+| Colour Categories input | Nick | Access | Default / meaning |
+|---|---|---|---|
+| Categories | Ca | Text tree | One category per item. Order alone can supply empty rows. |
+| Keys | K | Text tree, optional | One member key per item in path order, as on Link; enables selectable legend groups. |
+| Palette | P | Text list, optional | Categorical; right-click a name, or wire 2–32 colours. |
+| Order | O | Text list, optional | First appearance; a complete, unique list pins colours. |
+| Title | T | Text | Legend; also prefixes group keys as `Title:Category`. |
+| Slot | S | Text option, optional | Automatic. |
+
+| Colour Categories output | Nick | Access | Connect to |
+|---|---|---|---|
+| Colours | C | Colour tree | Custom Preview or per-item Bar Colors; same paths/items as Categories. |
+| Legend | L | Card | Overlay or Canvas Card. |
+| Categories | Ca | Text list | Grouped Bar Labels, in legend order. |
+| Category colours | CC | Colour list | Grouped Bar Colors. |
+| Group keys | GK | Text list | Grouped Bar Keys; empty without Keys. |
+| Members | M | Text tree | Grouped Bar Members; one `{i}` branch per row including empty groups; empty without Keys. |
+
+Feed grouped numeric totals in Categories output order into Bar Values. Link
+still receives geometry and the original member keys. Blank/reserved keys, a key
+in different categories, and generated group tokens colliding with member keys
+are errors. Repeated keys within one category are deduplicated. Right-click
+**Show counts** (on by default, saved with Undo) to show/hide unique member counts;
+without Keys, counts are item counts.
+
+Both Palette inputs accept case-insensitive names, an ASCII hyphen in the diverging
+names, and ` reversed` after any name. Wired colour lists are opaque RGB (alpha
+is ignored), with evenly spaced stops on Colour Scale and discrete swatches on
+Colour Categories. The RGB values stay identical in Paper, Night, Smoke and Blueprint.
+Native GH Gradient source inspection is deferred; wire its sampled colours and
+set the same Min/Max explicitly for now.
+
+| Palette | Colours, low-to-high or category order |
+|---|---|
+| Categorical | `#2466C3 #9A9606 #B54303 #15A2B6 #8E7DEC #93518E #E36586 #2E7A50` |
+| Blue | `#CFE8FE #8CC0F2 #5196DF #296CBA #184687` |
+| Teal | `#C8EEE8 #7BCBC6 #31A5A5 #017B80 #095258` |
+| Heat | `#EFE6B1 #E3B25A #D37812 #B4410D #831826` |
+| Blue–Red | `#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726` |
+| Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
+| Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
+
+Developers can regenerate the emitted legend PNG fixtures through the Rhino-free
+raster path in all four themes:
+
+```powershell
+$env:CONDUITPLUS_COLOUR_RENDERS = Join-Path (Get-Location) 'artifacts/colour-helpers'
+dotnet test tests/ConduitPlus.Core.Tests/ConduitPlus.Core.Tests.csproj -c Debug --filter FullyQualifiedName~ColourLegendRenderTests
+```
 
 ## Cards on the Grasshopper canvas
 
