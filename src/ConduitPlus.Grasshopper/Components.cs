@@ -223,6 +223,32 @@ public sealed class LegendComponent : CardComponent
     }
 }
 
+public sealed class KeyLegendComponent : CardComponent
+{
+    public KeyLegendComponent() : base("Key Legend", "KeyLegend", "Simple colour key: one swatch and label per key, with optional values") { }
+    public override Guid ComponentGuid => new("f1deb262-9f13-4293-bc5f-cb98b926dc3c");
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        p.AddTextParameter("Keys", "K", "Display label for each row", GH_ParamAccess.list);
+        p.AddColourParameter("Colors", "C", "One swatch color per key", GH_ParamAccess.list);
+        p.AddTextParameter("Values", "V", "Optional display values; one per key", GH_ParamAccess.list); p[2].Optional = true;
+        p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
+        p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[4].Optional = true;
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        var labels = new List<string>(); var colors = new List<Color>(); var values = new List<string>(); string title = "Legend";
+        if (!da.GetDataList(0, labels) || !da.GetDataList(1, colors)) return;
+        da.GetDataList(2, values); da.GetData(3, ref title);
+        if (labels.Count != colors.Count)
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Keys and Colors must have equal counts."); return; }
+        if (HasInput(2) && values.Count != labels.Count)
+        { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Values must have one entry per key."); return; }
+        try { Output(da, new CardSpec { Id = CardId, Kind = CardKind.Legend, Title = title, Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Labels = labels.ToArray(), ValueLabels = values.ToArray(), WiredSlot = ReadSlot(da, 4) }); }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
 public sealed class TableComponent : CardComponent
 {
     public TableComponent() : base("Table", "Table", "One branch per result row; optional stable row keys") { }
@@ -412,7 +438,7 @@ public sealed class OverlayComponent : GH_Component
     protected override Bitmap Icon => _icon ??= CardComponent.CreateIcon("+");
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Text or Legend cards", GH_ParamAccess.list);
+        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards", GH_ParamAccess.list);
         p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
         p.AddParameter(new Param_TextOption { Options = InputOptions.Themes }, "Theme", "T", "Right-click to choose, or wire Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A set value overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;

@@ -151,6 +151,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Title | Optional Title, Subtitle and multiline Description (at least one required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text defaults to black). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
+| Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
 | Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
@@ -192,7 +193,7 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 ## Cards on the Grasshopper canvas
 
 Place **Conduit+ → Display → Canvas Card** and connect the Card output from any
-Metric, Bar, Table, Line, Text or Legend. Each display accepts exactly one valid
+Metric, Bar, Table, Line, Title, Text, Legend or Key Legend. Each display accepts exactly one valid
 card across all branches; empty input shows a placeholder and invalid or multiple
 cards show an error and clear the previous image. Use separate Canvas Cards to
 arrange a dashboard with Grasshopper's normal component layout and groups.

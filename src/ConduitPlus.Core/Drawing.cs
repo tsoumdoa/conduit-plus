@@ -49,7 +49,7 @@ public static class CardMeasure
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
         CardKind.Table => TableSort.Rows(c).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, BodyTop + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
-        CardKind.Legend when !c.Min.HasValue => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Legend when !c.Min.HasValue => c.Keys.Select((key, i) => new HitRegion(key, t.Padding, BodyTop + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         _ => []
     };
 }

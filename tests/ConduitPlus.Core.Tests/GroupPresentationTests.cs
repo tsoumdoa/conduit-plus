@@ -195,7 +195,7 @@ public sealed class GroupPresentationTests
         public List<(Point2[] Points, string Color)> Outlines { get; } = [];
         public Size2 MeasureText(string text, double size, string font) => new(text.Length * size * .5, size * 1.5);
         public void Rect(Rect2 rect, string fill) => Rects.Add((rect, fill));
-        public void RoundedRect(Rect2 rect, double radius, string fill) { }
+        public void RoundedRect(Rect2 rect, double radius, string fill) => Rects.Add((rect, fill));
         public void Gradient(Rect2 rect, IReadOnlyList<string> colors) { }
         public void Line(Point2 from, Point2 to, string color, double width = 1) => Lines.Add((from, to, color, width));
         public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) => Outlines.Add((points.ToArray(), color));

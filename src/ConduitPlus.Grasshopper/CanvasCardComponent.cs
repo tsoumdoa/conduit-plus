@@ -48,7 +48,7 @@ public sealed class CanvasCardComponent : GH_Component
     public override void CreateAttributes() => m_attributes = new CanvasCardAttributes(this);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Card", "C", "Exactly one Metric, Bar, Table, Line, Text or Legend card across the whole tree", GH_ParamAccess.tree);
+        p.AddGenericParameter("Card", "C", "Exactly one Metric, Bar, Table, Line, Title, Text, Legend or Key Legend card across the whole tree", GH_ParamAccess.tree);
         p[0].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree);
         p[1].Optional = true;

@@ -18,7 +18,7 @@ public static class ThemePainter
         var half = theme.BorderWidth / 2;
         canvas.Polyline(Outline(new(half, half, size.Width - 2 * half, size.Height - 2 * half), Math.Max(0, theme.Radius - half)), theme.Border, theme.BorderWidth);
     }
-    private static Point2[] Outline(Rect2 rect, double radius)
+    internal static Point2[] Outline(Rect2 rect, double radius)
     {
         if (radius <= 0) return [new(rect.X, rect.Y), new(rect.X + rect.Width, rect.Y), new(rect.X + rect.Width, rect.Y + rect.Height), new(rect.X, rect.Y + rect.Height), new(rect.X, rect.Y)];
         var r = Math.Min(radius, Math.Min(rect.Width, rect.Height) / 2);

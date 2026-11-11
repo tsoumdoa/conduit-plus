@@ -25,6 +25,8 @@ public sealed record CardSpec
     public double? Max { get; init; }
     public double?[] Values { get; init; } = [];
     public string[] Labels { get; init; } = [];
+    /// <summary>Optional per-row display text for categorical legends, separate from numeric chart Values.</summary>
+    public string[] ValueLabels { get; init; } = [];
     public string[] Keys { get; init; } = [];
     private readonly ImmutableDictionary<string, GroupDefinition> _groups = ImmutableDictionary<string, GroupDefinition>.Empty.WithComparers(StringComparer.Ordinal);
     /// <summary>Entry keys with explicit group membership; absent entries retain individual-key semantics.</summary>
@@ -76,6 +78,7 @@ public sealed record CardSpec
         {
             if (Colors.Length == 0 || Colors.Any(color => color is null || color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit))) throw new ArgumentException("Legend colors must be #RRGGBB strings.");
             if (Min.HasValue != Max.HasValue) throw new ArgumentException("Gradient legends need both Min and Max.");
+            if (ValueLabels.Length != 0 && (Min.HasValue || ValueLabels.Length != Colors.Length)) throw new ArgumentException("Legend value labels must match categorical colors and cannot be used with a gradient.");
             if (Min.HasValue)
             {
                 if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value >= Max.Value || !double.IsFinite(Max.Value - Min.Value)) throw new ArgumentException("Gradient legends need 2+ colors and finite Min < Max.");
