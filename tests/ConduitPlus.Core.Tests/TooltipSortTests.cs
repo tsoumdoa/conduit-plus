@@ -8,6 +8,7 @@ using Tooltip = ConduitPlus.Core.Tooltip;
 
 namespace ConduitPlus.Core.Tests;
 
+[Collection("Legend text metrics")]
 public sealed class TooltipSortTests
 {
     private static CardSpec Table(params string?[] cells) => new()

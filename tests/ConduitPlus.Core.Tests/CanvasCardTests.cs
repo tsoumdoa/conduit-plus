@@ -6,6 +6,7 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
+[Collection("Legend text metrics")]
 public sealed class CanvasCardTests
 {
     private static CardSpec Table(string id = "table", int rows = 20, int columns = 2) => new()

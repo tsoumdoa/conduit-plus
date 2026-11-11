@@ -1,0 +1,48 @@
+## Programme (base 12)
+#F5C63C #3D7FC4 #E2553F #6DB36A #8750A8 #F0903A #2E4A75 #8A929B #45B6C8 #E98AB2 #A9C43E #A9714A #811F11 #B9D3F9 #FFBFB3 #636363 #7B5F00 #6D304B #C7DD81 #F48875 #4E6486 #D1D1D1 #00515C #7EAFE5
+N=4: dE 19.4 cvd 6.8  N=6: dE 13.3 cvd 5.4  N=8: dE 13.0 cvd 5.4  N=12: dE 9.8 cvd 2.1  N=16: dE 9.8 cvd 2.1  N=20: dE 6.9 cvd 2.1  N=24: dE 6.0 cvd 2.1  -> ships 24
+worst pairs: N=6 dE #F5C63C~#F0903A cvd #3D7FC4~#8750A8; N=8 dE #3D7FC4~#8A929B cvd #3D7FC4~#8750A8; N=12 dE #6DB36A~#A9C43E cvd #E2553F~#A9714A
+<1.5:1 on Paper: none; on Night: none
+3:1 on both: 5/12
+
+## Primary (base 10)
+#E4322B #1F56C8 #FFD500 #111111 #0F8F4A #FF8A1F #38B6E8 #9B9B9B #6B3FA0 #F29AB8 #950006 #0086B1 #4D4D4D #A5C5FF #73DF95 #49B870 #689BFF #7A7A7A #3972E7 #005571 #005D2D #E7C100 #FFAF77 #B085ED
+N=4: dE 35.7 cvd 25.3  N=6: dE 17.8 cvd 7.3  N=8: dE 13.5 cvd 7.3  N=10: dE 12.0 cvd 5.5  N=12: dE 12.0 cvd 5.5  N=16: dE 11.6 cvd 5.5  N=20: dE 8.3 cvd 5.5  N=24: dE 6.4 cvd 3.5  -> ships 24
+worst pairs: N=6 dE #E4322B~#FF8A1F cvd #E4322B~#0F8F4A; N=8 dE #38B6E8~#9B9B9B cvd #E4322B~#0F8F4A; N=10 dE #1F56C8~#6B3FA0 cvd #9B9B9B~#F29AB8
+<1.5:1 on Paper: ['#FFD500']; on Night: ['#111111']
+3:1 on both: 2/10
+
+## Pop (base 11)
+#FF2E93 #00B4F0 #FFE600 #8F4BFF #FF6A13 #2FD67B #1437E0 #FFA8D8 #00D1B2 #FF3B30 #B6F000 #008CBB #618EFF #00957F #57F396 #97DCFF #00B260 #009952 #EB201B #00A3D9 #C976A5 #FF834A #FFBBD1 #E08CBB
+N=4: dE 26.0 cvd 14.2  N=6: dE 18.3 cvd 9.6  N=8: dE 18.3 cvd 5.7  N=11: dE 7.8 cvd 0.1  N=12: dE 7.8 cvd 0.1  N=16: dE 7.8 cvd 0.1  N=20: dE 5.3 cvd 0.1  N=24: dE 5.0 cvd 0.1  -> ships 24
+worst pairs: N=6 dE #FF2E93~#FF6A13 cvd #FF6A13~#2FD67B; N=8 dE #FF2E93~#FF6A13 cvd #00B4F0~#FFA8D8; N=11 dE #2FD67B~#00D1B2 cvd #FFE600~#B6F000
+<1.5:1 on Paper: ['#FFE600', '#B6F000']; on Night: none
+3:1 on both: 3/11
+
+## Pastel (base 10)
+#FEB2C3 #ACD6FF #F7EA9B #AEF4D0 #BFAFF2 #BEDE97 #86D7E0 #FFD0AE #F2BDEE #CFCAC2 #E1AA82 #E5F2FF #A796E0 #EE95AC #E6C76E #D9A8D8
+N=4: dE 9.8 cvd 6.6  N=6: dE 7.5 cvd 5.2  N=8: dE 6.4 cvd 3.4  N=10: dE 5.9 cvd 0.3  N=12: dE 5.9 cvd 0.3  N=16: dE 5.1 cvd 0.3  -> ships 16
+worst pairs: N=6 dE #AEF4D0~#BEDE97 cvd #F7EA9B~#BEDE97; N=8 dE #ACD6FF~#86D7E0 cvd #BEDE97~#FFD0AE; N=10 dE #FEB2C3~#F2BDEE cvd #FEB2C3~#CFCAC2
+<1.5:1 on Paper: ['#F7EA9B', '#AEF4D0', '#BEDE97', '#FFD0AE']; on Night: none
+3:1 on both: 0/10
+
+## Earth (base 12)
+#B85C38 #D2A24C #8A9A6B #5E7480 #D8C3A5 #4E342A #8C3B2A #3F5E5A #A9B8C2 #C99A8E #5F6B3A #A39E93 #CADAE4 #80725F #313F47 #F5D299
+N=4: dE 11.5 cvd 7.2  N=6: dE 11.2 cvd 7.2  N=8: dE 9.3 cvd 7.2  N=12: dE 5.7 cvd 1.1  N=16: dE 5.7 cvd 1.1  -> ships 16
+worst pairs: N=6 dE #D2A24C~#D8C3A5 cvd #D2A24C~#8A9A6B; N=8 dE #5E7480~#3F5E5A cvd #D2A24C~#8A9A6B; N=12 dE #C99A8E~#A39E93 cvd #C99A8E~#A39E93
+<1.5:1 on Paper: none; on Night: ['#4E342A']
+3:1 on both: 3/12
+
+## Accent (base 8)
+#E8372C #111111 #8C8C8C #D2D2D2 #4A4A4A #F3A59E #B0B0B0 #6B6B6B #9E1F17 #2B2B2B #C4574E #3A3A3A #5A5A5A #9E9E9E #FBD0CB #7B7B7B
+N=4: dE 21.6 cvd 11.9  N=6: dE 11.6 cvd 7.7  N=8: dE 10.1 cvd 2.7  N=12: dE 5.9 cvd 2.7  N=16: dE 5.5 cvd 1.7  -> ships 16
+worst pairs: N=6 dE #D2D2D2~#F3A59E cvd #D2D2D2~#F3A59E; N=8 dE #F3A59E~#B0B0B0 cvd #F3A59E~#B0B0B0; N=8 dE #F3A59E~#B0B0B0 cvd #F3A59E~#B0B0B0
+<1.5:1 on Paper: none; on Night: ['#111111']
+3:1 on both: 3/8
+
+## Cool (base 9)
+#1F3A6E #2F6FDE #7CC0F2 #1F9E9A #FF7A59 #9ADBC5 #2E7D5B #9A95EE #CFE6F5 #00442C #475863 #1B4FA9 #7BBB9B #6580B1 #CCCBFF #504A8F #226347 #9BAEBA #2A3A44 #518F71 #8FABDF #FFC2B0 #C1D4E1 #003080
+N=4: dE 17.0 cvd 15.5  N=6: dE 11.8 cvd 8.9  N=8: dE 11.4 cvd 8.0  N=9: dE 9.7 cvd 7.2  N=12: dE 9.7 cvd 7.2  N=16: dE 7.1 cvd 4.6  N=20: dE 6.3 cvd 4.3  N=24: dE 5.1 cvd 3.5  -> ships 24
+worst pairs: N=6 dE #7CC0F2~#9ADBC5 cvd #1F9E9A~#FF7A59; N=8 dE #7CC0F2~#9A95EE cvd #7CC0F2~#9A95EE; N=9 dE #9ADBC5~#CFE6F5 cvd #9ADBC5~#CFE6F5
+<1.5:1 on Paper: ['#CFE6F5']; on Night: none
+3:1 on both: 3/9

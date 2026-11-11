@@ -1,6 +1,6 @@
 namespace ConduitPlus.Core;
 
-public sealed record InputOption(string Label, string? Value)
+public sealed record InputOption(string Label, string? Value, string? Group = null)
 {
     public bool Matches(string? value) => string.Equals(Value ?? "", value ?? "", StringComparison.OrdinalIgnoreCase);
 }

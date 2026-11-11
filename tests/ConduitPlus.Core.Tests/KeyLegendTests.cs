@@ -3,8 +3,13 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
-public sealed class KeyLegendTests
+[Collection("Legend text metrics")]
+public sealed class KeyLegendTests : IDisposable
 {
+    private readonly Func<string, double, string, Size2> _original = TextMetrics.Measurer;
+    public KeyLegendTests() => TextMetrics.Measurer = Measure;
+    public void Dispose() => TextMetrics.Measurer = _original;
+    private static Size2 Measure(string text, double size, string font) => new(text.Length * size / 2, size + 2);
     private static CardSpec Legend() => new()
     {
         Id = "key-legend", Kind = CardKind.Legend, Title = "Legend",
@@ -157,7 +162,7 @@ public sealed class KeyLegendTests
         public List<(Point2[] Points, string Color, double Width)> Edges { get; } = [];
         public List<(Rect2 Rect, string Fill)> Rects { get; } = [];
         public List<(string Text, Point2 Position, double Size, string Color, string Font, Rect2 Clip)> Texts { get; } = [];
-        public Size2 MeasureText(string text, double size, string font) => new(text.Length * size / 2, size + 2);
+        public Size2 MeasureText(string text, double size, string font) => Measure(text, size, font);
         public void Rect(Rect2 rect, string fill) => Rects.Add((rect, fill));
         public void RoundedRect(Rect2 rect, double radius, string fill) => Swatches.Add((rect, radius, fill));
         public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) => Edges.Add((points.ToArray(), color, width));

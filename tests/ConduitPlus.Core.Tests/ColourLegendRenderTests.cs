@@ -12,6 +12,26 @@ public sealed class ColourLegendRenderTests
     [Theory]
     [InlineData("Paper")]
     [InlineData("Night")]
+    public void DiagramStylesRenderOneItemPerSwatchWithoutCounts(string name)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        foreach (var p in Palettes.Styles)
+        {
+            string[] labels = ["Housing", "Office", "Retail", "Landscape", "Culture", "Leisure", "Services", "Circulation",
+                "Education", "Health", "Workshops", "Storage", "Public space", "Transport", "Plant", "Future"];
+            var result = ColourCategories.Create(labels, palette: [p.Name], title: p.Name);
+            Assert.Empty(result.Messages); Assert.Empty(result.Legend.ValueLabels);
+            using var image = RasterDrawing.Render(result.Legend, theme, 2);
+            for (var i = 0; i < labels.Length; i++)
+                Near(result.Colours[i], image.GetPixel((int)(2 * (theme.Padding + 6)),
+                    (int)(2 * (CardMeasure.BodyTop + i * theme.RowHeight + theme.RowHeight / 2))), 0);
+            Save(image, $"diagram-{p.Name}-{name}.png");
+        }
+    }
+
+    [Theory]
+    [InlineData("Paper")]
+    [InlineData("Night")]
     [InlineData("Smoke")]
     [InlineData("Blueprint")]
     public void EmittedCardsRenderWithIdenticalModelRgbInEveryTheme(string name)

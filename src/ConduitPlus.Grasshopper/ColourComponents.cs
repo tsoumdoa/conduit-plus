@@ -19,7 +19,11 @@ public abstract class ColourComponent(string name, string nickname, string descr
     protected string CardId => InstanceGuid.ToString("N");
     protected static void PaletteInput(GH_InputParamManager p, bool categories)
     {
-        var options = Palettes.All.Where(s => categories || s.Kind != PaletteKind.Categorical).SelectMany(s => new[] { new InputOption(s.Name, s.Name), new InputOption(s.Name + " reversed", s.Name + " reversed") }).ToArray();
+        var options = Palettes.All.Where(s => categories || s.Kind != PaletteKind.Categorical)
+            .OrderBy(s => s.Kind == PaletteKind.Categorical ? Palettes.Styles.Contains(s) ? 1 : 0 : 2)
+            .SelectMany(s => s.Kind == PaletteKind.Categorical
+                ? new[] { new InputOption(s.Name, s.Name, Palettes.Styles.Contains(s) ? "Diagram styles" : "Categorical") }
+                : new[] { new InputOption(s.Name, s.Name, "Ordered"), new InputOption(s.Name + " reversed", s.Name + " reversed", "Ordered") }).ToArray();
         var index = p.AddParameter(new Param_TextOption { Options = options }, "Palette", "P", categories ? "Right-click to choose, or set your own colours (one per category, repeating)" : "Right-click to choose, or set 2–32 colours as evenly spaced stops; append ' reversed' to a name", GH_ParamAccess.tree);
         p[index].Optional = true;
     }
@@ -171,6 +175,40 @@ public sealed class ColourCategoriesComponent : ColourComponent
             da.SetDataTree(0, ColourTree(tree, result.Colours)); da.SetData(1, new GH_ObjectWrapper(result.Legend));
             da.SetDataList(2, result.Categories); da.SetDataList(3, result.CategoryColours.Select(Colour));
             da.SetDataList(4, result.GroupKeys); da.SetDataTree(5, members); Messages(result.Messages);
+        }
+        catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
+    }
+}
+
+public sealed class ColourPaletteComponent : ColourComponent
+{
+    public ColourPaletteComponent() : base("Colour Palette", "ColPal", "A stable set of diagram colours; grow Count without changing the first colours") { }
+    public override Guid ComponentGuid => new("907c17a3-fdf5-4d8b-9ab6-10400ae88ed2");
+    protected override ComponentIcon IconKind => ComponentIcon.ColourPalette;
+    public override IEnumerable<string> Keywords => ["color", "palette", "swatch", "diagram", "scheme"];
+    protected override void RegisterInputParams(GH_InputParamManager p)
+    {
+        var style = new Param_TextOption { Options = Palettes.Styles.Select(s => new InputOption(s.Name, s.Name, "Diagram styles"))
+            .Append(new InputOption("Categorical", "Categorical", "Categorical")).ToArray() };
+        p.AddParameter(style, "Style", "S", "Right-click to choose a diagram style; a typed scale name is sampled evenly", GH_ParamAccess.item);
+        style.PersistentData.Append(new GH_String("Programme"));
+        p.AddIntegerParameter("Count", "N", "How many colours", GH_ParamAccess.item, 8);
+        p.AddIntegerParameter("Shift", "Sh", "Start further along the style; wraps in either direction", GH_ParamAccess.item, 0); p[2].Optional = true;
+    }
+    protected override void RegisterOutputParams(GH_OutputParamManager p)
+    {
+        p.AddColourParameter("Colours", "C", "N colours; diagram styles keep the first N when Count grows", GH_ParamAccess.list);
+        p.AddTextParameter("Hex", "H", "The same colours as #RRGGBB text", GH_ParamAccess.list);
+    }
+    protected override void SolveInstance(IGH_DataAccess da)
+    {
+        string style = "Programme"; int count = 8, shift = 0;
+        if (!da.GetData(0, ref style) || !da.GetData(1, ref count)) return;
+        da.GetData(2, ref shift);
+        try
+        {
+            var result = DiagramPalette.Create(style, count, shift);
+            da.SetDataList(0, result.Colours.Select(Colour)); da.SetDataList(1, result.Colours); Messages(result.Messages);
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }

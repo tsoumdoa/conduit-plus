@@ -19,9 +19,14 @@ public sealed class Param_TextOption : Param_String
         base.AppendAdditionalMenuItems(menu);
         Menu_AppendSeparator(menu);
         var current = PersistentData.DataCount == 1 ? PersistentData.AllData(true).OfType<GH_String>().FirstOrDefault()?.Value : null;
+        string? group = null;
         foreach (var option in OptionsProvider?.Invoke() ?? Options)
+        {
+            if (group is not null && group != option.Group) Menu_AppendSeparator(menu);
+            group = option.Group;
             Menu_AppendItem(menu, option.Label, (_, _) => ApplyOption(option), SourceCount == 0,
                 SourceCount == 0 && PersistentData.DataCount <= 1 && option.Matches(current));
+        }
     }
     public void ApplyOption(InputOption option)
     {
