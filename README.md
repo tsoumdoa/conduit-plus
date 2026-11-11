@@ -228,17 +228,10 @@ a remark. Constant finite data gets a single-colour legend at that value.
 | Title | T | Text | Legend. |
 | Slot | S | Text option, optional | Automatic. |
 
-Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid maps to the middle
-palette colour, with each side linear. Explicit Mid extends automatic bounds to include it;
-explicit Min/Max must enclose Mid. An explicit Mid too close to an end for the legend
-reports an error; move it farther inside. A default zero closer to an end than the
-legend can express uses the nearest interior legend position, while model zero
-still maps to neutral. If the range has no interior double, the default Mid keeps
-the endpoint mapping. RGB interpolation is linear in sRGB. The legend
-samples every palette knot and the Mid breakpoint (at most 33 positioned stops),
-so its interpolation agrees with model colours within one RGB byte per channel.
-Each component produces one legend per solve; give scalar inputs a single value.
-Palette and Order flatten all branches without creating extra iterations.
+Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid is the value at the
+palette's middle colour; each side of it is linear, and automatic bounds grow to include
+it. The legend is drawn from the same mapping as the model colours, so the two always
+agree. Give one Title, Unit, Slot and Mid per component: it makes one legend.
 
 **Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1.
 

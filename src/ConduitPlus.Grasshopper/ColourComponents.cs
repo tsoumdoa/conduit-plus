@@ -45,7 +45,7 @@ public abstract class ColourComponent(string name, string nickname, string descr
         // GH otherwise inserts null placeholders for unassigned later iterations.
         da.DisableGapLogic();
         if (da.Iteration == 0) return true;
-        AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{name} makes one legend per component; give a single {controls}.");
+        AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{name} makes one legend, so it needs a single {controls}.");
         return false;
     }
     protected Slot? ReadSlot(IGH_DataAccess da, int index)
@@ -127,7 +127,7 @@ public sealed class ColourCategoriesComponent : ColourComponent
         p.AddTextParameter("Keys", "K", "Optional member key per item in path order, as on Link; enables legend selection", GH_ParamAccess.tree); p[1].Optional = true;
         PaletteInput(p, true);
         p.AddTextParameter("Order", "O", "All categories in legend order; absent categories keep their slots and empty groups", GH_ParamAccess.tree); p[3].Optional = true;
-        p.AddTextParameter("Title", "T", "Legend title; group keys are generated as Title:Category@component identity", GH_ParamAccess.item, "Legend");
+        p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position", GH_ParamAccess.item); p[5].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
@@ -136,7 +136,7 @@ public sealed class ColourCategoriesComponent : ColourComponent
         p.AddGenericParameter("Legend", "L", "Categorical Legend for Overlay or Canvas Card", GH_ParamAccess.item);
         p.AddTextParameter("Categories", "Ca", "Distinct categories in legend order; to Bar Labels", GH_ParamAccess.list);
         p.AddColourParameter("Category colours", "CC", "One colour per category; to Bar Colors", GH_ParamAccess.list);
-        p.AddTextParameter("Group keys", "GK", "Generated Title:Category@component identity tokens; to Bar Keys. Empty without Keys", GH_ParamAccess.list);
+        p.AddTextParameter("Group keys", "GK", "Selection keys for each category row (generated, unique to this component); to Bar Keys. Empty without Keys", GH_ParamAccess.list);
         p.AddTextParameter("Members", "M", "One branch per category, including empty branches; to Bar Members. Empty without Keys", GH_ParamAccess.tree);
     }
     public override bool Write(GH_IWriter writer) { writer.SetBoolean("ShowCounts", _showCounts); return base.Write(writer); }

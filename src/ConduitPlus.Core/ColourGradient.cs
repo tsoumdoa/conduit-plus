@@ -24,12 +24,13 @@ public sealed class ColourGradient
 
     /// <summary>PDF bands follow every exact stop interval; adjacent bands share boundaries.</summary>
     public static IEnumerable<(Rect2 Rect, ColorRgba Colour)> Bands(Rect2 rect, IReadOnlyList<string> colours,
-        IReadOnlyList<double> positions, int bandsPerInterval = 128)
+        IReadOnlyList<double> positions, int totalBands = 256)
     {
         var gradient = new ColourGradient(colours, positions);
         for (var knot = 0; knot < gradient._positions.Length - 1; knot++)
         {
             var start = gradient._positions[knot]; var end = gradient._positions[knot + 1];
+            var bandsPerInterval = Math.Max(4, (int)Math.Ceiling(totalBands * (end - start)));
             for (var i = 0; i < bandsPerInterval; i++)
             {
                 var a = start + (end - start) * i / bandsPerInterval;

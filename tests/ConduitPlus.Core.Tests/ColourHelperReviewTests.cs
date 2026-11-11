@@ -102,7 +102,7 @@ public sealed class ColourHelperReviewTests
         foreach (var (min, max, mid) in new[] { (-1d, 1d, Math.BitDecrement(1d)), (0d, 1e308, double.Epsilon) })
         {
             var error = Assert.Throws<ArgumentException>(() => ColourScale.Create([mid], ["Status"], min, max, mid));
-            Assert.Equal($"Mid ({mid.ToString("G6", System.Globalization.CultureInfo.InvariantCulture)}) is too close to Min or Max to show; move it inside the range.", error.Message);
+            Assert.Equal($"Mid ({mid.ToString("G15", System.Globalization.CultureInfo.InvariantCulture)}) is too close to Min or Max to show; move it inside the range.", error.Message);
         }
     }
 

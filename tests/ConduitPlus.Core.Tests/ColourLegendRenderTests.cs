@@ -156,7 +156,7 @@ public sealed class ColourLegendRenderTests
         {
             var rect = new Rect2(20, 40, 240, 10);
             var bands = ColourGradient.Bands(rect, scale.Legend.Colors, scale.Legend.ColorPositions).ToArray();
-            Assert.Equal(128 * (scale.Legend.Colors.Length - 1), bands.Length);
+            Assert.InRange(bands.Length, 1, 256 + 4 * (scale.Legend.Colors.Length - 1));
             Assert.Equal(rect.X, bands[0].Rect.X);
             Assert.Equal(rect.X + rect.Width, bands[^1].Rect.X + bands[^1].Rect.Width);
             for (var i = 0; i < bands.Length; i++)

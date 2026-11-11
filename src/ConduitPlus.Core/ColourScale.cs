@@ -42,7 +42,7 @@ public static class ColourScale
         var finite = values.Where(v => v.HasValue && double.IsFinite(v.Value)).Select(v => v!.Value).ToArray();
         if (finite.Length == 0 && (!min.HasValue || !max.HasValue))
             throw new ArgumentException("Connect Values (or set Min and Max).");
-        static string F(double? v) => v?.ToString("G6", CultureInfo.InvariantCulture) ?? "";
+        static string F(double? v) => v?.ToString("G15", CultureInfo.InvariantCulture) ?? "";
         if (min.HasValue && !double.IsFinite(min.Value) || max.HasValue && !double.IsFinite(max.Value))
             throw new ArgumentException("Min and Max must be finite.");
         if (mid.HasValue && !double.IsFinite(mid.Value)) throw new ArgumentException("Mid must be finite.");
@@ -107,7 +107,7 @@ public static class ColourScale
         var missing = values.Count - finite.Length;
         if (missing > 0) messages.Add(new(ColourMessageLevel.Remark, $"{missing} missing {(missing == 1 ? "value" : "values")} shown in grey ({Palettes.Missing})."));
         var outside = finite.Count(v => v < min || v > max);
-        if (outside > 0) messages.Add(new(ColourMessageLevel.Remark, $"{outside} of {values.Count} {(values.Count == 1 ? "value" : "values")} {(outside == 1 ? "is" : "are")} outside {F(min)}–{F(max)} and {(outside == 1 ? "uses" : "use")} the end colours."));
+        if (outside > 0) messages.Add(new(outside == finite.Length ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, $"{outside} of {values.Count} {(values.Count == 1 ? "value" : "values")} {(outside == 1 ? "is" : "are")} outside {F(min)}–{F(max)} and {(outside == 1 ? "uses" : "use")} the end colours."));
         return result with { Colours = values.Select(result.ColourAt).ToArray(), Legend = legend, Messages = messages.ToArray() };
     }
 }
