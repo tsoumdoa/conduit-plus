@@ -11,7 +11,7 @@ public static class LegendCardPainter
     public static double CategoricalWidth(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
     {
         double Widest(IEnumerable<string> text) => text.Select(s => measure(s, t.FontSize, t.Font).Width).DefaultIfEmpty().Max();
-        var row = 2 * t.Padding + 12 + 8 + Widest(c.Labels)
+        var row = 2 * t.Padding + 6 + 12 + 8 + Widest(c.Labels)
             + (c.ValueLabels.Length > 0 ? 8 + Widest(c.ValueLabels) : 0);
         // Clear ends at Width - Padding; the title clips 4px before its 40px button.
         var title = 2 * t.Padding + measure(c.Title, t.FontSize, t.Font).Width + (c.Keys.Length > 0 ? 40 + 4 : 0);
@@ -54,14 +54,14 @@ public static class LegendCardPainter
         {
             var y = CardMeasure.BodyTop + i * t.RowHeight;
             if (hits.Length > 0) CardPainter.Highlight(canvas, c, t, hits[i]);
-            var swatch = new Rect2(t.Padding, y + (t.RowHeight - 12) / 2, 12, 12);
+            var swatch = new Rect2(t.Padding + 6, y + (t.RowHeight - 12) / 2, 12, 12);
             var radius = t.Radius == 0 ? 0 : 2;
             canvas.RoundedRect(swatch, radius, c.Colors[i]);
             // A 1px stroke centred half a pixel inside the fill leaves the entire edge inset.
             canvas.Polyline(ThemePainter.Outline(new(swatch.X + .5, swatch.Y + .5, 11, 11), Math.Max(0, radius - .5)),
                 ColorRgba.Parse(t.Ink).WithAlpha(0x29).ToHex());
 
-            var labelX = t.Padding + 12 + 8;
+            var labelX = t.Padding + 6 + 12 + 8;
             var right = categoricalRight;
             var labelRight = right;
             if (c.ValueLabels.Length > 0)

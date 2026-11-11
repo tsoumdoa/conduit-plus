@@ -7,7 +7,7 @@ param(
     [switch]$Safe,
     [switch]$Compact,
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
-    [ValidateSet('Paper', 'Smoke', 'Blueprint')][string]$Theme = 'Paper',
+    [ValidateSet('Paper', 'Night', 'Smoke', 'Blueprint')][string]$Theme = 'Paper',
     [ValidateSet('Baseline', 'Tooltip', 'Selected', 'GroupSelected', 'GroupPartial', 'GroupHover', 'Scope')][string]$State = 'Baseline',
     [ValidateRange(10, 600)][int]$TimeoutSeconds = 180
 )

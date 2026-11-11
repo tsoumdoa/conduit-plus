@@ -66,7 +66,7 @@ internal sealed partial class OverlaySession : IDisposable
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (theme is not null) _themeSelection = theme;
-        var resolved = RhinoTheme.Resolve(_themeSelection);
+        var resolved = ResolveTheme();
         if (Theme != resolved)
         {
             OverlayManager.CancelGesture(this);
@@ -92,10 +92,12 @@ internal sealed partial class OverlaySession : IDisposable
 
     internal void RefreshTheme()
     {
-        if (_disposed || Theme == RhinoTheme.Resolve(_themeSelection)) return;
+        if (_disposed || Theme == ResolveTheme()) return;
         Update(Cards);
         OverlayManager.Settle(Document, View);
     }
+
+    private Theme ResolveTheme() => RhinoTheme.ForViewport(_themeSelection, View.MainViewport);
 
     private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
     {
@@ -211,6 +213,8 @@ internal sealed partial class OverlaySession : IDisposable
     private void DrawCards(DrawEventArgs e, bool floatingOnly)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
+        // Display-mode background edits need not raise Rhino's UI appearance event.
+        if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
         if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
@@ -259,19 +263,15 @@ internal sealed partial class OverlaySession : IDisposable
             display.PushDepthWriting(false);
             try
             {
-                // Composite every face before any accent wire, independent of selection order.
+                // Composite the selected neutral wash before any outlined wires. Hover never fills faces.
+                foreach (var key in _selectedMembers)
+                    foreach (var link in _links) link.DrawFaces(display, key);
                 if (includeHover)
                     foreach (var hover in _hoveredMembers)
                         if (!_selectedMembers.Contains(hover))
-                            foreach (var link in _links) link.DrawFaces(display, hover, color, false);
+                            foreach (var link in _links) link.DrawHighlight(display, hover, color, false);
                 foreach (var key in _selectedMembers)
-                    foreach (var link in _links) link.DrawFaces(display, key, color, true);
-                if (includeHover)
-                    foreach (var hover in _hoveredMembers)
-                        if (!_selectedMembers.Contains(hover))
-                            foreach (var link in _links) link.Draw(display, hover, color, 2, false, false);
-                foreach (var key in _selectedMembers)
-                    foreach (var link in _links) link.Draw(display, key, color, 4, true, false);
+                    foreach (var link in _links) link.DrawHighlight(display, key, color, true);
             }
             finally { display.PopDepthWriting(); }
         }
