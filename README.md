@@ -197,12 +197,12 @@ Right-click a card's **Slot** input to pick Automatic or a viewport position,
 Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pick
 0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
 connected wire always takes priority. Unknown Slot text warns; use tl, tr, bl, br, lc or rc.
-Card and Link outputs have readable one-line summaries in Panels. Solve iteration
-zero retains the component ID; subsequent cards use positional `:n` suffixes.
+Card and Link outputs have readable one-line summaries in Panels. Metric lists,
+including grafted lists, show one card per value.
 Unslotted cards from one component share the first card’s slot. If Values has many
 one-item branches, Bar/Line warns to flatten it for one chart.
 
-Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards stack in input order within each slot.
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
 
 ## Cards on the Grasshopper canvas
 

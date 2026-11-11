@@ -69,7 +69,7 @@ public static class SlotLayout
         {
             if (c.Kind == CardKind.Title) return c.WiredSlot ?? Slot.Tl;
             var source = CardIdentity.Source(c.Id);
-            if (source == c.Id || !sources.TryGetValue(source, out _)) sources[source] = Resolve(c, n++);
+            if (!sources.ContainsKey(source)) sources[source] = (Slot)(n++ % 6);
             var slot = sources[source];
             return c.WiredSlot ?? slot;
         }).ToArray();
