@@ -15,6 +15,7 @@ public sealed class ColourHelperReviewTests
         {
             var scale = ColourScale.Create([], palette, min, max, mid);
             var legend = scale.Legend;
+            Assert.Equal(scale.Palette.ColourAt(.5), scale.ColourAt(scale.Mid));
             Assert.InRange(legend.Colors.Length, 2, 33);
             var probes = Enumerable.Range(0, 2001).Select(i => i / 2000d)
                 .Concat(legend.ColorPositions)
@@ -54,6 +55,7 @@ public sealed class ColourHelperReviewTests
         Assert.Equal(scale.Palette.Colours[0], scale.Colours[0]);
         Assert.Equal(scale.Palette.Colours[^1], scale.Colours[^1]);
         Assert.DoesNotContain(Palettes.Missing, scale.Legend.Colors);
+        Assert.Equal(scale.Palette.ColourAt(.5), scale.ColourAt(scale.Mid));
         for (var i = 0; i <= 100; i++)
         {
             var t = i / 100d;
@@ -92,6 +94,59 @@ public sealed class ColourHelperReviewTests
         Assert.True(ColourScale.Create([3, 4], max: -50).Min < -50);
         Assert.Throws<ArgumentException>(() => ColourScale.Create([.2, .9], min: 0, max: 1, mid: 1));
         Assert.Throws<ArgumentException>(() => ColourScale.Create([.2, .9], min: 1, mid: 1));
+    }
+
+    [Fact]
+    public void UnshowableExplicitMidErrorsInsteadOfDroppingTheControl()
+    {
+        foreach (var (min, max, mid) in new[] { (-1d, 1d, Math.BitDecrement(1d)), (0d, 1e308, double.Epsilon) })
+        {
+            var error = Assert.Throws<ArgumentException>(() => ColourScale.Create([mid], ["Status"], min, max, mid));
+            Assert.Equal($"Mid ({mid.ToString("G15", System.Globalization.CultureInfo.InvariantCulture)}) is too close to Min or Max to show; move it inside the range.", error.Message);
+        }
+    }
+
+    [Fact]
+    public void DefaultInteriorZeroKeepsNeutralEvenWhenGlobalPivotRoundsToOne()
+    {
+        var scale = ColourScale.Create([0], ["Blue-Red"], -1, 1e-20);
+        Assert.Equal(0, scale.Mid);
+        Assert.Equal("#DFDEDA", Assert.Single(scale.Colours));
+        Assert.Equal(Math.BitDecrement(1d), scale.Legend.ColorPositions[^2]);
+        Assert.Equal("#DFDEDA", scale.Legend.Colors[^2]);
+        Assert.Equal(scale.Palette.Colours[0], scale.ColourAt(-1));
+        Assert.Equal(scale.Palette.Colours[^1], scale.ColourAt(1e-20));
+        scale.Legend.Validate();
+    }
+
+    [Fact]
+    public void EveryAcceptedInteriorMidMapsToTheMiddleColour()
+    {
+        foreach (var palette in Palettes.All.Where(p => p.Kind != PaletteKind.Categorical))
+        foreach (var (min, max, mid) in new[] {
+            (0d, 1d, Math.BitDecrement(1d)), (0d, 1d, double.Epsilon),
+            (-double.MaxValue, double.MaxValue, 0d), (0d, 8 * double.Epsilon, 3 * double.Epsilon),
+            (-1d, 1e-20, 0d), (-1d, 9d, .99) })
+        {
+            // Explicit Mid is accepted exactly when the legend breakpoint fits.
+            var lower = ColourRange.Fraction(mid, min, max); var upper = ColourRange.Fraction(mid, max, min);
+            var pivot = lower <= upper ? lower : 1 - upper;
+            if (pivot is <= 0 or >= 1) continue;
+            var scale = ColourScale.Create([mid], [palette.Name], min, max, mid);
+            Assert.Equal(palette.ColourAt(.5), Assert.Single(scale.Colours));
+            Assert.Equal(palette.ColourAt(.5), scale.ColourAt(scale.Mid));
+            Assert.Equal(palette.ColourAt(.5), new ColourGradient(scale.Legend.Colors, scale.Legend.ColorPositions).ColourAt(pivot).ToHex()[..7]);
+        }
+    }
+
+    [Fact]
+    public void DefaultMidWithNoInteriorDoubleKeepsEndpointFallback()
+    {
+        var scale = ColourScale.Create([0, double.Epsilon], ["Status"], 0, double.Epsilon);
+        Assert.True(scale.Mid == scale.Min || scale.Mid == scale.Max);
+        Assert.Equal(scale.Palette.Colours[0], scale.Colours[0]);
+        Assert.Equal(scale.Palette.Colours[^1], scale.Colours[1]);
+        scale.Legend.Validate();
     }
 
     [Fact]

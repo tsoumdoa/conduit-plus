@@ -55,9 +55,47 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     public void Gradient(Rect2 r, IReadOnlyList<string> colors) => Gradient(r, colors, []);
     public void Gradient(Rect2 r, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
     {
-        using var brush = new LinearGradientBrush(new RectangleF((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height), C(colors[0]), C(colors[^1]), LinearGradientMode.Horizontal);
-        brush.InterpolationColors = new ColorBlend { Colors = colors.Select(C).ToArray(), Positions = positions.Count == 0 ? Enumerable.Range(0, colors.Count).Select(i => (float)i / (colors.Count - 1)).ToArray() : positions.Select(p => (float)p).ToArray() };
-        graphics.FillRectangle(brush, (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height);
+        if (r.Width <= 0 || r.Height <= 0) return;
+        var state = graphics.Save();
+        try
+        {
+            // HighQuality's half-pixel offset also affects TransformPoints. Remove
+            // it before both locating columns and mapping their centres back.
+            graphics.PixelOffsetMode = PixelOffsetMode.None;
+            var gradient = new ColourGradient(colors, positions);
+            PointF[] corners = [new((float)r.X, (float)r.Y), new((float)(r.X + r.Width), (float)r.Y),
+                new((float)(r.X + r.Width), (float)(r.Y + r.Height)), new((float)r.X, (float)(r.Y + r.Height))];
+            graphics.TransformPoints(CoordinateSpace.Device, CoordinateSpace.World, corners);
+            var left = (int)Math.Floor(corners.Min(p => p.X)); var right = (int)Math.Ceiling(corners.Max(p => p.X));
+            var top = (int)Math.Floor(corners.Min(p => p.Y)); var bottom = (int)Math.Ceiling(corners.Max(p => p.Y));
+            PointF[] samples = [new(left + .5f, top + .5f), new(left + 1.5f, top + .5f), new(left + .5f, top + 1.5f)];
+            graphics.TransformPoints(CoordinateSpace.World, CoordinateSpace.Device, samples);
+            var dx = samples[1].X - samples[0].X; var dy = samples[2].X - samples[0].X;
+            // Preserve the caller's clip (including any shaped clip) and the bar's
+            // transformed outline. Paint adjoining integer device rectangles with
+            // antialiasing disabled so neither knots nor columns can leave seams.
+            graphics.SetClip(new RectangleF((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height), CombineMode.Intersect);
+            graphics.ResetTransform();
+            graphics.PageUnit = GraphicsUnit.Pixel;
+            graphics.PageScale = 1;
+            graphics.SmoothingMode = SmoothingMode.None;
+            graphics.PixelOffsetMode = PixelOffsetMode.None;
+            using var brush = new SolidBrush(Color.Black);
+            for (var x = left; x < right; x++)
+            {
+                // Normal card transforms are scale + translation. For a rotated
+                // or sheared canvas, sample each device row as well.
+                var step = dy == 0 ? Math.Max(1, bottom - top) : 1;
+                for (var y = top; y < bottom; y += step)
+                {
+                    var worldX = samples[0].X + (double)(x - left) * dx + (double)(y - top) * dy;
+                    var c = gradient.ColourAt((worldX - r.X) / r.Width);
+                    brush.Color = Color.FromArgb(c.A, c.R, c.G, c.B);
+                    graphics.FillRectangle(brush, x, y, 1, step);
+                }
+            }
+        }
+        finally { graphics.Restore(state); }
     }
     public void RoundedRect(Rect2 r, double radius, string fill)
     {

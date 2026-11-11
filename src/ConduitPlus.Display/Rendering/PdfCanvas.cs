@@ -19,17 +19,10 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
         return canvas.MeasureText(text, size, font);
     }
     public void Rect(Rect2 r, string fill) => FillPolygon([new(r.X, r.Y), new(r.X + r.Width, r.Y), new(r.X + r.Width, r.Y + r.Height), new(r.X, r.Y + r.Height)], fill);
-    public void Gradient(Rect2 r, IReadOnlyList<string> colors)
+    public void Gradient(Rect2 r, IReadOnlyList<string> colors) => Gradient(r, colors, []);
+    public void Gradient(Rect2 r, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
     {
-        const int bands = 128;
-        for (var i = 0; i < bands; i++)
-        {
-            var stop = (i + .5) / bands * (colors.Count - 1); var index = Math.Min(colors.Count - 2, (int)stop); var fraction = stop - index;
-            var a = C(colors[index]); var b = C(colors[index + 1]);
-            int Mix(int from, int to) => (int)Math.Round(from + (to - from) * fraction);
-            var color = new ColorRgba((byte)Mix(a.R, b.R), (byte)Mix(a.G, b.G), (byte)Mix(a.B, b.B), (byte)Mix(a.A, b.A));
-            Rect(new(r.X + i * r.Width / bands, r.Y, r.Width / bands, r.Height), color.ToHex());
-        }
+        foreach (var band in ColourGradient.Bands(r, colors, positions)) Rect(band.Rect, band.Colour.ToHex());
     }
     public void RoundedRect(Rect2 r, double radius, string fill)
     {

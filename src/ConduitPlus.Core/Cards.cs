@@ -83,7 +83,7 @@ public sealed record CardSpec
             if (ValueLabels.Length != 0 && (Min.HasValue || ValueLabels.Length != Colors.Length)) throw new ArgumentException("Legend value labels must match categorical colors and cannot be used with a gradient.");
             if (Min.HasValue)
             {
-                if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value > Max.Value || (Min.Value == Max.Value && Colors.Distinct().Count() != 1)) throw new ArgumentException("Gradient legends need 2+ colors and finite Min <= Max; equal bounds need a single colour.");
+                if (Colors.Length < 2 || !double.IsFinite(Min.Value) || !double.IsFinite(Max!.Value) || Min.Value > Max.Value || (Min.Value == Max.Value && Colors.Distinct().Count() != 1)) throw new ArgumentException("A gradient legend needs at least 2 colours and Min less than Max.");
                 if (ColorPositions.Length > 0 && (ColorPositions.Length != Colors.Length || ColorPositions[0] != 0 || ColorPositions[^1] != 1 ||
                     ColorPositions.Any(p => !double.IsFinite(p)) || ColorPositions.Zip(ColorPositions.Skip(1)).Any(p => p.First >= p.Second)))
                     throw new ArgumentException("Gradient positions must match colors and increase strictly from 0 to 1.");

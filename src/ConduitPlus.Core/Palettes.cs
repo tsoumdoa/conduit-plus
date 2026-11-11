@@ -31,8 +31,8 @@ public sealed record ColourPalette(string Name, PaletteKind Kind, ImmutableArray
         var p = Math.Clamp(position, 0, 1) * (Colours.Length - 1);
         var i = Math.Min((int)p, Colours.Length - 2);
         var a = ColorRgba.Parse(Colours[i]); var b = ColorRgba.Parse(Colours[i + 1]);
-        byte Mix(byte x, byte y) => (byte)Math.Round(x + (y - x) * (p - i), MidpointRounding.AwayFromZero);
-        return $"#{Mix(a.R, b.R):X2}{Mix(a.G, b.G):X2}{Mix(a.B, b.B):X2}";
+        var c = ColourGradient.Interpolate(a, b, p - i);
+        return $"#{c.R:X2}{c.G:X2}{c.B:X2}";
     }
 }
 
