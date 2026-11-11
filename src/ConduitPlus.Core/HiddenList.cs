@@ -14,7 +14,7 @@ public static class HiddenList
             if (p.Hidden.Count == 0) continue;
             if (grouped) rows.Add(new(p.Owner, null, p.Label + (count > 1 ? $" ({count})" : "")));
             for (var i = 0; i < p.Cards.Count; i++)
-            { var c = p.Cards[i]; if (p.Hidden.Contains(c.Id)) rows.Add(new(p.Owner, c.Id, string.IsNullOrWhiteSpace(c.Title) ? $"{c.Kind} {i + 1}" : c.Title)); }
+            { var c = p.Cards[i]; if (p.Hidden.Contains(c.Id)) rows.Add(new(p.Owner, c.Id, string.IsNullOrWhiteSpace(c.Title) ? c.Kind == CardKind.Title && !string.IsNullOrWhiteSpace(c.Subtitle) ? c.Subtitle : $"{c.Kind} {i + 1}" : c.Title)); }
         }
         return rows.ToArray();
     }

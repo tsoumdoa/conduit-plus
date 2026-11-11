@@ -94,6 +94,7 @@ public sealed class CanvasCardComponent : GH_Component
             }
         }
         State.Bind(_scope, InstanceGuid, _scopeValid);
+        if (spec is { Kind: CardKind.Title }) spec = spec with { Background = TitleBackground.Card };
         var snapshot = error is null ? spec : null;
         var attributes = Attributes as CanvasCardAttributes;
         attributes?.CancelGesture();

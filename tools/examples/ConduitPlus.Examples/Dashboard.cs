@@ -65,8 +65,8 @@ internal static class Dashboard
             var messages = definition.Objects.OfType<IGH_ActiveObject>().SelectMany(o =>
                 new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }.SelectMany(level => o.RuntimeMessages(level).Select(message => $"{o.Name}: {level}: {message}"))).ToArray();
             foreach (var message in messages) Console.WriteLine(message);
-            // The small compact window can't hold all nine cards: Overlay must say so, and nothing else may warn.
-            var overflow = messages.Where(m => m.StartsWith("Overlay: Warning: ", StringComparison.Ordinal) && m.Contains(" cards hidden in ", StringComparison.Ordinal)).ToArray();
+            // The small compact window can't hold all ten cards: Overlay must say so, and nothing else may warn.
+            var overflow = messages.Where(m => m.StartsWith("Overlay: Warning: ", StringComparison.Ordinal) && (m.Contains(" cards hidden in ", StringComparison.Ordinal) || m.Contains(" items hidden in ", StringComparison.Ordinal))).ToArray();
             Require(messages.Length == overflow.Length, "Definition has runtime warnings/errors.");
             Require(args.Contains("--compact") ? overflow.Length == 1 : overflow.Length == 0,
                 args.Contains("--compact") ? "The compact viewport must report its hidden cards." : "The full-size viewport must not hide cards.");
@@ -77,7 +77,7 @@ internal static class Dashboard
             var theme = args.Contains("--theme") ? Theme.Presets.Single(t => string.Equals(t.Name, args[Array.IndexOf(args, "--theme") + 1], StringComparison.OrdinalIgnoreCase)) : Theme.Paper;
             OverlayManager.ReplaceTheme(overlay.InstanceGuid, theme);
             var cards = (CardSpec[])Property(session!, "Cards");
-            Require(cards.Length == 9, $"Expected nine dashboard cards; got {cards.Length}: {string.Join(", ", cards.Select(c => c.Title))}.");
+            Require(cards.Length == 10, $"Expected ten dashboard cards; got {cards.Length}: {string.Join(", ", cards.Select(c => c.Title))}.");
             Console.WriteLine($"Reopened {path}: {definition.ObjectCount} objects, 0 warnings/errors; owner {overlay.InstanceGuid}, {cards.Length} cards.");
             var truss = DemoTruss.Create(bays: 4);
             // GH preview normally draws the members. Reuse the command demo's base-wire mode headlessly.
@@ -129,6 +129,9 @@ internal static class Dashboard
         // Set slots explicitly for the example arrangement.
         Slot[] slots = [Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tr, Slot.Tr, Slot.Tl, Slot.Tr, Slot.Tl];
         for (var i = 0; i < cards.Length; i++) Text(cards[i], cards[i].Params.Input.FindIndex(p => p.Name == "Slot"), slots[i].ToString().ToLowerInvariant());
+        var title = new ConduitPlus.Grasshopper.TitleComponent(); title.CreateAttributes(); title.Attributes.Pivot = new PointF(740, 1550); gh.AddObject(title, false);
+        Text(title, 0, "Truss utilisation review"); Text(title, 1, "4 bays · 24 m span"); Text(title, 2, "Illustrative results; not structural analysis or design verification."); Text(title, 3, "tc");
+        cards = [.. cards, title];
         overlay.Params.Input[0].DataMapping = GH_DataMapping.Flatten;
         overlay.Params.Input[1].DataMapping = GH_DataMapping.Flatten;
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);

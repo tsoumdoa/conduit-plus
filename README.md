@@ -134,6 +134,8 @@ Cards appear in the order they arrive in Overlay's Cards input, and each card's 
 When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
 front of Overlay makes the order explicit. Cards can't be dragged in the viewport.
 
+Titles scale with the viewport, support six positions, and hide last.
+
 Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Click the chip to list the hidden cards; Escape or another click closes the list. Clicking a hidden card in the list shows it over the model until you click it again or press Escape. Size scales one Overlay.
 
 ## Grasshopper components
@@ -146,6 +148,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group. |
 | Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. Appended optional Colors override per-bar status; zero threshold supports deltas. Appended Members supplies one branch per entry and requires explicit Keys. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title, optional threshold and slot. A positive wired threshold shows a band. |
+| Title | Optional Title, Subtitle and multiline Description (at least one required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text defaults to black). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
 | Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |

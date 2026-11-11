@@ -6,6 +6,9 @@ namespace ConduitPlus.Core.Tests;
 public class OverflowTextTests
 {
     [Fact]
+    public void HiddenTitlesUseItems() => Assert.Equal("2 of 9 items hidden in Top (300 × 200). Enlarge the viewport or remove items.", OverflowText.For(2, 9, "Top", 300, 200, true));
+
+    [Fact]
     public void NothingHiddenClearsTheWarning() => Assert.Null(OverflowText.For(0, 9, "Perspective", 640, 400));
 
     [Fact]

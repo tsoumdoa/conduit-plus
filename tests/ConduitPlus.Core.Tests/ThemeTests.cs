@@ -101,7 +101,7 @@ public sealed class ThemeTests
     [Fact]
     public void ThemeSwitchInvalidatesAllCardRevisionsButRepeatedThemeReusesThem()
     {
-        var cards = Cards().ToArray();
+        var cards = Cards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).ToArray();
         var store = new CardStore();
         Assert.Equal(cards.Length, store.Update(cards).Count);
         var previous = store.Snapshot;
@@ -131,7 +131,7 @@ public sealed class ThemeTests
         {
             var tokens = typeof(Theme).GetProperties().Where(p => p.PropertyType == typeof(string))
                 .Select(p => (string)p.GetValue(theme)!).Where(s => s.StartsWith('#')).ToHashSet(StringComparer.Ordinal);
-            var cards = Cards().ToArray();
+            var cards = Cards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).ToArray();
             Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Distinct().Order());
             foreach (var card in cards)
             {
