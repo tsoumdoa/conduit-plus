@@ -39,9 +39,10 @@ public static class CardPainter
             return;
         }
         // A gradient legend shows its unit at the right of the title row; keep the title clear of it.
-        var titleRight = clear?.X ?? (c.Width - t.Padding);
+        var titleRight = clear?.X ?? (size.Width - t.Padding);
         if (c.Kind == CardKind.Legend && c.Min.HasValue && !string.IsNullOrWhiteSpace(c.Unit)) titleRight = Math.Min(titleRight, c.Width - t.Padding - canvas.MeasureText(c.Unit, t.FontSize, t.Font).Width - 8);
-        using (canvas.Clip(new(t.Padding, 7, titleRight - t.Padding - 4, 24)))
+        var titleGap = c.Kind == CardKind.Legend && !c.Min.HasValue && clear is null ? 0 : 4;
+        using (canvas.Clip(new(t.Padding, 7, titleRight - t.Padding - titleGap, 24)))
             canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
         if (clear is not null)
         {

@@ -14,7 +14,8 @@ public static class FormMeasure
     {
         if (c.Kind == CardKind.Title) return TitleMetrics.Layout(c with { Form = f }, t, measure).Size;
         var text = c.Kind == CardKind.Text ? TextMetrics.Layout(c, t, measure) : null;
-        return new(c.Width, c.Kind switch
+        var width = c.Kind == CardKind.Legend && !c.Min.HasValue ? LegendCardPainter.CategoricalWidth(c, t, measure) : c.Width;
+        return new(width, c.Kind switch
         {
             CardKind.Table => 48 + (Math.Min(Math.Min(c.MaxRows, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
             CardKind.Bar => 48 + Math.Min(c.Values.Length, f.VisibleRows ?? int.MaxValue) * t.RowHeight,
@@ -38,7 +39,10 @@ public static class ViewportLayout
         Participants = r.Participants.OrderBy(p => p.Owner.ToString("N"), StringComparer.Ordinal).Select(p => new
         {
             p.Owner, p.Size, p.Theme.FontSize, p.Theme.RowHeight, p.Theme.Padding, p.Theme.Font,
-            Cards = p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => (x.c, x.slot, i)).Select(x => new { x.c.Id, x.c.Kind, x.c.Width, Index = x.i, Slot = x.slot, x.c.Title, x.c.Subtitle, x.c.Background, x.c.Text, x.c.Value, x.c.Unit, Rows = x.c.Rows.Length, Values = x.c.Values.Length, Colors = x.c.Colors.Length, Labels = x.c.Labels.Length, HasMin = x.c.Min.HasValue, x.c.MaxRows })
+            Cards = p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => (x.c, x.slot, i)).Select(x => new { x.c.Id, x.c.Kind, x.c.Width, Index = x.i, Slot = x.slot, x.c.Title, x.c.Subtitle, x.c.Background, x.c.Text, x.c.Value, x.c.Unit, Rows = x.c.Rows.Length, Values = x.c.Values.Length, Colors = x.c.Colors.Length, Labels = x.c.Labels.Length, HasMin = x.c.Min.HasValue, x.c.MaxRows,
+                LegendLabels = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.Labels : null,
+                LegendValues = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.ValueLabels : null,
+                LegendHasKeys = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue && x.c.Keys.Length > 0 })
         })
     });
     public static ViewportSolution Solve(LayoutRequest r)

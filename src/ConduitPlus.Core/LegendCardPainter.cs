@@ -7,6 +7,16 @@ public static class LegendCardPainter
     public const double GradientTop = 40, GradientBar = 10, GradientCompactBar = 8;
     /// <summary>Gradient legend heights: title row, bar, ticks and labels, then padding.</summary>
     public const double GradientHeight = 84, GradientCompactHeight = 76;
+    /// <summary>Content width in CSS pixels; independent of authored width, layout forms and selection.</summary>
+    public static double CategoricalWidth(CardSpec c, Theme t, Func<string, double, string, Size2> measure)
+    {
+        double Widest(IEnumerable<string> text) => text.Select(s => measure(s, t.FontSize, t.Font).Width).DefaultIfEmpty().Max();
+        var row = 2 * t.Padding + 12 + 8 + Widest(c.Labels)
+            + (c.ValueLabels.Length > 0 ? 8 + Widest(c.ValueLabels) : 0);
+        // Clear ends at Width - Padding; the title clips 4px before its 40px button.
+        var title = 2 * t.Padding + measure(c.Title, t.FontSize, t.Font).Width + (c.Keys.Length > 0 ? 40 + 4 : 0);
+        return Math.Ceiling(Math.Clamp(Math.Max(row, title), 120, 280));
+    }
     // Include the exact scale limits so the final color's value is always explicit.
     public static double[] Ticks(CardSpec c) => ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
@@ -39,6 +49,7 @@ public static class LegendCardPainter
             return;
         }
         var hits = CardMeasure.DataHits(c, t);
+        var categoricalRight = CardMeasure.Measure(c, t).Width - t.Padding;
         for (var i = 0; i < c.Colors.Length; i++)
         {
             var y = CardMeasure.BodyTop + i * t.RowHeight;
@@ -51,7 +62,7 @@ public static class LegendCardPainter
                 ColorRgba.Parse(t.Ink).WithAlpha(0x29).ToHex());
 
             var labelX = t.Padding + 12 + 8;
-            var right = c.Width - t.Padding;
+            var right = categoricalRight;
             var labelRight = right;
             if (c.ValueLabels.Length > 0)
             {

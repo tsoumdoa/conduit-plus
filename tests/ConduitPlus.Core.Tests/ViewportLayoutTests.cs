@@ -24,7 +24,7 @@ public class ViewportLayoutTests
     [Fact]
     public void FormsAndSignature()
     {
-        foreach(var c in StructuralDemo.Create().Concat(StructuralDemo.Extras()).Append(StructuralDemo.Line())) Assert.Equal(c.Kind == CardKind.Text ? new Size2(c.Width,TextMetrics.Layout(c,Theme.Paper,TextMetrics.Estimate).Height) : CardMeasure.Measure(c,Theme.Paper),FormMeasure.Size(c,Theme.Paper,CardForm.None,TextMetrics.Estimate));
+        foreach(var c in StructuralDemo.Create().Concat(StructuralDemo.Extras()).Append(StructuralDemo.Line())) Assert.Equal(CardMeasure.Measure(c,Theme.Paper),FormMeasure.Size(c,Theme.Paper,CardForm.None,TextMetrics.Measurer));
         var card=StructuralDemo.Line(); var id=Guid.NewGuid();
         LayoutRequest Request(CardSpec c)=>new(new(1920,1080),1,[new(id,1,Theme.Paper,[c])],TextMetrics.Estimate,new());
         Assert.Equal(ViewportLayout.Signature(Request(card)),ViewportLayout.Signature(Request(card with{Rev=55,HoverKey="a",ScrollOffset=2,SortColumn=1,SelectedKeys=["b"]})));
