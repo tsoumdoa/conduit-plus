@@ -141,12 +141,12 @@ public sealed record Theme
     public string Muted { get; init; } = "#626875";
     public string Line { get; init; } = "#E3E5E9";
     public string Track { get; init; } = "#EEF0F3";
-    public string Accent { get; init; } = "#2B59F0";
+    public string Accent { get; init; } = "#1F6FD1";
     public string Bad { get; init; } = "#C2334D";
     public string Good { get; init; } = "#1F8A5B";
-    public string Area { get; init; } = "#E7EDFF";
+    public string Area { get; init; } = "#E5EFFB";
     public string ThresholdBand { get; init; } = "#FCECEF";
-    public string Highlight { get; init; } = "#DCE5FF";
+    public string Highlight { get; init; } = "#DDEAFB";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
     public string? PlainTitleHalo { get; init; }
@@ -172,9 +172,9 @@ public sealed record Theme
     public static Theme Night { get; } = new()
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
-        Line = "#2C3039", Track = "#262A31", Accent = "#6D8CFF",
-        Good = "#4CC48E", Bad = "#F06D86", Area = "#252F4F", ThresholdBand = "#3D2733",
-        Highlight = "#303C60", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
+        Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733",
+        Highlight = "#21364F", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
     // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.
     public static Theme Auto { get; } = new() { Name = "Auto" };
@@ -182,9 +182,9 @@ public sealed record Theme
     public static Theme Smoke { get; } = new()
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
-        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#8FB0FF", Radius = 10,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#8FB0FF26", ThresholdBand = "#E0546F26",
-        Highlight = "#8FB0FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
+        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#7DB8FF", Radius = 10,
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26",
+        Highlight = "#7DB8FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
         // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
     };
     public static Theme Blueprint { get; } = new()

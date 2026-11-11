@@ -10,7 +10,7 @@ public sealed class SelectionReadabilityTests
     [Fact]
     public void PaperSelectionIsDistinctFromHoverAndTrack()
     {
-        Assert.Equal("#DCE5FF", Theme.Paper.Highlight);
+        Assert.Equal("#DDEAFB", Theme.Paper.Highlight);
         Assert.Equal("#EEF0F3", Theme.Paper.Track);
     }
 
