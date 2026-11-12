@@ -26,6 +26,11 @@ internal static class CanvasStackHostChecks
         var canvas = Add(new CanvasCardComponent());
         canvas.Attributes.Pivot = new(100, 100);
         canvas.Params.Input[0].AddSource(source);
+        // Keep one real, handled canvas attached throughout the checks. Exporting must not
+        // simulate a tab unload (which deliberately disposes document display resources).
+        using var control = new GH_Canvas { Size = new(1000, 800) };
+        _ = control.Handle;
+        control.Document = gh;
         // Make captures deterministic regardless of the host's UI palette.
         Call(canvas, "ApplyTheme", "Paper");
         var state = (CanvasCardState)Get(canvas, "State");
@@ -97,9 +102,34 @@ internal static class CanvasStackHostChecks
         Call(canvas.Attributes, "CancelGesture");
         Require(state.Specs.Single(c => c.Id == table.Id).ScrollOffset == 3 && state.Specs.Single(c => c.Id == bar.Id).ScrollOffset == 1,
             "Cancelled stack drag restored the wrong card's scroll offset.");
+        Call(canvas.Attributes, "Attach", control);
+        control.Viewport.Width = 1000; control.Viewport.Height = 200;
+        control.Viewport.Zoom = 1; control.Viewport.Tx = -(int)body.X; control.Viewport.Ty = -(int)body.Y;
+        control.Viewport.ComputeProjection();
+        Call(canvas.Attributes, "Regenerate"); // Publish the cancelled drag's restored state before isolating pan.
+        var beforePan = (CanvasStackFrameKey)Call(canvas.Attributes, "DesiredKey")!;
+        var beforePanFrame = Get(canvas.Attributes, "Frame");
+        control.Viewport.Ty -= (int)lower.Y;
+        control.Viewport.ComputeProjection();
+        Require(beforePan == (CanvasStackFrameKey)Call(canvas.Attributes, "DesiredKey")!, "Visibility changed a fully retained stack key.");
+        Call(canvas.Attributes, "Regenerate");
+        Require(ReferenceEquals(beforePanFrame, Get(canvas.Attributes, "Frame")), "Panning repainted a fully retained stack.");
+        var unchanged = ((Bitmap?[])Get(beforePanFrame, "Bitmaps")).ToArray();
+        Set(new GH_ObjectWrapper(metric with { Title = "Updated floor area" }), new GH_ObjectWrapper(bar), new GH_ObjectWrapper(table));
+        Call(canvas.Attributes, "Regenerate");
+        var updated = (Bitmap?[])Get(Get(canvas.Attributes, "Frame"), "Bitmaps");
+        Require(!ReferenceEquals(unchanged[0], updated[0]) && ReferenceEquals(unchanged[1], updated[1]) && ReferenceEquals(unchanged[2], updated[2]),
+            "Changing one card repainted unchanged sibling bitmaps.");
+        Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(bar), new GH_ObjectWrapper(table));
+        Call(canvas.Attributes, "Regenerate");
+        completed.Add("Viewport mask changes preserve fully retained frames; one-card content changes transfer unchanged sibling bitmaps");
         state.Hover(table.Id, region.Key);
         Export("canvas-stack-3cards-1x.png");
         Export("canvas-stack-3cards-2x.png", 2);
+        canvas.Locked = true;
+        Export("canvas-locked-stack-1x.png");
+        Export("canvas-locked-stack-2x.png", 2);
+        canvas.Locked = false;
         completed.Add("Three-card stack: tree order, own widths, selection union, per-ID sort/scroll, lower-card hit routing/drag cancellation and real GH 1x/2x exports");
 
         state.Activate(metric.Id, CardMeasure.ClearKey);
@@ -119,25 +149,94 @@ internal static class CanvasStackHostChecks
             "Per-card surfaces or document accounting exceed bounds.");
         Export("canvas-tall-stack-metric-1x.png", 1, true);
         Export("canvas-tall-stack-metric-2x.png", 2, true);
+        Export("canvas-tall-stack-1x.png", maxHeight: 800);
+        Export("canvas-tall-stack-2x.png", 2, maxHeight: 800);
         // Rounded transparent corners reveal different component capsule sizes; compare the painted content.
         using (var alone = new Bitmap(Path.Combine(output, "canvas-metric-alone-2x.png")))
         using (var stacked = new Bitmap(Path.Combine(output, "canvas-tall-stack-metric-2x.png")))
             PixelsEqual(alone, stacked, 8);
         completed.Add("12-card tall stack at zoom 2: independent bounded bitmaps, actual byte accounting, full-density Metric pixels; real GH 2x Metric export content equals standalone export");
 
+        // Three near-32 MiB owners reproduce the review's real document cache pressure.
+        var heavy = Enumerable.Range(0, 3).Select(i => tall with { Id = "pressure" + i, Title = "Frozen schedule " + i, Width = 1200 }).ToArray();
+        Set(heavy.Select(c => (IGH_Goo)new GH_ObjectWrapper(c)).ToArray());
+        control.Viewport.Ty = -(int)body.Y;
+        control.Viewport.ComputeProjection();
+        Call(canvas.Attributes, "Regenerate");
+        var previousHeavy = Get(canvas.Attributes, "Frame");
+        var reusedHeavy = ((Bitmap?[])Get(previousHeavy, "Bitmaps"))[0];
+        var heavyLayout = (CanvasStackLayout)Get(previousHeavy, "Layout");
+        control.Viewport.Ty = -(int)(body.Y + heavyLayout.Cards[2].Y);
+        control.Viewport.ComputeProjection();
+        Call(canvas.Attributes, "Regenerate");
+        frame = Get(canvas.Attributes, "Frame");
+        Require(ReferenceEquals(reusedHeavy, ((Bitmap?[])Get(frame, "Bitmaps"))[0]) && ((Bitmap?[])Get(frame, "Bitmaps"))[2] is not null,
+            "Changing retained set failed to carry over the unchanged raster.");
+        Require((long)Get(frame, "Bytes") > CanvasRasterPlan.DocumentBudget / 2 - 1024 * 1024, "Pressure fixture did not retain nearly 32 MiB.");
+        canvas.Locked = true;
+        Screen("canvas-locked-pressure-before-screen-2x.png", 2);
+        Export("canvas-locked-pressure-before-export-2x.png", 2, maxHeight: 300);
+        // Deliberately make live state/theme differ from the frozen publication.
+        state.ReplaceCards([metric with { Value = "999", Title = "Live state must not leak" }]);
+        Call(canvas, "ApplyTheme", "Night");
+        canvas.Attributes.GetType().GetProperty("LastVisible", Internal)!.SetValue(canvas.Attributes, 0L);
+        var pressureOwners = new List<CanvasCardComponent> { canvas };
+        for (var i = 0; i < 2; i++)
+        {
+            var owner = Add(new CanvasCardComponent()); pressureOwners.Add(owner);
+            owner.Attributes.Pivot = new(3000 * (i + 1), 100); // Keep pressure owners outside the exported region.
+            ((CanvasCardState)Get(owner, "State")).ReplaceCards(heavy);
+            Call(owner, "ApplyTheme", "Paper");
+            owner.Attributes.GetType().GetField("_scale", Internal)!.SetValue(owner.Attributes, 2d);
+            owner.Attributes.GetType().GetProperty("LastVisible", Internal)!.SetValue(owner.Attributes, (long)i + 1);
+            Call(owner.Attributes, "Regenerate");
+            Require(pressureOwners.Sum(c => (long)Get(Get(c.Attributes, "Frame"), "Bytes")) <= CanvasRasterPlan.DocumentBudget,
+                "Real document cache pressure exceeded 64 MiB.");
+        }
+        Require(ReferenceEquals(frame, Get(canvas.Attributes, "Frame")) && (long)Get(frame, "Bytes") == 0,
+            "Cache eviction removed the frozen snapshot or did not evict its bitmap surfaces.");
+        Call(canvas.Attributes, "Regenerate");
+        Screen("canvas-locked-pressure-after-screen-2x.png", 2);
+        Export("canvas-locked-pressure-after-export-2x.png", 2, maxHeight: 300);
+        CompareFiles("canvas-locked-pressure-before-screen-2x.png", "canvas-locked-pressure-after-screen-2x.png");
+        CompareFiles("canvas-locked-pressure-before-export-2x.png", "canvas-locked-pressure-after-export-2x.png");
+        Require((long)Get(frame, "Bytes") == 0, "Frozen sequential painting retained unbudgeted bitmaps.");
+        foreach (var owner in pressureOwners.Skip(1)) gh.RemoveObject(owner, false);
+        canvas.Locked = false;
+        Set(heavy.Select(c => (IGH_Goo)new GH_ObjectWrapper(c)).ToArray()); Call(canvas, "ApplyTheme", "Paper");
+        Call(canvas.Attributes, "Regenerate");
+        gh.Enabled = false;
+        Screen("canvas-disabled-before-screen-2x.png", 2);
+        Export("canvas-disabled-before-export-2x.png", 2, maxHeight: 300);
+        Call(canvas.Attributes, "EvictRasters");
+        state.ReplaceCards([metric with { Value = "999" }]); Call(canvas, "ApplyTheme", "Night");
+        Call(canvas.Attributes, "Regenerate");
+        Screen("canvas-disabled-after-screen-2x.png", 2);
+        Export("canvas-disabled-after-export-2x.png", 2, maxHeight: 300);
+        CompareFiles("canvas-disabled-before-screen-2x.png", "canvas-disabled-after-screen-2x.png");
+        CompareFiles("canvas-disabled-before-export-2x.png", "canvas-disabled-after-export-2x.png");
+        gh.Enabled = true; Call(canvas, "ApplyTheme", "Paper");
+        completed.Add("Real three-owner cache pressure evicts locked rasters within 64 MiB while frozen screen/GH export pixels survive live data/theme changes; disabled-document eviction is also pixel-identical");
+
         Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(bar), new GH_ObjectWrapper(bar));
         Require(state.Specs.Length == 2 && Messages(GH_RuntimeMessageLevel.Warning).Contains("Card 'Utilisation' is connected twice; showing it once."), "Duplicate must warn and show once.");
+        foreach (var untitled in new[] { bar with { Title = " " }, new CardSpec { Id = "untitled-text", Kind = CardKind.Text, Text = "Note" }, new CardSpec { Id = "untitled-legend", Kind = CardKind.Legend, Colors = ["#123456"], Labels = ["Category"] } })
+        {
+            Set(new GH_ObjectWrapper(untitled), new GH_ObjectWrapper(untitled));
+            Require(Messages(GH_RuntimeMessageLevel.Warning).Contains($"Card '{untitled.Kind}' is connected twice; showing it once."), "Blank-title duplicate did not fall back to kind.");
+        }
         Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(null), new GH_ObjectWrapper(table));
         Require(state.Specs.Select(c => c.Id).SequenceEqual(["metric", "table"]) && Messages(GH_RuntimeMessageLevel.Warning).Contains("Showing 2 of 3 cards. 1 is empty because its component has an error."), "Null must warn and keep valid siblings.");
         Set(new GH_ObjectWrapper(null)); Require(state.Specs.Length == 0 && Messages(GH_RuntimeMessageLevel.Warning).Length > 0, "All-null input retained stale content.");
         Set(new GH_String("foreign"));
         Require(Messages(GH_RuntimeMessageLevel.Error).Contains("Cards item 0 is text, not a Conduit+ card.") &&
             (string)Get(canvas, "Placeholder") == "Cards item 0 is text, not a Conduit+ card.", "Wrong-type placeholder must match the error.");
+        Export("canvas-wrong-type-placeholder-1x.png");
         Set(new GH_ObjectWrapper(metric), new GH_String("foreign"), new GH_ObjectWrapper(table));
         Require(state.Specs.Length == 2 && Messages(GH_RuntimeMessageLevel.Error).Length == 1, "Foreign item must error and keep valid siblings.");
         Set(Enumerable.Range(0, 15).Select(i => (IGH_Goo)new GH_ObjectWrapper(metric with { Id = "metric" + i, Title = "Metric " + i })).ToArray());
         Require(state.Specs.Length == 12 && state.Specs.Select(c => c.Id).SequenceEqual(Enumerable.Range(0, 12).Select(i => "metric" + i)) && Messages(GH_RuntimeMessageLevel.Warning).Contains("Showing 12 of 15 cards; use another Canvas Card for the rest."), "Cap contract.");
-        completed.Add("Duplicate Warning/first occurrence; null Warning/valid siblings; foreign Error/valid siblings; all-null clears; exact 12-of-15 cap Warning");
+        completed.Add("Duplicate Warning/first occurrence and blank Bar/Text/Legend kind fallback; null Warning/valid siblings; foreign Error/valid siblings and wrapped placeholder capture; all-null clears; exact 12-of-15 cap Warning");
 
         Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(bar), new GH_ObjectWrapper(table));
         var scope = Add(new ScopeComponent());
@@ -153,24 +252,40 @@ internal static class CanvasStackHostChecks
         Console.WriteLine(string.Join(Environment.NewLine, completed));
         Console.WriteLine("PR F Canvas stack host checks passed.");
 
-        void Export(string name, int scale = 1, bool metricOnly = false)
+        void Export(string name, int scale = 1, bool metricOnly = false, int? maxHeight = null)
         {
-            using var control = new GH_Canvas(); control.Document = gh;
-            try
+            canvas.Attributes.ExpireLayout(); canvas.Attributes.PerformLayout();
+            var bounds = Rectangle.Ceiling(canvas.Attributes.Bounds); bounds.Inflate(40, 40);
+            if (maxHeight is { } height) bounds.Height = Math.Min(bounds.Height, height);
+            if (metricOnly)
             {
-                canvas.Attributes.ExpireLayout(); canvas.Attributes.PerformLayout();
-                var bounds = Rectangle.Ceiling(canvas.Attributes.Bounds); bounds.Inflate(40, 40);
-                if (metricOnly)
-                {
-                    var body = (RectangleF)canvas.Attributes.GetType().GetField("_body", Internal)!.GetValue(canvas.Attributes)!;
-                    var size = CardMeasure.Measure(metric, Theme.Paper);
-                    bounds = Rectangle.Ceiling(new RectangleF(body.X, body.Y, (float)size.Width, (float)size.Height));
-                }
-                var viewport = new GH_Viewport(control.Viewport) { Width = bounds.Width * scale, Height = bounds.Height * scale, Zoom = scale, Tx = -bounds.X * scale, Ty = -bounds.Y * scale };
-                using var image = control.GenerateHiResImageTile(viewport, Color.White);
-                image.Save(Path.Combine(output, name), ImageFormat.Png);
+                var body = (RectangleF)canvas.Attributes.GetType().GetField("_body", Internal)!.GetValue(canvas.Attributes)!;
+                var size = CardMeasure.Measure(metric, Theme.Paper);
+                bounds = Rectangle.Ceiling(new RectangleF(body.X, body.Y, (float)size.Width, (float)size.Height));
             }
-            finally { control.Document = null; gh.Enabled = true; gh.Context = GH_DocumentContext.Loaded; }
+            var viewport = new GH_Viewport(control.Viewport) { Width = bounds.Width * scale, Height = bounds.Height * scale, Zoom = scale, Tx = -bounds.X * scale, Ty = -bounds.Y * scale };
+            using var image = control.GenerateHiResImageTile(viewport, Color.White);
+            image.Save(Path.Combine(output, name), ImageFormat.Png);
+        }
+        void Screen(string name, int scale)
+        {
+            canvas.Attributes.ExpireLayout(); canvas.Attributes.PerformLayout();
+            var bounds = Rectangle.Ceiling(canvas.Attributes.Bounds); bounds.Inflate(40, 40); bounds.Height = 300;
+            control.Viewport.Width = bounds.Width * scale; control.Viewport.Height = bounds.Height * scale;
+            control.Viewport.Zoom = scale; control.Viewport.Tx = -bounds.X * scale; control.Viewport.Ty = -bounds.Y * scale;
+            control.Viewport.ComputeProjection();
+            using var image = new Bitmap(bounds.Width * scale, bounds.Height * scale);
+            using (var graphics = Graphics.FromImage(image))
+            {
+                graphics.Clear(Color.White); control.Viewport.ApplyProjection(graphics);
+                Call(canvas.Attributes, "Render", control, graphics, GH_CanvasChannel.Objects);
+            }
+            image.Save(Path.Combine(output, name), ImageFormat.Png);
+        }
+        void CompareFiles(string before, string after)
+        {
+            using var a = new Bitmap(Path.Combine(output, before)); using var b = new Bitmap(Path.Combine(output, after));
+            PixelsEqual(a, b);
         }
     }
     private static string[] Output(GH_Component c) => c.Params.Output[0].VolatileData.AllData(true).Select(g => g.ToString()!).ToArray();

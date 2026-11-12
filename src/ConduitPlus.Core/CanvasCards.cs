@@ -41,7 +41,7 @@ public readonly record struct CanvasRasterPlan(double Scale, int Width, int Heig
     }
 }
 
-public sealed record CanvasStackFrameKey(long Revision, Theme Theme, Size2 Size, double Scale, int VisibleCards);
+public sealed record CanvasStackFrameKey(long Revision, Theme Theme, Size2 Size, double Scale, int RetainedCards);
 
 /// <summary>Each card has its own bounds. Document pressure changes retention, never raster density.</summary>
 public static class CanvasStackRaster
@@ -62,6 +62,9 @@ public static class CanvasStackRaster
         }
         return retained.ToArray();
     }
+
+    public static int RetainedMask(IReadOnlyList<CanvasRasterPlan> plans, int visibleCards) =>
+        RetainedCards(plans, visibleCards, CanvasRasterPlan.DocumentBudget / 2).Aggregate(0, (mask, i) => mask | (1 << i));
 }
 
 public sealed record CanvasCacheEntry(string Id, long Bytes, long LastVisible);

@@ -55,7 +55,7 @@ internal static class CanvasCardCache
         var entries = Entries.Where(e => ReferenceEquals(e.Component.OnPingDocument(), document)).ToArray();
         var evict = CanvasCacheBudget.Evictions(entries.Where(e => e.Frame is not null).Select(e =>
             new CanvasCacheEntry(e.Component.InstanceGuid.ToString("N"), e.Frame!.Bytes, e.LastVisible)).ToArray(), owner.Component.InstanceGuid.ToString("N"), bytes);
-        foreach (var entry in entries.Where(e => evict.Contains(e.Component.InstanceGuid.ToString("N"), StringComparer.Ordinal))) entry.ReleaseFrame();
+        foreach (var entry in entries.Where(e => evict.Contains(e.Component.InstanceGuid.ToString("N"), StringComparer.Ordinal))) entry.EvictRasters();
     }
 }
 
@@ -73,12 +73,35 @@ internal sealed class CanvasCardFrame : IDisposable
         Specs = specs; Key = key; Layout = new(specs, key.Theme);
         Rasters = CanvasStackRaster.Plan(Layout, key.Theme, key.Scale);
         Bitmaps = new Bitmap?[specs.Length];
+    }
+    private IEnumerable<int> Retained => Enumerable.Range(0, Specs.Length).Where(i => (Key.RetainedCards & (1 << i)) != 0);
+    internal bool IsReady(CanvasStackFrameKey key) => Key == key && Retained.All(i => Bitmaps[i] is not null);
+    // Raster identity is independent of stack order, visibility and unrelated cards' revisions.
+    private int ReusableIndex(CanvasCardFrame? previous, int index)
+    {
+        if (previous is null || previous.Theme != Theme) return -1;
+        for (var i = 0; i < previous.Specs.Length; i++)
+            if (previous.Specs[i].Id == Specs[index].Id && previous.Specs[i].Rev == Specs[index].Rev &&
+                previous.Bitmaps[i] is not null && previous.Rasters[i] == Rasters[index]) return i;
+        return -1;
+    }
+    internal long AdditionalBytes(CanvasCardFrame? previous) => Retained.Where(i => ReusableIndex(previous, i) < 0).Sum(i => Rasters[i].Bytes);
+    internal void Render(CanvasCardFrame? previous)
+    {
         try
         {
-            foreach (var i in CanvasStackRaster.RetainedCards(Rasters, key.VisibleCards, CanvasRasterPlan.DocumentBudget / 2))
-                Bitmaps[i] = ConduitPlus.Rendering.RasterDrawing.Render(specs[i], key.Theme, Rasters[i].Scale);
+            foreach (var i in Retained.Where(i => ReusableIndex(previous, i) < 0))
+                Bitmaps[i] = ConduitPlus.Rendering.RasterDrawing.Render(Specs[i], Theme, Rasters[i].Scale);
         }
         catch { Dispose(); throw; }
+        // Transfer ownership only after every new raster succeeded. A failure leaves the old frame intact.
+        foreach (var i in Retained)
+            if (ReusableIndex(previous, i) is var old && old >= 0)
+            { Bitmaps[i] = previous!.Bitmaps[old]; previous.Bitmaps[old] = null; }
     }
-    public void Dispose() { foreach (var bitmap in Bitmaps) bitmap?.Dispose(); }
+    internal void ReleaseRasters()
+    {
+        for (var i = 0; i < Bitmaps.Length; i++) { Bitmaps[i]?.Dispose(); Bitmaps[i] = null; }
+    }
+    public void Dispose() => ReleaseRasters();
 }

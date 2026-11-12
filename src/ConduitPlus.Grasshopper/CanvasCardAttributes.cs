@@ -174,7 +174,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             if (Math.Abs(_scale - scale) > .0001)
             { _scale = scale; SettleAt = Environment.TickCount64 + 120; Pending = true; CanvasCardCache.Queue(this); }
             var key = DesiredKey();
-            if (!Disabled && key is not null && Frame?.Key != key && _failed != key)
+            if (!Disabled && key is not null && Frame?.IsReady(key) != true && _failed != key)
             { Pending = true; CanvasCardCache.Queue(this); }
             if (!Interactive) { CancelGesture(); ClearHover(); }
             if (Frame is { } frame)
@@ -218,7 +218,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     {
         using var brush = new SolidBrush(Color.DimGray);
         using var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
-        graphics.DrawString(Component.Placeholder, font, brush, _body.X + 12, _body.Y + 16);
+        graphics.DrawString(Component.Placeholder, font, brush, new RectangleF(_body.X + 12, _body.Y + 16, _body.Width - 24, _body.Height - 28));
     }
     private static CanvasRasterPlan Plan(Size2 size, Theme theme, double scale, long budget = CanvasRasterPlan.BitmapBudget)
         => CanvasRasterPlan.Create(size, scale, budget, theme.Shadow ? theme.ShadowExtent + 1 : 0);
@@ -234,20 +234,19 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             bounds.Inflate((float)(theme.ShadowExtent + 1), (float)(theme.ShadowExtent + 1));
             if (_canvas is null || _canvas.Viewport.IsVisible(ref bounds)) visible |= 1 << i;
         }
-        return new(Component.State.Revision, theme, Component.BodySize, _scale, visible);
+        var retained = CanvasStackRaster.RetainedMask(CanvasStackRaster.Plan(layout, theme, _scale), visible);
+        return new(Component.State.Revision, theme, Component.BodySize, _scale, retained);
     }
     internal void Regenerate()
     {
         ConduitPlus.Rhino.OverlayManager.Start();
         Pending = false;
-        if (Disabled || Component.State.Specs.Length == 0 || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
+        if (Disabled || Component.State.Specs.Length == 0 || DesiredKey() is not { } key || key == _failed || Frame?.IsReady(key) == true) return;
         try
         {
-            var layout = new CanvasStackLayout(Component.State.Specs, key.Theme);
-            var plans = CanvasStackRaster.Plan(layout, key.Theme, key.Scale);
-            var retained = CanvasStackRaster.RetainedCards(plans, key.VisibleCards, CanvasRasterPlan.DocumentBudget / 2);
-            CanvasCardCache.Reserve(this, retained.Sum(i => plans[i].Bytes));
             var next = new CanvasCardFrame(Component.State.Specs, key);
+            CanvasCardCache.Reserve(this, next.AdditionalBytes(Frame));
+            next.Render(Frame);
             HideTooltip();
             var old = Frame; Frame = next;
             if ((old?.Key.Size ?? Component.BodySize) != next.Key.Size) ExpireLayout();
@@ -358,6 +357,13 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         var old = Frame; Frame = null;
         if (old is not null && old.Key.Size != Component.BodySize) ExpireLayout();
         old?.Dispose();
+    }
+    internal void EvictRasters()
+    {
+        // Keep the last published immutable specs/theme/layout, including for locked/disabled cards.
+        // Missing screen surfaces and GH exports render budgeted temporaries from this snapshot.
+        Frame?.ReleaseRasters();
+        _canvas?.Invalidate();
     }
     private void DetachCanvas()
     {

@@ -90,7 +90,7 @@ public sealed class CanvasCardComponent : GH_Component
                     {
                         spec.Validate();
                         if (!Enum.IsDefined(spec.Kind)) throw new ArgumentException("Unsupported card kind.");
-                        if (!ids.Add(spec.Id)) Notice(GH_RuntimeMessageLevel.Warning, $"Card '{spec.Title}' is connected twice; showing it once.");
+                        if (!ids.Add(spec.Id)) Notice(GH_RuntimeMessageLevel.Warning, $"Card '{CardName(spec)}' is connected twice; showing it once.");
                         else if (cards.Count < CanvasStackLayout.Limit)
                             cards.Add(spec.Kind == CardKind.Title ? spec with { Background = TitleBackground.Card } : spec);
                     }
@@ -116,7 +116,7 @@ public sealed class CanvasCardComponent : GH_Component
             Notice(GH_RuntimeMessageLevel.Warning, $"Showing 12 of {ids.Count} cards; use another Canvas Card for the rest.");
         _membership = MembershipIndex.Create([new BrushRegistration("canvas", cards, [])], _membership);
         foreach (var diagnostic in _membership.Diagnostics)
-            Notice(GH_RuntimeMessageLevel.Warning, $"Card '{cards.First(c => c.Id == diagnostic.CardId).Title}', key '{diagnostic.Key}': {diagnostic.Message}");
+            Notice(GH_RuntimeMessageLevel.Warning, $"Card '{CardName(cards.First(c => c.Id == diagnostic.CardId))}', key '{diagnostic.Key}': {diagnostic.Message}");
         WarnTheme();
         var token = ScopeInput.Read(this, da, 1, out _scopeValid);
         if (_scope?.Lease.Token != token || _scope?.IsValid == false)
@@ -152,6 +152,7 @@ public sealed class CanvasCardComponent : GH_Component
         if (oldSize != BodySize) attributes?.ExpireLayout();
         attributes?.RequestDisplay();
     }
+    private static string CardName(CardSpec spec) => string.IsNullOrWhiteSpace(spec.Title) ? spec.Kind.ToString() : spec.Title;
     private void RefreshScope()
     {
         if (!_active || Locked) return;

@@ -159,7 +159,7 @@ public sealed class CanvasCardTests : IDisposable
         Assert.NotEqual(key, key with { Theme = Theme.Paper with { Ink = "#123456" } });
         Assert.NotEqual(key, key with { Size = size with { Width = 300 } });
         Assert.NotEqual(key, key with { Scale = 2 });
-        Assert.NotEqual(key, key with { VisibleCards = 2 });
+        Assert.NotEqual(key, key with { RetainedCards = 2 });
         Assert.Equal(key, key with { Theme = Theme.Paper with { } });
     }
     [Fact]

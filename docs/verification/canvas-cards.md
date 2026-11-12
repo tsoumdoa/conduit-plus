@@ -80,6 +80,24 @@ current frame, revisions/theme/size/density invalidation, independent owners,
 source replacement, keyed selection, immutable input snapshots, pruning and
 sort/scroll clamping. All six card kinds are rendered through the bounded plan.
 
+Run the real GH stack regressions with PowerShell 7:
+
+```powershell
+pwsh -NoProfile -File ./tools/examples/Build-Examples.ps1 -Example Structural -CanvasStackChecks
+```
+
+This checks retained bitmap identity across panning, one-card updates and changes
+to the retained set. Three near-32 MiB owners force actual cache eviction; locked
+screen painting and GH export must remain pixel-identical to their frozen images
+even when live data and theme differ. A disabled document is checked after raster
+eviction too. It also checks blank-title duplicate warnings for Bar/Text/Legend,
+and captures the wrong-type placeholder in the default 280 px body.
+
+The output includes 1x/2x three-card and locked stacks, 800 px-tall viewport crops
+of the 12-card stack, full-density Metric crops and before/after frozen screen and
+export images. The JSON result lists completed checks. These host renders do not
+replace the manual pointer and mixed-monitor checks below.
+
 ## Pending live Rhino 8.20 checks
 
 1. Connect each of Metric/Bar/Table/Line/Text/Legend to a separate Canvas Card.
@@ -124,12 +142,19 @@ code. Each card in a stack has an independent raster bounded to 16 MiB and 4096 
 per dimension, including shadow margins. Tall siblings never reduce another card's
 density. Each component retains at most 32 MiB, prioritizing visible cards and
 leaving room for atomic replacement within the 64 MiB document budget. Cache
-pressure evicts least-recently-visible frames or leaves offscreen surfaces uncached;
+pressure evicts least-recently-visible raster surfaces or leaves offscreen surfaces uncached;
 it does not lower raster density. Any visible surface that cannot be retained is
 painted as a budgeted temporary. GH export paints and disposes cards sequentially
 at the export scale, subject only to each card's own bitmap bounds. The existing
 GDI measurer caches managed measurement values rather
 than retaining an undisposable thread-static Graphics/bitmap/font cache.
+
+Raster eviction preserves the last published specs, theme and layout. Locked or
+disabled components repaint missing surfaces from that frozen snapshot and use
+the same snapshot for GH exports, without exceeding the document bitmap budget.
+Frame keys use the retained card set; unchanged per-card rasters transfer to a
+replacement frame by card ID/revision, theme and raster plan. Panning a card across
+the viewport edge does not repaint a retained stack whose content/density is unchanged.
 
 No boards, resizing, wheel interception, cross-host linking or outputs are added.
 Existing component/plugin GUIDs and input orders are unchanged.

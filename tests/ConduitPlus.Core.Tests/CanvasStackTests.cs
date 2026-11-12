@@ -135,6 +135,18 @@ public sealed class CanvasStackTests : IDisposable
     }
 
     [Fact]
+    public void VisibilityOnlyChangesTheFrameKeyWhenTheRetainedSetChanges()
+    {
+        var small = Enumerable.Range(0, 12).Select(i => Table(i.ToString())).ToArray();
+        var plans = CanvasStackRaster.Plan(new(small, Theme.Paper), Theme.Paper, 2);
+        Assert.Equal((1 << 12) - 1, CanvasStackRaster.RetainedMask(plans, 1));
+        Assert.Equal(CanvasStackRaster.RetainedMask(plans, 1), CanvasStackRaster.RetainedMask(plans, 1 << 11));
+        var large = Enumerable.Repeat(new CanvasRasterPlan(1, 2048, 2048), 3).ToArray();
+        Assert.Equal(0b011, CanvasStackRaster.RetainedMask(large, 1));
+        Assert.Equal(0b101, CanvasStackRaster.RetainedMask(large, 1 << 2));
+    }
+
+    [Fact]
     public void DocumentPressureChangesRetentionNotDensityAndReservesAtomicReplacement()
     {
         var cards = Enumerable.Range(0, 12).Select(i => Table(i.ToString(), i == 0 ? 180 : 1200) with
