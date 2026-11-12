@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
   <ItemGroup>
+    <None Include="../../docs/diagram-palettes/palettes.json" Link="diagram-palettes/palettes.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/ConduitPlus.Core/ConduitPlus.Core.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.3" />

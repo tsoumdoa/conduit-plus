@@ -6,6 +6,8 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
+// These tests register or temporarily replace the process-wide text measurer.
+[Collection("Legend text metrics")]
 public sealed class CoreTests
 {
     public CoreTests() => GdiCanvas.RegisterTextMetrics();

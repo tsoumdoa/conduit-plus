@@ -161,6 +161,9 @@ to **Overlay**, or card outputs to **Canvas Card**.
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
+| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title and Slot → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
+| Colour Palette | Colour: Style (Programme), Count (8), Shift (0) → Colours and #RRGGBB Hex lists. Curated diagram styles keep the first colours the same when Count grows. |
+| Colour Categories | Colour: Categories tree, optional member Keys, Palette (Categorical), Order, Title and Slot → Colours tree, Legend, distinct Categories, Category colours, Group keys and Members for a grouped Bar. Order pins colours across filtering; right-click Show counts defaults on. |
 | Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a remark; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
 | Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
@@ -171,6 +174,7 @@ to **Overlay**, or card outputs to **Canvas Card**.
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
 Card components are under **Cards**; Link, Scope, Overlay and Canvas Card are under **Display**.
+Colour Scale, Colour Categories and Colour Palette are under **Colour**.
 Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the right-click menu.
 New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light
 UI, Night for its dark UI. Auto follows Rhino settings changes without a solve.
@@ -224,6 +228,125 @@ Numeric text accepts an optional sign, digits, optional dot fraction and optiona
 commas, grouping separators, percentages and units remain text. Keys and sorting retain raw values.
 
 Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
+
+## Colour helpers
+
+**Conduit+ → Colour → Colour Scale**
+
+1. Wire numbers to **Values**.
+2. Right-click **Palette** to choose a sequential, diverging or Status palette, or wire your own colours.
+3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
+
+Maps numbers to colours and a finished ordinary Legend. Colours can also feed
+Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
+of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
+set both for a legend with no Values. Out-of-range values use the end colours.
+Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
+a remark. Constant finite data gets a single-colour legend at that value.
+
+| Colour Scale input | Nick | Access | Default / meaning |
+|---|---|---|---|
+| Values | V | Number tree, optional | Numbers to colour; one scale across branches. |
+| Palette | P | Text tree, flattened, optional | Blue; right-click a name, or wire 2–32 colours. |
+| Min | Mn | Number, optional | Nice floor of the finite data; value at the first colour. |
+| Max | Mx | Number, optional | Nice ceiling of the finite data; value at the last colour. |
+| Mid | Md | Number, optional | Centre, except diverging/Status ranges spanning zero use 0. Must be strictly between Min and Max. |
+| Unit | U | Text | Empty; shown on the legend. |
+| Title | T | Text | Legend. |
+| Slot | S | Text option, optional | Automatic. |
+
+Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid is the value at the
+palette's middle colour; each side of it is linear, and automatic bounds grow to include
+it. The legend is drawn from the same mapping as the model colours, so the two always
+agree. Give one Title, Unit, Slot and Mid per component: it makes one legend.
+
+**Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1.
+
+**Colour Categories**
+
+1. Wire text to **Categories**, and optionally member **Keys** and a complete **Order**.
+2. Right-click **Palette** to choose, or wire your own colours (one per category, repeating).
+3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
+
+Maps text to swatches. Wire the complete category list to
+**Order** to pin each category's colour and row even when filtering removes its
+items. Absent categories keep a zero-count row and, when keyed, an empty Members
+branch. Unlisted categories append with a warning. Without Order, colours follow
+first appearance. Category names are case-sensitive; blank values become **No data**,
+always last and grey. Ordered palettes sample first to last category (Status with
+two categories is Good/Bad; with three it adds Warning). Categorical and custom
+palettes repeat when exhausted and warn; they do not invent extra hues.
+
+| Colour Categories input | Nick | Access | Default / meaning |
+|---|---|---|---|
+| Categories | Ca | Text tree | One category per item. Order alone can supply empty rows. |
+| Keys | K | Text tree, optional | One member key per item in path order, as on Link; enables selectable legend groups. |
+| Palette | P | Text tree, flattened, optional | Categorical; right-click a name, or wire 2–32 colours. |
+| Order | O | Text tree, flattened, optional | First appearance; a complete, unique list pins colours. |
+| Title | T | Text | Legend; group keys are generated as `Title:Category@xxxxxxxx` (the first 8 hex digits of the component InstanceGuid). |
+| Slot | S | Text option, optional | Automatic. |
+
+| Colour Categories output | Nick | Access | Connect to |
+|---|---|---|---|
+| Colours | C | Colour tree | Custom Preview or per-item Bar Colors; same paths/items as Categories. |
+| Legend | L | Card | Overlay or Canvas Card. |
+| Categories | Ca | Text list | Grouped Bar Labels, in legend order. |
+| Category colours | CC | Colour list | Grouped Bar Colors. |
+| Group keys | GK | Text list | Grouped Bar Keys; empty without Keys. |
+| Members | M | Text tree | Grouped Bar Members; one `{i}` branch per row including empty groups; empty without Keys. |
+
+Generated group keys are stable across solves and reopening the document. Separate
+components (including copies) get their own namespace, even with the same Title.
+Feed grouped numeric totals in Categories output order into Bar Values. Link
+still receives geometry and the original member keys. Blank/reserved keys, a key
+in different categories, and generated group tokens colliding with member keys
+are errors. Repeated keys within one category are deduplicated. Right-click
+**Show counts** (on by default, saved with Undo) to show/hide unique member counts;
+without Keys, counts are item counts. The count column hides automatically when every
+category has exactly one member (or one item without Keys); zero-count rows and counts above one retain it.
+
+Both Palette inputs accept case-insensitive names, an ASCII hyphen in the diverging
+names, and typed ` reversed` after a name (the menu offers reversal for ordered palettes).
+Colour Scale warns and uses Blue for any named category palette, including diagram styles.
+Wired colour lists are opaque RGB (alpha
+is ignored), with evenly spaced stops on Colour Scale and discrete swatches on
+Colour Categories. The RGB values stay identical in Paper, Night, Smoke and Blueprint.
+To use a GH Gradient, wire its sampled colours and set the same Min/Max explicitly.
+
+| Palette | Colours, low-to-high or category order |
+|---|---|
+| Categorical | `#2466C3 #9A9606 #B54303 #15A2B6 #8E7DEC #93518E #E36586 #2E7A50` |
+| Blue | `#CFE8FE #8CC0F2 #5196DF #296CBA #184687` |
+| Teal | `#C8EEE8 #7BCBC6 #31A5A5 #017B80 #095258` |
+| Heat | `#EFE6B1 #E3B25A #D37812 #B4410D #831826` |
+| Blue–Red | `#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726` |
+| Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
+| Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
+
+**Diagram styles / Colour Palette (`ColPal`)**
+
+1. Wire a list of names (for example Housing, Office, Retail, Landscape) to **Colour Categories → Categories**.
+2. Right-click **Palette** and choose **Programme**, **Primary**, **Pop**, **Pastel**, **Earth**, **Accent** or **Cool**.
+3. Wire **Legend** to **Overlay**. One name gets one swatch; a column of identical counts is hidden automatically.
+
+For colours by index, use **Colour Palette**: **Style (S)** defaults to Programme,
+**Count (N)** to 8 (0–256; zero gives empty outputs) and optional **Shift (Sh)** to 0;
+outputs are **Colours (C)** and
+**Hex (H)** lists. Wire Colours to **Key Legend → Colors** and set Count to your
+label list length. The first colours stay the same when Count grows; Shift skips
+colours and wraps, including negative shifts. Programme, Primary, Pop and Cool
+have 24 colours; Pastel, Earth and Accent have 16. Beyond that they repeat with a
+warning. A typed scale name such as Blue samples evenly and ignores Shift.
+
+Programme is confident mid-tone programme coding; Primary is bold with black;
+Pop is bright and loud; Pastel is pale; Earth uses muted material tones; Accent
+pairs greys with red; Cool uses blues and greens with coral. These styles favour
+the diagram's look over colour-blind separation; **Categorical** remains Colour
+Categories' default. Exact tables and measured distances are in
+[docs/diagram-palettes](docs/diagram-palettes/). Colours stay identical
+on all four themes, with the swatch outline preserving pale and dark edges.
+Accent and Cool include near-black swatches that rely on outlines on Night; Accent
+is best for a handful of categories.
 
 ## Cards on the Grasshopper canvas
 

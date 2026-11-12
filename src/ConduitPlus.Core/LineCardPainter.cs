@@ -9,15 +9,22 @@ public static class ChartTicks
     {
         if (!double.IsFinite(minimum) || !double.IsFinite(maximum) || minimum > maximum || intervals is < 1 or > 20)
             throw new ArgumentOutOfRangeException(nameof(minimum));
-        if (minimum == maximum) { minimum -= .5; maximum += .5; }
+        if (minimum == maximum)
+        {
+            var delta = Math.Max(.5, Math.Abs(minimum) * .05);
+            minimum = Math.Max(-double.MaxValue, minimum - delta);
+            maximum = Math.Min(double.MaxValue, maximum + delta);
+        }
         var raw = (maximum - minimum) / intervals;
         var power = Math.Pow(10, Math.Floor(Math.Log10(raw)));
         var fraction = raw / power;
         var step = (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * power;
-        if (!double.IsFinite(step) || step <= 0) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (!double.IsFinite(step) || step <= 0) return [minimum, maximum];
         var first = Math.Floor(minimum / step);
         var last = Math.Ceiling(maximum / step);
-        return Enumerable.Range(0, checked((int)(last - first)) + 1).Select(i => (first + i) * step).ToArray();
+        if (!double.IsFinite(last - first) || last - first > 100) return [minimum, maximum];
+        var ticks = Enumerable.Range(0, (int)(last - first) + 1).Select(i => (first + i) * step).ToArray();
+        return ticks.Length < 2 || ticks.Any(v => !double.IsFinite(v)) ? [minimum, maximum] : ticks;
     }
 }
 
