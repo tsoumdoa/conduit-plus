@@ -59,4 +59,15 @@ public sealed class NumericFormattingTests
     [InlineData("−0.0001", 2, "0.00")]
     public void TableRoundsOriginalSourceDigitsBeforeAnyDoubleConversion(string raw, int decimals, string expected)
         => Assert.Equal(expected, TablePresentation.Format(raw, decimals));
+
+    [Theory]
+    [InlineData("72057594037927936", 0, "72057594037927936")]
+    [InlineData("-72057594037927936", 0, "-72057594037927936")]
+    [InlineData("9007199254740993", 0, "9007199254740993")]
+    public void MetricKeepsSourceDigits(string raw, int decimals, string expected)
+        => Assert.Equal(expected, MetricFormatting.Format(raw, decimals));
+
+    [Fact]
+    public void IntegralDoublesFormatExactly()
+        => Assert.Equal("72057594037927936", NumericFormatting.Fixed(72057594037927936d, 0));
 }

@@ -9,6 +9,6 @@ public static class MetricFormatting
     {
         if (decimals is < 0 or > 12) throw new ArgumentOutOfRangeException(nameof(decimals), "Decimals must be 0–12.");
         return decimals.HasValue && double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number)
-            ? NumericFormatting.Fixed(number, decimals.Value) : value;
+            ? NumericFormatting.Fixed(value!.Trim(), number, decimals.Value) : value;
     }
 }

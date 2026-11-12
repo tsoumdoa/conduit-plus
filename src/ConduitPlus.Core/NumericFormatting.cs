@@ -5,8 +5,10 @@ namespace ConduitPlus.Core;
 /// <summary>Shared schedule precision: midpoint values round away from zero.</summary>
 public static class NumericFormatting
 {
+    // Integral doubles print exactly with F0; others use the shortest round-trip text.
     public static string Fixed(double value, int decimals)
-        => Fixed(value.ToString("R", CultureInfo.InvariantCulture), value, decimals);
+        => Fixed(double.IsFinite(value) && value == Math.Floor(value)
+            ? value.ToString("F0", CultureInfo.InvariantCulture) : value.ToString("R", CultureInfo.InvariantCulture), value, decimals);
 
     // Source text has already passed Table's strict invariant grammar. Preserve its digits
     // before rounding; a direct double-to-decimal cast retains only about 15 significant digits.
