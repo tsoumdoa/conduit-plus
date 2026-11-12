@@ -52,7 +52,7 @@ public sealed class BarPresentationTests
         if (threshold <= 0) Assert.False(BarPresentation.IsGood(0, threshold, BarGoodWhen.Within));
         var canvas = new Commands(); CardPainter.Paint(canvas, c, Theme.Paper);
         Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Data && r.Rect.Height == 8);
-        Assert.DoesNotContain(canvas.Rects, r => r.Fill == Theme.Paper.ThresholdBand);
+        Assert.DoesNotContain(canvas.Rects, r => r.Fill == Theme.Paper.Line && r.Rect.Height == 12);
         Assert.Empty(canvas.Lines);
         Assert.Equal("#AABBCC", BarPresentation.Color(c with { Colors = ["#AABBCC"] }, Theme.Paper, 0));
         Assert.Contains("Within needs a positive Threshold (the tolerance).", Tooltip.For(c, "k0")!);
@@ -82,7 +82,7 @@ public sealed class BarPresentationTests
             var c = Bar(values) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
             var canvas = new Commands(); CardPainter.Paint(canvas, c, theme);
             var tracks = canvas.Rects.Where(r => r.Fill == theme.Track && r.Rect.Height == 8).ToArray();
-            var bands = canvas.Rects.Where(r => r.Fill == theme.ThresholdBand).ToArray();
+            var bands = canvas.Rects.Where(r => r.Fill == theme.Line && r.Rect.Height == 12).ToArray();
             Assert.Equal(values.Length, bands.Length);
             Assert.Equal(2 * values.Length, canvas.Lines.Count);
             var max = Math.Max(5, values.Select(v => Math.Abs(v ?? 0)).Max());
