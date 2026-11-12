@@ -71,11 +71,45 @@ internal static class ArchitectureDashboard
                     using var outline = new Rectangle3d(Plane.WorldXY, new Interval(b.X, b.X + b.Width), new Interval(b.Y, b.Y + b.Depth)).ToNurbsCurve();
                     using var extrusion = Extrusion.Create(outline, b.Height, true);
                     using var mesh = Mesh.CreateFromBox(new BoundingBox(b.X, b.Y, 0, b.X + b.Width, b.Y + b.Depth, b.Height), 1, 1, 1);
+                    using var smooth = Mesh.CreateFromSphere(new Sphere(Point3d.Origin, 2), 32, 32);
+                    var smoothLink = new Link([b.Key], [(b.Key, (object)smooth)]);
+                    var smoothWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(smoothLink)!;
+                    var smoothWire = ((Array)smoothWires[b.Key]!).GetValue(0)!;
+                    Require(((Line[])Get(smoothWire, "Lines")).Length == smooth.TopologyEdges.Count, "Smooth closed mesh must fall back to all edges.");
+                    // One Link item, one key, but both sharp and smooth disconnected components.
+                    using var joined = new Mesh();
+                    using var separatedBox = Mesh.CreateFromBox(new BoundingBox(10, 0, 0, 12, 2, 2), 1, 1, 1);
+                    joined.Append(separatedBox); joined.Append(smooth);
+                    Require(joined.IsValid && joined.IsClosed, "Joined box/sphere fixture must be valid and closed.");
+                    var joinedLink = new Link([b.Key], [(b.Key, (object)joined)]);
+                    var joinedWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(joinedLink)!;
+                    var joinedLines = (Line[])Get(((Array)joinedWires[b.Key]!).GetValue(0)!, "Lines");
+                    Require(joinedLines.Count(l => l.From.X < 3 && l.To.X < 3) == smooth.TopologyEdges.Count, "Joined smooth component lost fallback feedback.");
+                    Require(joinedLines.Count(l => l.From.X >= 10 && l.To.X >= 10) == 12, "Joined box must keep only its twelve feature edges.");
+                    var joinedPicks = (Array)typeof(Link).GetField("_picks", Instance)!.GetValue(joinedLink)!;
+                    var joinedProxy = ((Array)Get(joinedPicks.GetValue(0)!, "Proxies")).GetValue(0)!;
+                    Require(((Line[])Get(joinedProxy, "Lines")).Length == joined.TopologyEdges.Count, "Joined mesh must retain all edge pick proxies.");
+                    Console.WriteLine($"Joined mesh feedback: 12 box + {smooth.TopologyEdges.Count} sphere edges; {joined.TopologyEdges.Count} pick edges.");
+                    using var planar = new Mesh();
+                    planar.Vertices.Add(0, 0, 0); planar.Vertices.Add(1, 0, 0); planar.Vertices.Add(1, 1, 0); planar.Vertices.Add(0, 1, 0);
+                    planar.Faces.AddFace(0, 1, 2); planar.Faces.AddFace(0, 2, 3);
+                    var planarLink = new Link([b.Key], [(b.Key, (object)planar)]);
+                    var planarWires = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(planarLink)!;
+                    Require(((Line[])Get(((Array)planarWires[b.Key]!).GetValue(0)!, "Lines")).Length == 4, "Planar mesh must omit the triangulation diagonal.");
                     try
                     {
                         foreach (var geometry in new GeometryBase[] { extrusion, mesh })
                         {
                             var probe = new Link([b.Key], [(b.Key, (object)geometry)]);
+                            if (geometry is Mesh closedMesh)
+                            {
+                                var drawn = (System.Collections.IDictionary)typeof(Link).GetField("_wires", Instance)!.GetValue(probe)!;
+                                var wire = ((Array)drawn[b.Key]!).GetValue(0)!;
+                                Require(((Line[])Get(wire, "Lines")).Length == 12, "Closed box mesh must draw its twelve feature edges.");
+                                var picks = (Array)typeof(Link).GetField("_picks", Instance)!.GetValue(probe)!;
+                                var proxy = ((Array)Get(picks.GetValue(0)!, "Proxies")).GetValue(0)!;
+                                Require(((Line[])Get(proxy, "Lines")).Length == closedMesh.TopologyEdges.Count, "Feature-edge drawing must retain all edge pick proxies.");
+                            }
                             session.GetType().GetMethod("SetLinks", Instance)!.Invoke(session, [new[] { probe }]);
                             var p = centres[0].Point; p.Transform(screen);
                             var picked = picker.Invoke(null, [view, onlySession, new System.Drawing.Point((int)Math.Round(p.X), (int)Math.Round(p.Y))]);
@@ -121,18 +155,19 @@ internal static class ArchitectureDashboard
                     {
                         Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", result);
                         ExportChecks.Run(doc, view, session, (CardSpec[])Get(session, "Cards"), result, args.Contains("--safe"), scale, geometry);
-                        // The selected face centre is far from any edge: blue here proves shaded fill, not just wires.
+                        // The selected face centre is far from any edge: neutral alpha proves the white wash.
                         var point = centres[^1].Point; point.Transform(view.ActiveViewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen));
                         using var png = new Bitmap(Path.Combine(result, "captures", $"raster-{scale}x.png"));
                         var pixel = png.GetPixel((int)Math.Round(point.X * scale), (int)Math.Round(point.Y * scale));
-                        Require(pixel.A >= 140 && pixel.A < 240 && pixel.B > pixel.R + 20 && pixel.B > pixel.G + 10, "Selected face interior needs readable, translucent blue shading.");
+                        Require(Math.Abs(pixel.A - (rooms ? 51 : 92)) <= 10 && Math.Abs(pixel.R - pixel.G) <= 3 && Math.Abs(pixel.G - pixel.B) <= 3,
+                            "Selected face interior needs a neutral 20% white wash.");
                         File.WriteAllText(Path.Combine(result, "surface-check.json"), CardJson.Serialize(new { key, x = point.X, y = point.Y, pixel.R, pixel.G, pixel.B, pixel.A }));
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
                 }
                 if (rooms) ScopeHostChecks.Run(gh, doc, view, result, args.Contains("--exports") && groupState == "scope");
                 session = ((Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!).Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
-                ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none");
+                ArchitectureGroupChecks.Run(gh, doc, view, session, rooms, result, args.Contains("--exports") ? groupState : "none", theme);
                 if (rooms) ScopeRhinoCloseChecks.Run(doc, result);
                 Console.WriteLine($"Reopened {path}: {gh.ObjectCount} objects, 0 warnings/errors; {cards.Length} cards; {centres.Length} face-interior hits; sorted selection reveal passed.");
             }

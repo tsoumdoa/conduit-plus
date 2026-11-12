@@ -136,7 +136,7 @@ public sealed class CoreTests
         var table = StructuralDemo.Create().Single(c => c.Kind == CardKind.Table); // 12 rows, 8 visible by default
         Assert.True(TableScroll.CanScroll(table));
         Assert.Equal(4, TableScroll.MaxOffset(table));
-        Assert.Equal(48 + 9 * Theme.Paper.RowHeight, CardMeasure.Measure(table, Theme.Paper).Height);
+        Assert.Equal(48 + 10 * Theme.Paper.RowHeight, CardMeasure.Measure(table, Theme.Paper).Height); // shared scroll footer
 
         var scrolled = table with { ScrollOffset = 3 };
         var hits = CardMeasure.DataHits(scrolled, Theme.Paper);

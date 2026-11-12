@@ -47,12 +47,16 @@ public static class CardMeasure
         !Hits(c, t).Any(h => h.Contains(x, y)) &&
         (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
     public static Size2 Measure(CardSpec c, Theme t) => FormMeasure.Size(c, t, c.Form, TextMetrics.Measurer);
-    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
+    // DataHits remain content/paint bounds. Interaction also includes the visible padding tick.
+    public static double TickLeft(HitRegion row) => Math.Max(0, row.X - 6);
+    private static HitRegion Actionable(CardSpec c, HitRegion row) => c.Kind == CardKind.Line ? row :
+        row with { X = TickLeft(row), W = row.W + row.X - TickLeft(row) };
+    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],
         CardKind.Metric when c.Keys.Length == 1 => [new(c.Keys[0], t.Padding, BodyTop, c.Width - 2 * t.Padding, Measure(c, t).Height - BodyTop - t.Padding)],
-        CardKind.Bar => c.Keys.Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
+        CardKind.Bar => BarPresentation.Order(c).Select(i => c.Keys[i]).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((key, i) => new HitRegion(key, t.Padding, 36 + i * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         // Only visible rows are hit regions; region i is the i-th row on screen, not in the data.
         CardKind.Table => TableSort.Rows(c).Skip(TableScroll.Offset(c)).Take(TableScroll.Visible(c)).Select((row, i) => new HitRegion(row.Key, t.Padding, BodyTop + (i + 1) * t.RowHeight, c.Width - 2 * t.Padding, t.RowHeight)).ToArray(),
         CardKind.Line => LineCardPainter.Hits(c),
@@ -71,7 +75,15 @@ public static class SlotLayout
     public static Slot[] ResolveAll(IReadOnlyList<CardSpec> cards)
     {
         var n = 0;
-        return cards.Select(c => c.Kind == CardKind.Title ? c.WiredSlot ?? Slot.Tl : Resolve(c, n++)).ToArray();
+        var sources = new Dictionary<string, Slot>(StringComparer.Ordinal);
+        return cards.Select(c =>
+        {
+            if (c.Kind == CardKind.Title) return c.WiredSlot ?? Slot.Tl;
+            var source = CardIdentity.Source(c.Id);
+            if (!sources.ContainsKey(source)) sources[source] = (Slot)(n++ % 6);
+            var slot = sources[source];
+            return c.WiredSlot ?? slot;
+        }).ToArray();
     }
     public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (c.Kind == CardKind.Title ? Slot.Tl : (Slot)(index % 6));
 }

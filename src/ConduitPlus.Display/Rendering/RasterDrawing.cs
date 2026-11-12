@@ -15,6 +15,31 @@ public static class RasterDrawing
         var size = CardMeasure.Measure(spec, theme);
         return Render(size, scale, canvas => CardPainter.Paint(canvas, spec, theme), Margin(theme, scale));
     }
+    public static Bitmap RenderStack(IReadOnlyList<CardSpec> specs, Theme theme, double scale)
+    {
+        if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
+        if (specs.Count == 1) return Render(specs[0], theme, scale);
+        var layout = new CanvasStackLayout(specs, theme);
+        var margin = Margin(theme, scale);
+        var bitmap = new Bitmap(checked((int)Math.Ceiling(layout.Size.Width * scale) + 2 * margin),
+            checked((int)Math.Ceiling(layout.Size.Height * scale) + 2 * margin), PixelFormat.Format32bppPArgb);
+        try
+        {
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.Clear(Color.Transparent);
+            graphics.TranslateTransform(margin, margin);
+            graphics.ScaleTransform((float)scale, (float)scale);
+            using var canvas = new GdiCanvas(graphics);
+            for (var i = 0; i < specs.Count; i++)
+            {
+                var saved = graphics.Save();
+                try { graphics.TranslateTransform((float)layout.Cards[i].X, (float)layout.Cards[i].Y); CardPainter.Paint(canvas, specs[i], theme); }
+                finally { graphics.Restore(saved); }
+            }
+            return bitmap;
+        }
+        catch { bitmap.Dispose(); throw; }
+    }
     public static Bitmap RenderTooltip(IReadOnlyList<string> lines, Theme theme, double scale)
     {
         if (!double.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));

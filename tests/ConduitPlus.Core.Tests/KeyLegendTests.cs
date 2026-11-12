@@ -3,11 +3,11 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
-[Collection("Legend text metrics")]
 public sealed class KeyLegendTests : IDisposable
 {
     private readonly Func<string, double, string, Size2> _original = TextMetrics.Measurer;
-    public KeyLegendTests() => TextMetrics.Measurer = Measure;
+    // Measure and paint with the same provider, independently of which GDI test ran first.
+    public KeyLegendTests() => TextMetrics.Measurer = new RecordingCanvas().MeasureText;
     public void Dispose() => TextMetrics.Measurer = _original;
     private static Size2 Measure(string text, double size, string font) => new(text.Length * size / 2, size + 2);
     private static CardSpec Legend() => new()
@@ -149,7 +149,7 @@ public sealed class KeyLegendTests : IDisposable
         Assert.Empty(CardMeasure.Hits(state.Spec, Theme.Paper));
         var keyed = card with { Keys = ["a", "b"], HoverKey = "b" };
         var hits = CardMeasure.DataHits(keyed, Theme.Paper);
-        Assert.Equal(new HitRegion("b", 12, 58, 96, 22), hits[1]);
+        Assert.Equal(new HitRegion("b", 12, 58, CardMeasure.Measure(keyed, Theme.Paper).Width - 24, 22), hits[1]);
         var canvas = new RecordingCanvas();
         LegendCardPainter.Paint(canvas, keyed, Theme.Paper);
         Assert.Contains((new Rect2(hits[1].X, hits[1].Y, hits[1].W, hits[1].H), Theme.Paper.Track), canvas.Rects);

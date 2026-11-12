@@ -17,13 +17,13 @@ public static class FormMeasure
         var width = c.Kind == CardKind.Legend && !c.Min.HasValue ? LegendCardPainter.CategoricalWidth(c, t, measure) : c.Width;
         return new(width, c.Kind switch
         {
-            CardKind.Table => 48 + (Math.Min(Math.Min(c.MaxRows, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
-            CardKind.Bar => 48 + Math.Min(c.Values.Length, f.VisibleRows ?? int.MaxValue) * t.RowHeight,
+            CardKind.Table => 48 + (Math.Min(Math.Min(c.RowLimit, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
+            CardKind.Bar => 48 + Math.Min(Math.Min(c.Values.Length, c.RowLimit), f.VisibleRows ?? int.MaxValue) * t.RowHeight,
             CardKind.Line => f.Compact ? 140 : 220,
             CardKind.Metric => f.Compact ? 48 : 92,
             CardKind.Legend => c.Min.HasValue ? f.Compact ? LegendCardPainter.GradientCompactHeight : LegendCardPainter.GradientHeight : 48 + c.Colors.Length * t.RowHeight,
             _ => f.Compact ? text!.Top + Math.Min(2, text.Lines.Length) * text.LineHeight + t.Padding : text!.Height
-        });
+        } + TableScroll.FooterHeight(c with { Form = f }, t));
     }
 }
 public sealed record CardPlacement(Guid Owner, string CardId, double X, double Y, double Width, double Height, CardForm Form);
@@ -50,7 +50,8 @@ public static class ViewportLayout
         var o = r.Options;
         if (!double.IsFinite(r.Dpi) || r.Dpi <= 0 || r.Viewport.Width < 0 || r.Viewport.Height < 0 || o.ZoomStep <= 0 || o.MinZoom <= 0 || o.MaxZoom < o.MinZoom) throw new ArgumentException("Invalid layout dimensions or scale.");
         var owners = r.Participants.OrderBy(p => p.Owner.ToString("N"), StringComparer.Ordinal).ToArray();
-        var items = owners.SelectMany(p => p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => new Item(p, x.c, i, x.slot))).ToArray();
+        var items = owners.SelectMany(p => p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => new Item(p, x.c, i, x.slot))
+            .GroupBy(x => CardIdentity.Source(x.C.Id), StringComparer.Ordinal).SelectMany(g => g)).ToArray();
         double Snap(double z) => Math.Round(z / o.ZoomStep, MidpointRounding.AwayFromZero) * o.ZoomStep;
         var basis = Math.Min(r.Viewport.Width / r.Dpi / o.RefWidth, r.Viewport.Height / r.Dpi / o.RefHeight);
         var initial = owners.ToDictionary(p => p.Owner, p => Math.Clamp(Snap(Math.Clamp(basis * p.Size, o.MinZoom, o.MaxZoom)), o.MinZoom, o.MaxZoom));

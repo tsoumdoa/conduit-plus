@@ -20,22 +20,24 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private RectangleF _body, _strip;
     private double _scale = 1;
     private string? _pressed;
+    private string? _pressedCard;
+    private CardSpec? GestureSpec => Frame?.Specs.FirstOrDefault(c => c.Id == _pressedCard);
     private Point2 _down;
     private Keys _selectionModifiers;
     // Letting go of Shift/Ctrl just before the button keeps the click; only an extra modifier cancels it.
     private bool GestureModifiersValid => (Control.ModifierKeys & ~_selectionModifiers) == Keys.None;
-    private bool Actionable(string? key) => key is not null && !CardMeasure.IsReserved(key) && Frame is { } frame && BrushState.Keys(frame.Spec).Contains(key, StringComparer.Ordinal);
+    private bool Actionable(string? key) => key is not null && !CardMeasure.IsReserved(key) && Frame is { } frame && frame.Specs.Where(c => c.Id == _pressedCard).SelectMany(BrushState.Keys).Contains(key, StringComparer.Ordinal);
     private bool _dragScroll, _cancelClick;
     private double _grab;
     private int _originalOffset;
     private PointF? _hoverPoint;
-    private CanvasFrameKey? _failed;
+    private CanvasStackFrameKey? _failed;
     private bool _tooltipOwned;
     private const string TrackKey = "\u0001canvas-scroll-track";
     private int _pageOffset;
     internal bool HasGesture => _pressed is not null || _dragScroll;
     private bool Disabled => Component.Locked || Component.OnPingDocument()?.Enabled == false;
-    private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Spec.Id == Component.State.Spec?.Id);
+    private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Specs.Select(c => c.Id).SequenceEqual(Component.State.Specs.Select(c => c.Id)));
     internal bool Visible
     {
         get
@@ -76,7 +78,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         CanvasCardCache.Register(this);
     }
     private void DocumentChanged(GH_Canvas sender, GH_CanvasDocumentChangedEventArgs e) { CancelGesture(); ClearHover(); Pending = false; }
-    private void ViewportChanged(object? sender, GH_CanvasViewportChangedEventArgs e) { CancelGesture(); ClearHover(); }
+    private void ViewportChanged(object? sender, GH_CanvasViewportChangedEventArgs e) { CancelGesture(); ClearHover(); RequestDisplay(); }
     private void CaptureChanged(object? sender, EventArgs e) { if (_canvas?.Capture != true) CancelGesture(); }
     private void MouseLeft(object? sender, EventArgs e) { ClearHover(); }
     private void CanvasDisposed(object? sender, EventArgs e) => Detach();
@@ -96,9 +98,9 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void ClearHover()
     {
         _hoverPoint = null;
-        var rev = Component.State.Spec?.Rev;
+        var rev = Component.State.Revision;
         Component.State.Hover(null);
-        if (rev != Component.State.Spec?.Rev) RequestDisplay();
+        if (rev != Component.State.Revision) RequestDisplay();
         HideTooltip();
     }
     private void HideTooltip()
@@ -109,15 +111,15 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void RefreshHover()
     {
         var hit = _hoverPoint is { } p ? Hit(p) : null;
-        var rev = Component.State.Spec?.Rev;
-        Component.State.Hover(hit is not null && !CardMeasure.IsReserved(hit.Key) ? hit.Key : null);
-        if (rev != Component.State.Spec?.Rev) RequestDisplay();
+        var rev = Component.State.Revision;
+        Component.State.Hover(hit?.CardId, hit is not null && !CardMeasure.IsReserved(hit.Key) ? hit.Key : null);
+        if (rev != Component.State.Revision) RequestDisplay();
     }
     private Point2 Local(PointF point) => CanvasCardGeometry.ToLocal(new(point.X, point.Y), new(_body.X, _body.Y));
-    private HitRegion? Hit(PointF point)
+    private CanvasStackHit? Hit(PointF point)
     {
         var p = Local(point);
-        return Frame?.Hits.LastOrDefault(h => h.Contains(p.X, p.Y));
+        return Frame?.Layout.Hit(p);
     }
     protected override void Render(GH_Canvas canvas, Graphics graphics, GH_CanvasChannel channel)
     {
@@ -150,14 +152,21 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             if (export)
             {
                 // Verified against GH 8.20 GenerateHiResImageTile: Export mode, projected target Graphics.
-                var spec = Disabled ? Frame?.Spec : Component.State.Spec;
+                var specs = Disabled ? Frame?.Specs : Component.State.Specs;
                 var theme = Disabled ? Frame?.Theme : Component.CardTheme;
-                if (spec is not null && theme is not null)
+                if (specs is { Length: > 0 } && theme is not null)
                 {
-                    spec = BrushPresentation.WithoutHover(spec) with { ScrollOffset = _dragScroll ? _originalOffset : spec.ScrollOffset };
-                    var plan = CanvasRasterPlan.Create(CardMeasure.Measure(spec, theme), scale);
-                    using var image = RasterDrawing.Render(spec, theme, plan.Scale);
-                    graphics.DrawImage(image, WithMargin(new RectangleF(_body.X, _body.Y, (float)exportSize.Width, (float)exportSize.Height), theme, plan.Scale));
+                    specs = specs.Select(spec => BrushPresentation.WithoutHover(spec) with
+                    { ScrollOffset = _dragScroll && spec.Id == _pressedCard ? _originalOffset : spec.ScrollOffset }).ToArray();
+                    var layout = new CanvasStackLayout(specs, theme);
+                    for (var i = 0; i < specs.Length; i++)
+                    {
+                        var card = layout.Cards[i];
+                        var plan = Plan(new(card.W, card.H), theme, scale);
+                        CanvasCardCache.Reserve(this, plan.Bytes);
+                        using var image = RasterDrawing.Render(specs[i], theme, plan.Scale);
+                        graphics.DrawImage(image, WithMargin(CardBody(card), theme, plan.Scale));
+                    }
                 }
                 else DrawPlaceholder(graphics);
                 return;
@@ -165,19 +174,40 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             if (Math.Abs(_scale - scale) > .0001)
             { _scale = scale; SettleAt = Environment.TickCount64 + 120; Pending = true; CanvasCardCache.Queue(this); }
             var key = DesiredKey();
-            if (!Disabled && key is not null && Frame?.Key != key && _failed != key)
+            if (!Disabled && key is not null && Frame?.IsReady(key) != true && _failed != key)
             { Pending = true; CanvasCardCache.Queue(this); }
             if (!Interactive) { CancelGesture(); ClearHover(); }
             if (Frame is { } frame)
             {
                 graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 // A failed data/size replacement keeps the old frame's geometry and hit map together.
-                graphics.DrawImage(frame.Bitmap, WithMargin(new RectangleF(_body.X, _body.Y, (float)frame.Key.Size.Width, (float)frame.Key.Size.Height), frame.Theme, frame.Key.Raster.Scale));
+                for (var i = 0; i < frame.Bitmaps.Length; i++)
+                {
+                    var target = WithMargin(CardBody(frame.Layout.Cards[i]), frame.Theme, frame.Rasters[i].Scale);
+                    if (frame.Bitmaps[i] is { } bitmap) graphics.DrawImage(bitmap, target);
+                    else if (_failed != frame.Key && canvas.Viewport.IsVisible(ref target))
+                    {
+                        // An unusually large viewport can expose more surfaces than can be retained.
+                        // Paint those sequentially at the same density, accounting for the temporary too.
+                        try
+                        {
+                            CanvasCardCache.Reserve(this, frame.Rasters[i].Bytes);
+                            using var temporary = RasterDrawing.Render(frame.Specs[i], frame.Theme, frame.Rasters[i].Scale);
+                            graphics.DrawImage(temporary, target);
+                        }
+                        catch (Exception e) when (e is ArgumentException or InvalidOperationException or OutOfMemoryException or System.Runtime.InteropServices.ExternalException)
+                        {
+                            _failed = frame.Key;
+                            Component.AddRuntimeMessage(global::Grasshopper.Kernel.GH_RuntimeMessageLevel.Warning, "Canvas Card render failed: " + e.Message);
+                        }
+                    }
+                }
             }
             else DrawPlaceholder(graphics);
         }
         finally { graphics.Restore(saved); }
     }
+    private RectangleF CardBody(CardLayout card) => new(_body.X + (float)card.X, _body.Y + (float)card.Y, (float)card.W, (float)card.H);
     // Themed bitmaps carry a shadow margin on every side; grow the target so the card body keeps its measured size.
     private static RectangleF WithMargin(RectangleF body, Theme theme, double scale)
     {
@@ -186,24 +216,40 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     }
     private void DrawPlaceholder(Graphics graphics)
     {
-        using var brush = new SolidBrush(Color.DimGray);
+        // Match the capsule's own text colour so the message stays readable on error/warning capsules.
+        var style = global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedStyle(
+            global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedPalette(Component), this);
+        using var brush = new SolidBrush(style.Text);
         using var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
-        graphics.DrawString(Component.Placeholder, font, brush, _body.X + 12, _body.Y + 16);
+        graphics.DrawString(Component.Placeholder, font, brush, new RectangleF(_body.X + 12, _body.Y + 16, _body.Width - 24, _body.Height - 28));
     }
-    private CanvasFrameKey? DesiredKey() => Component.State.Spec is { } spec
-        ? new(spec.Id, spec.Rev, Component.CardTheme, Component.BodySize, CanvasRasterPlan.Create(Component.BodySize, _scale, CanvasCardCache.BitmapBudget(this))) : null;
+    private static CanvasRasterPlan Plan(Size2 size, Theme theme, double scale, long budget = CanvasRasterPlan.BitmapBudget)
+        => CanvasRasterPlan.Create(size, scale, budget, theme.Shadow ? theme.ShadowExtent + 1 : 0);
+    private CanvasStackFrameKey? DesiredKey()
+    {
+        if (Component.State.Specs.Length == 0) return null;
+        var theme = Component.CardTheme;
+        var layout = new CanvasStackLayout(Component.State.Specs, theme);
+        var visible = 0;
+        for (var i = 0; i < layout.Cards.Length; i++)
+        {
+            var bounds = CardBody(layout.Cards[i]);
+            bounds.Inflate((float)(theme.ShadowExtent + 1), (float)(theme.ShadowExtent + 1));
+            if (_canvas is null || _canvas.Viewport.IsVisible(ref bounds)) visible |= 1 << i;
+        }
+        var retained = CanvasStackRaster.RetainedMask(CanvasStackRaster.Plan(layout, theme, _scale), visible);
+        return new(Component.State.Revision, theme, Component.BodySize, _scale, retained);
+    }
     internal void Regenerate()
     {
         ConduitPlus.Rhino.OverlayManager.Start();
         Pending = false;
-        if (Disabled || Component.State.Spec is not { } spec || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
+        if (Disabled || Component.State.Specs.Length == 0 || DesiredKey() is not { } key || key == _failed || Frame?.IsReady(key) == true) return;
         try
         {
-            CanvasCardCache.Reserve(this, key.Raster.Bytes);
-            var bitmap = RasterDrawing.Render(spec, key.Theme, key.Raster.Scale);
-            CanvasCardFrame next;
-            try { next = new(bitmap, spec, key.Theme, key); }
-            catch { bitmap.Dispose(); throw; }
+            var next = new CanvasCardFrame(Component.State.Specs, key);
+            CanvasCardCache.Reserve(this, next.AdditionalBytes(Frame));
+            next.Render(Frame);
             HideTooltip();
             var old = Frame; Frame = next;
             if ((old?.Key.Size ?? Component.BodySize) != next.Key.Size) ExpireLayout();
@@ -220,21 +266,26 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     {
         if (!Interactive || e.Button != MouseButtons.Left || Control.MouseButtons != MouseButtons.Left || Frame is not { } frame)
             return base.RespondToMouseDown(sender, e);
-        var local = Local(e.CanvasLocation);
-        var bar = TableScroll.Bar(frame.Spec, frame.Theme);
+        var stackLocal = Local(e.CanvasLocation);
+        var card = frame.Layout.CardAt(stackLocal);
+        if (card is null) return base.RespondToMouseDown(sender, e);
+        var spec = frame.Specs.Single(c => c.Id == card.Id);
+        var local = CanvasCardGeometry.ToLocal(stackLocal, new(card.X, card.Y));
+        var bar = TableScroll.Bar(spec, frame.Theme);
         var hit = Hit(e.CanvasLocation);
         var modifiers = Control.ModifierKeys;
-        if (modifiers != Keys.None && ((modifiers & ~(Keys.Shift | Keys.Control)) != Keys.None || !Actionable(hit?.Key) || bar?.Track.Contains(local.X, local.Y) == true))
+        if (modifiers != Keys.None && ((modifiers & ~(Keys.Shift | Keys.Control)) != Keys.None || (hit is null || CardMeasure.IsReserved(hit.Key) || !BrushState.Keys(spec).Contains(hit.Key, StringComparer.Ordinal)) || bar?.Track.Contains(local.X, local.Y) == true))
             return base.RespondToMouseDown(sender, e);
         _selectionModifiers = modifiers;
         if (bar?.Track.Contains(local.X, local.Y) != true && hit is null) return base.RespondToMouseDown(sender, e);
         ClearHover();
-        _down = new(e.ControlX, e.ControlY); _originalOffset = Component.State.Spec?.ScrollOffset ?? 0;
+        _pressedCard = spec.Id;
+        _down = new(e.ControlX, e.ControlY); _originalOffset = spec.ScrollOffset;
         _cancelClick = false;
         if (bar is { } scroll && scroll.Track.Contains(local.X, local.Y))
         {
             if (scroll.Thumb.Contains(local.X, local.Y)) { _dragScroll = true; _grab = local.Y - scroll.Thumb.Y; }
-            else { _pressed = TrackKey; _pageOffset = local.Y < scroll.Thumb.Y ? -TableScroll.Visible(frame.Spec) : TableScroll.Visible(frame.Spec); }
+            else { _pressed = TrackKey; _pageOffset = local.Y < scroll.Thumb.Y ? -TableScroll.Visible(spec) : TableScroll.Visible(spec); }
         }
         else _pressed = hit!.Key;
         sender.Capture = true; CanvasCardCache.Queue(this); RequestDisplay();
@@ -245,8 +296,12 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         if (_pressed is null && !_dragScroll) return base.RespondToMouseMove(sender, e);
         if (!Interactive || !GestureModifiersValid) { CancelGesture(); return GH_ObjectResponse.Release; }
         if (!CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY))) _cancelClick = true;
-        if (_dragScroll && Frame is { } frame)
-        { Component.State.Scroll(TableScroll.OffsetForThumbTop(frame.Spec, frame.Theme, Local(e.CanvasLocation).Y - _grab)); HideTooltip(); RequestDisplay(); }
+        if (_dragScroll && Frame is { } frame && GestureSpec is { } spec)
+        {
+            var card = frame.Layout.Cards.Single(c => c.Id == spec.Id);
+            Component.State.Scroll(spec.Id, TableScroll.OffsetForThumbTop(spec, frame.Theme, Local(e.CanvasLocation).Y - card.Y - _grab));
+            HideTooltip(); RequestDisplay();
+        }
         return GH_ObjectResponse.Handled;
     }
     public override GH_ObjectResponse RespondToMouseUp(GH_Canvas sender, GH_CanvasMouseEvent e)
@@ -257,9 +312,11 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         if (commit && !_cancelClick && key is not null && CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY)))
         {
             var local = Local(e.CanvasLocation);
-            if (key == TrackKey && Frame is { } frame && TableScroll.Bar(frame.Spec, frame.Theme) is { } bar &&
-                bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y)) Component.State.Scroll(_originalOffset + _pageOffset);
-            else if (Hit(e.CanvasLocation)?.Key == key) Component.State.Activate(key, BrushSelection.FromModifiers((_selectionModifiers & Keys.Shift) != 0, (_selectionModifiers & Keys.Control) != 0));
+            var card = Frame?.Layout.Cards.FirstOrDefault(c => c.Id == _pressedCard);
+            if (card is not null) local = CanvasCardGeometry.ToLocal(local, new(card.X, card.Y));
+            if (key == TrackKey && Frame is { } frame && GestureSpec is { } spec && TableScroll.Bar(spec, frame.Theme) is { } bar &&
+                bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y)) Component.State.Scroll(spec.Id, _originalOffset + _pageOffset);
+            else if (Hit(e.CanvasLocation) is { } hit && hit.Key == key && hit.CardId == _pressedCard) Component.State.Activate(hit.CardId, key, BrushSelection.FromModifiers((_selectionModifiers & Keys.Shift) != 0, (_selectionModifiers & Keys.Control) != 0));
         }
         FinishGesture(!commit); _hoverPoint = e.CanvasLocation; RefreshHover(); RequestDisplay();
         return GH_ObjectResponse.Release;
@@ -279,17 +336,18 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         var active = _pressed is not null || _dragScroll;
         var restore = cancel && _dragScroll;
         _pressed = null; _dragScroll = false;
-        if (restore) { Component.State.Scroll(_originalOffset); RequestDisplay(); }
+        if (restore && _pressedCard is { } id) { Component.State.Scroll(id, _originalOffset); RequestDisplay(); }
+        _pressedCard = null;
         if (active && _canvas is not null)
         { if (_canvas.ActiveObject == Component) _canvas.ActiveObject = null; _canvas.Capture = false; }
     }
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
     {
         if (!Interactive || _pressed is not null || _dragScroll || _canvas?.IsActiveInteraction == true) return;
-        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Spec, hit.Key, Component.State.Membership) is { } lines)
+        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Specs.Single(c => c.Id == hit.CardId), hit.Key, Component.State.Membership) is { } lines)
         {
             _tooltipOwned = true;
-            e.Title = frame.Spec.Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";
+            e.Title = frame.Specs.Single(c => c.Id == hit.CardId).Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";
             // GH 8.20 requires control coordinates here, unlike the SetupTooltip point argument.
             var x = _canvas!.Viewport.ProjectX((float)(_body.X + hit.X));
             var y = _canvas.Viewport.ProjectY((float)(_body.Y + hit.Y));
@@ -302,6 +360,13 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         var old = Frame; Frame = null;
         if (old is not null && old.Key.Size != Component.BodySize) ExpireLayout();
         old?.Dispose();
+    }
+    internal void EvictRasters()
+    {
+        // Keep the last published immutable specs/theme/layout, including for locked/disabled cards.
+        // Missing screen surfaces and GH exports render budgeted temporaries from this snapshot.
+        Frame?.ReleaseRasters();
+        _canvas?.Invalidate();
     }
     private void DetachCanvas()
     {

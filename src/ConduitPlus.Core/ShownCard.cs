@@ -12,7 +12,7 @@ public static class ShownCard
         if (Fits(CardForm.None)) return CardForm.None;
         if (card.Kind is CardKind.Table or CardKind.Bar)
         {
-            var rows = card.Kind == CardKind.Table ? Math.Min(card.MaxRows, card.Rows.Length) : card.Values.Length;
+            var rows = card.Kind == CardKind.Table ? Math.Min(card.RowLimit, card.Rows.Length) : Math.Min(card.RowLimit, card.Values.Length);
             for (var n = rows; n >= 3; n--) if (Fits(new(n))) return new(n);
             return CardForm.None;
         }

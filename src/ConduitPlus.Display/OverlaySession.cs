@@ -66,16 +66,18 @@ internal sealed partial class OverlaySession : IDisposable
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (theme is not null) _themeSelection = theme;
-        var resolved = RhinoTheme.Resolve(_themeSelection);
+        var resolved = ResolveTheme();
         if (Theme != resolved)
         {
             OverlayManager.CancelGesture(this);
             HideTooltip();
             Theme = resolved;
         }
-        specs = ApplyViewState(OverlayManager.Project(this, specs));
+        specs = OverlayManager.Project(this, specs);
+        var domain = OverlayManager.DomainSnapshot(this);
         _brush = OverlayManager.Snapshot(this);
-        if (OverlayManager.DomainSnapshot(this) is { } domain)
+        specs = ApplyViewState(specs, domain is null ? _brush.SelectedKeys.ToHashSet(StringComparer.Ordinal) : domain.SelectedMemberKeys);
+        if (domain is not null)
         { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.HoveredKeys; }
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
@@ -92,12 +94,14 @@ internal sealed partial class OverlaySession : IDisposable
 
     internal void RefreshTheme()
     {
-        if (_disposed || Theme == RhinoTheme.Resolve(_themeSelection)) return;
+        if (_disposed || Theme == ResolveTheme()) return;
         Update(Cards);
         OverlayManager.Settle(Document, View);
     }
 
-    private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
+    private Theme ResolveTheme() => RhinoTheme.ForViewport(_themeSelection, View.MainViewport, Document);
+
+    private CardSpec[] ApplyViewState(CardSpec[] specs, IReadOnlySet<string> selectedMembers) => specs.Select(c =>
     {
         // Form first: it changes how many rows a Table or Bar shows, which bounds the scroll offset below.
         var form = _forms.GetValueOrDefault(c.Id, CardForm.None);
@@ -115,7 +119,7 @@ internal sealed partial class OverlaySession : IDisposable
             else _headerHover = null;
         }
         // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
-        if (c.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(c, _selectedMembers) is { } added)
+        if (c.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(c, _selectedMembers, selectedMembers) is { } added)
         {
             var revealed = TableScroll.Reveal(c, added);
             _scroll[c.Id] = revealed;
@@ -211,6 +215,8 @@ internal sealed partial class OverlaySession : IDisposable
     private void DrawCards(DrawEventArgs e, bool floatingOnly)
     {
         if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
+        // Display-mode background edits need not raise Rhino's UI appearance event.
+        if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
         if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
@@ -250,28 +256,31 @@ internal sealed partial class OverlaySession : IDisposable
         if (_links.Length == 0) return;
         var muted = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Muted);
         foreach (var link in _links.Where(l => l.ShowBase))
-            foreach (var key in link.LinkedKeys) link.Draw(display, key, muted, 2, false, false);
+            foreach (var key in link.LinkedKeys)
+                if (!_selectedMembers.Contains(key) && !(includeHover && _hoveredMembers.Contains(key)))
+                    link.Draw(display, key, muted, 2, false, false);
         if ((!includeHover || _hoveredMembers.Count == 0) && _selectedMembers.Count == 0) return;
         var color = ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent);
+        var casingColor = ConduitPlus.Rendering.GdiCanvas.ParseColor(GeometryHighlight.Casing(Theme.Accent));
         display.PushDepthTesting(false);
         try
         {
             display.PushDepthWriting(false);
             try
             {
-                // Composite every face before any accent wire, independent of selection order.
-                if (includeHover)
-                    foreach (var hover in _hoveredMembers)
-                        if (!_selectedMembers.Contains(hover))
-                            foreach (var link in _links) link.DrawFaces(display, hover, color, false);
+                // Composite the selected neutral wash before any outlined wires. Hover never fills faces.
                 foreach (var key in _selectedMembers)
-                    foreach (var link in _links) link.DrawFaces(display, key, color, true);
-                if (includeHover)
-                    foreach (var hover in _hoveredMembers)
-                        if (!_selectedMembers.Contains(hover))
-                            foreach (var link in _links) link.Draw(display, hover, color, 2, false, false);
-                foreach (var key in _selectedMembers)
-                    foreach (var link in _links) link.Draw(display, key, color, 4, true, false);
+                    foreach (var link in _links) link.DrawFaces(display, key);
+                var hovered = includeHover ? _hoveredMembers.Where(k => !_selectedMembers.Contains(k)).ToArray() : [];
+                // All casings precede all accents, including across touching keys and Links.
+                foreach (var casing in new[] { true, false })
+                {
+                    var ink = casing ? casingColor : color;
+                    foreach (var key in hovered)
+                        foreach (var link in _links) link.Draw(display, key, ink, casing ? GeometryHighlight.Hover.CasingWidth : GeometryHighlight.Hover.AccentWidth, false, false);
+                    foreach (var key in _selectedMembers)
+                        foreach (var link in _links) link.Draw(display, key, ink, casing ? GeometryHighlight.Selected.CasingWidth : GeometryHighlight.Selected.AccentWidth, true, false);
+                }
             }
             finally { display.PopDepthWriting(); }
         }

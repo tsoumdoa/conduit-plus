@@ -7,6 +7,10 @@ public sealed record InputOption(string Label, string? Value, string? Group = nu
 
 public static class InputOptions
 {
+    public static IReadOnlyList<InputOption> BarGoodWhen { get; } = Array.AsReadOnly(new InputOption[] {
+        new("Below", null), new("Above", "Above"), new("Within", "Within") });
+    public static IReadOnlyList<InputOption> BarSort { get; } = Array.AsReadOnly(new InputOption[] {
+        new("Original", null), new("Worst first", "Worst first"), new("Best first", "Best first") });
     public static IReadOnlyList<InputOption> Slots { get; } = Array.AsReadOnly(new InputOption[] {
         new("Automatic", null), new("Top left", "tl"), new("Top right", "tr"),
         new("Bottom left", "bl"), new("Bottom right", "br"), new("Left centre", "lc"), new("Right centre", "rc") });

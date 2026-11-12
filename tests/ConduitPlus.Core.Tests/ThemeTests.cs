@@ -131,7 +131,7 @@ public sealed class ThemeTests
         foreach (var theme in Theme.Presets.SelectMany(t => new[] { t.Resolve(false), t.Resolve(true) }).Distinct().Append(sentinel))
         {
             var tokens = typeof(Theme).GetProperties().Where(p => p.PropertyType == typeof(string))
-                .Select(p => (string)p.GetValue(theme)!).Where(s => s.StartsWith('#')).ToHashSet(StringComparer.Ordinal);
+                .Select(p => (string)p.GetValue(theme)!).Where(s => s is not null && s.StartsWith('#')).ToHashSet(StringComparer.Ordinal);
             tokens.Add(ColorRgba.Parse(theme.Ink).WithAlpha(0x29).ToHex()); // categorical swatch inset edge
             var cards = Cards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).ToArray();
             Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Distinct().Order());
