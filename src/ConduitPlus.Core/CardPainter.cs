@@ -34,7 +34,7 @@ public static class CardPainter
             if (clear is not null)
             {
                 canvas.RoundedRect(new(clear.X, clear.Y, clear.W, clear.H), 3, t.Track);
-                canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Accent, t.Font);
+                canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Muted, t.Font);
             }
             return;
         }
@@ -47,7 +47,7 @@ public static class CardPainter
         if (clear is not null)
         {
             canvas.RoundedRect(new(clear.X, clear.Y, clear.W, clear.H), 3, t.Track);
-            canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Accent, t.Font);
+            canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Muted, t.Font);
         }
         if (c.Kind == CardKind.Line) { LineCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Text)
@@ -136,11 +136,18 @@ public static class CardPainter
         var selected = group?.IsFullySelected ?? c.SelectedKeys.Contains(h.Key);
         var direct = group?.IsDirectTarget ?? c.HoverKey == h.Key;
         var hovered = group is not null ? group.HoveredMemberCount > 0 || direct : c.HoveredKeys.Contains(h.Key) || direct;
-        if (selected || direct) canvas.Rect(new(h.X, h.Y, h.W, h.H), selected ? t.Highlight : t.Track);
-        if (selected) canvas.Rect(new(h.X, h.Y, 2, h.H), t.Accent);
-        if (group is { IsPartiallySelected: true })
-            canvas.Line(new(h.X + h.W + 2, h.Y + h.H / 2), new(h.X + h.W + 8, h.Y + h.H / 2), t.Accent, 2);
-        if (hovered) Outline(canvas, h, t.Accent);
+        // The selection stripe lives in existing card padding; it never consumes text width.
+        var left = CardMeasure.TickLeft(h);
+        var metric = c.Kind == CardKind.Metric;
+        if (selected || (metric ? hovered : direct && group is not { IsPartiallySelected: true }))
+        {
+            var fillLeft = metric && !c.Form.Compact ? left : h.X;
+            canvas.Rect(new(fillLeft, h.Y, h.W + h.X - fillLeft, h.H), selected ? t.Highlight : t.Track);
+        }
+        if (selected) canvas.Rect(new(left, h.Y, 3, h.H), t.Accent);
+        if (c.Kind != CardKind.Metric && group is { IsPartiallySelected: true })
+            canvas.Rect(new(left, h.Y + h.H / 4, 3, h.H / 2), t.Accent);
+        if (hovered && c.Kind != CardKind.Metric) Outline(canvas, h, t.Accent);
     }
     internal static void Outline(ICanvas2D canvas, HitRegion h, string color) =>
         canvas.Polyline([new(h.X + .5, h.Y + .5), new(h.X + h.W - .5, h.Y + .5),

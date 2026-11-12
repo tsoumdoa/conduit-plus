@@ -19,7 +19,15 @@ public sealed class CanvasCardComponent : GH_Component
     private bool _active;
     private long _generation;
     internal CanvasCardState State { get; private set; } = new();
-    internal Theme CardTheme => RhinoTheme.Resolve(Theme.ReadSelection(_themeName));
+    internal Theme CardTheme
+    {
+        get
+        {
+            var background = global::Grasshopper.GUI.Canvas.GH_Skin.canvas_back;
+            return RhinoTheme.Resolve(Theme.ReadSelection(_themeName)) with
+            { PlainTitleInk = TitleMetrics.InkForBackground(new(background.R, background.G, background.B)) };
+        }
+    }
     internal string Placeholder { get; private set; } = "Connect one Conduit+ Card";
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private string? _inputError;

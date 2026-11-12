@@ -144,7 +144,7 @@ public sealed class KeyLegendTests
         Assert.Empty(CardMeasure.Hits(state.Spec, Theme.Paper));
         var keyed = card with { Keys = ["a", "b"], HoverKey = "b" };
         var hits = CardMeasure.DataHits(keyed, Theme.Paper);
-        Assert.Equal(new HitRegion("b", 12, 58, 96, 22), hits[1]);
+        Assert.Equal(new HitRegion("b", 12, 58, CardMeasure.Measure(keyed, Theme.Paper).Width - 24, 22), hits[1]);
         var canvas = new RecordingCanvas();
         LegendCardPainter.Paint(canvas, keyed, Theme.Paper);
         Assert.Contains((new Rect2(hits[1].X, hits[1].Y, hits[1].W, hits[1].H), Theme.Paper.Track), canvas.Rects);

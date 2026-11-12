@@ -1,4 +1,5 @@
 using System.Drawing;
+using ConduitPlus.Core;
 using Rhino.Display;
 using Rhino.Geometry;
 using Point = Rhino.Geometry.Point;
@@ -12,8 +13,8 @@ public sealed partial class Link
     private readonly GeometryBase[] _geometry;
     private readonly Dictionary<string, Wires[]> _wires;
     private readonly Dictionary<string, Mesh[]> _faces;
-    // Face materials follow the highlight colour (the theme accent); cached so frames allocate nothing.
-    private readonly Dictionary<(int Argb, bool Selected), DisplayMaterial> _materials = [];
+    // A neutral 20% wash preserves the original model/category preview underneath.
+    private readonly DisplayMaterial _selectedWash = new(Color.White, 1 - GeometryHighlight.Selected.WhiteWashOpacity);
     public IReadOnlyList<string> Keys { get; }
     public BoundingBox Bounds { get; }
     private readonly int _objectCount;
@@ -46,7 +47,10 @@ public sealed partial class Link
                     bounds.Union(copy.GetBoundingBox(true));
                     var wire = Prepare(copy);
                     wires.Add((key, wire));
-                    picks.Add((key, PreparePick(copy, wire, geometry)));
+                    // Drawing boundary/feature mesh edges must not remove the existing edge-picking tolerance.
+                    var pickWire = copy is Mesh mesh ? wire with
+                    { Lines = Enumerable.Range(0, mesh.TopologyEdges.Count).Select(mesh.TopologyEdges.EdgeLine).ToArray() } : wire;
+                    picks.Add((key, PreparePick(copy, pickWire, geometry)));
                 }
                 catch (ArgumentException e) { throw new ArgumentException($"{location}: {e.Message}", e); }
             }
@@ -87,9 +91,7 @@ public sealed partial class Link
                 var curve = c.DuplicateCurve();
                 return new([curve], [], []);
             case Mesh m:
-                var edges = m.TopologyEdges;
-                var lines = Enumerable.Range(0, edges.Count).Select(edges.EdgeLine).ToArray();
-                return new([], lines, []);
+                return new([], MeshOutline(m), []);
             case Extrusion e:
                 using (var brep = e.ToBrep()) return BrepWires(brep);
             case Surface s:
@@ -98,34 +100,62 @@ public sealed partial class Link
             default: throw new ArgumentException("Unsupported Link geometry.");
         }
     }
+    // Prepare once for this privately owned mesh. Each connected topology component needs
+    // feedback, even when another component supplies sharp edges (e.g. a joined box + sphere).
+    private static Line[] MeshOutline(Mesh mesh)
+    {
+        var edges = mesh.TopologyEdges;
+        var parents = Enumerable.Range(0, mesh.TopologyVertices.Count).ToArray();
+        int Root(int vertex)
+        {
+            while (parents[vertex] != vertex)
+            {
+                parents[vertex] = parents[parents[vertex]];
+                vertex = parents[vertex];
+            }
+            return vertex;
+        }
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var pair = edges.GetTopologyVertices(i);
+            var a = Root(pair.I); var b = Root(pair.J);
+            // Deterministic union; path compression keeps subsequent lookups cheap.
+            parents[Math.Max(a, b)] = Math.Min(a, b);
+        }
+        mesh.FaceNormals.ComputeFaceNormals();
+        var features = new bool[edges.Count];
+        var hasFeatures = new bool[parents.Length];
+        var creaseCosine = Math.Cos(Math.PI / 6);
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var faces = edges.GetConnectedFaces(i);
+            features[i] = faces.Length != 2 || Vector3d.Multiply(mesh.FaceNormals[faces[0]], mesh.FaceNormals[faces[1]]) < creaseCosine;
+            if (features[i]) hasFeatures[Root(edges.GetTopologyVertices(i).I)] = true;
+        }
+        var lines = new List<Line>();
+        for (var i = 0; i < edges.Count; i++)
+            if (features[i] || !hasFeatures[Root(edges.GetTopologyVertices(i).I)]) lines.Add(edges.EdgeLine(i));
+        return lines.ToArray();
+    }
     private static Wires BrepWires(Brep? brep)
     {
         var curves = brep?.DuplicateEdgeCurves() ?? throw new ArgumentException("Cannot extract brep edge curves.");
         return new(curves, [], []);
     }
-    private DisplayMaterial Material(Color color, bool selected)
-    {
-        var key = (Color.FromArgb(255, color).ToArgb(), selected);
-        if (!_materials.TryGetValue(key, out var material)) _materials.Add(key, material = new(Color.FromArgb(255, color), selected ? .40 : .72));
-        return material;
-    }
-    internal void DrawFaces(DisplayPipeline display, string key, Color color, bool selected)
+    internal void DrawFaces(DisplayPipeline display, string key)
     {
         if (_faces.TryGetValue(key, out var meshes))
-        {
-            var material = Material(color, selected);
-            foreach (var mesh in meshes) display.DrawMeshShaded(mesh, material);
-        }
+            foreach (var mesh in meshes) display.DrawMeshShaded(mesh, _selectedWash);
     }
     internal void Draw(DisplayPipeline display, string key, Color color, int width, bool selected, bool shade = true)
     {
         if (!_wires.TryGetValue(key, out var wires)) return;
-        if (shade) DrawFaces(display, key, color, selected);
+        if (shade && selected) DrawFaces(display, key);
         foreach (var w in wires)
         {
             foreach (var c in w.Curves) display.DrawCurve(c, color, width);
             foreach (var line in w.Lines) display.DrawLine(line, color, width);
-            foreach (var p in w.Points) display.DrawPoint(p, PointStyle.RoundSimple, selected ? 5 : 3, color);
+            foreach (var p in w.Points) display.DrawPoint(p, PointStyle.RoundSimple, width + 1, color);
         }
         GC.KeepAlive(_geometry);
     }

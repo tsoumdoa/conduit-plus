@@ -106,8 +106,8 @@ include failures. Their limits are fictitious, not regulatory checks:
 Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even
-when sorted. Click a row/bar to highlight the matching geometry with translucent
-faces and x-ray wires; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
+when sorted. Click a row/bar to highlight the matching geometry with a neutral white wash
+and cased accent x-ray outlines; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
 table and select **Hall / R17** from the model or bar to test reveal. Select **Bedroom** in the room-type legend
 or **Residential** in the GFA-by-use
 bar/legend to select every member of that category. The **Rooms below minimum**
@@ -157,7 +157,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group and requires a single Value. A Value list makes one card per item using native GH matching for Title/Unit/Key. |
 | Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the theme accent with no marker; a set threshold enables good/bad colouring, including zero for deltas. Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title (default “Line”), optional threshold and slot. A positive threshold, typed or wired, shows a band. Repeated labels with no Keys use 1…n with a Remark. |
-| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text defaults to black). Scales with the viewport, hides last, not clickable. |
+| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
@@ -315,21 +315,36 @@ Plain-click a member or group to **Replace** the selection with its members.
 **Shift** adds, **Ctrl** removes, and **Ctrl+Shift** toggles those members.
 Repeating a plain click keeps that selection. **Clear** empties the domain.
 Escape cancels gestures or closes overflow UI; it does not clear selection. Selection outputs are
-sorted unique member keys, never group tokens. Partial groups show an accent
-dash; full groups and selected members keep the strong treatment. Hover outlines
-effective members and related groups; only the direct target gets a light fill.
+sorted unique member keys, never group tokens. Partial groups show a half-height accent
+tick in the card's left padding; full groups and selected rows get a full tick and
+selection fill. Row hover outlines effective members and related groups; only
+the direct row target gets a light fill. Metric hover uses a soft fill. Line hover
+uses a neutral band on the direct sample and hollow points on hovered members;
+selected samples use a 1 px accent rule and filled 8 px square with a surface ring. Missing samples have no point.
 Category colors stay visible. Member tooltips list containing labels (five plus
 a remainder); group tooltips report selected/hovered member counts. PNG, GH image
 and PDF card exports omit hover and retain selection. Displays stay independent
 unless explicitly connected to the same Scope.
 
+## Visible changes for saved files
+
+- Plain Title's automatic colour now follows the host background, including gradient
+  colours and Rendered-mode render backgrounds. Mixed backgrounds get a subtle glyph
+  halo when neither black nor white reaches 3:1 throughout. An explicit Colour still wins.
+- Mesh highlights use boundaries and feature edges instead of every triangulation edge;
+  each smooth closed component retains all-edge feedback. Picking is unchanged.
+- Selection uses padding ticks, distinct Paper fill, cased model outlines and a neutral
+  white wash. Hover has no model face fill; Line hover uses hollow points and soft bands.
+  Keyed Metric values, legend content and Table columns keep their original alignment.
+
 ## Scrolling and interaction
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
-  same key and draw linked geometry in a thin
-  accent wire with translucent faces for surface geometry. Plain click replaces selection;
-  Shift adds, Ctrl removes, and Ctrl+Shift toggles. Selected geometry draws stronger
-  translucent faces and thicker x-ray wires, also in captures. Only real point geometry
+  same key and draw linked geometry with a thin cased accent outline, without face fill.
+  Plain click replaces selection; Shift adds, Ctrl removes, and Ctrl+Shift toggles.
+  Selected geometry gets a thicker accent x-ray outline with contrasting black/white
+  casing and a neutral 20% white wash, also in captures. Mesh outlines use naked and feature edges (30° creases),
+  falling back to all edges per smooth closed component; picking still uses every edge. Only real point geometry
   draws point dots. Alt does not change viewport selection mode. Plain empty viewport
   clicks clear selection on release within four pixels; drags and Shift/Ctrl clicks retain it. **Clear** in a keyed card's header clears that
   owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.

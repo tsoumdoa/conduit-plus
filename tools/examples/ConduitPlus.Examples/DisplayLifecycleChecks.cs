@@ -30,6 +30,7 @@ internal static class DisplayLifecycleChecks
 
     internal static void Run(RhinoDoc doc, RhinoView view)
     {
+        TitleBackgroundChecks.Run(doc);
         var references = typeof(CanvasCardComponent).Assembly.GetReferencedAssemblies().Select(a => a.Name).ToArray();
         Require(references.Contains("ConduitPlus.Display") && references.Contains("ConduitPlus.Core") && !references.Contains("ConduitPlus.Rhino"),
             "GHA dependencies must use Display/Core and must not reference the RHP.");
