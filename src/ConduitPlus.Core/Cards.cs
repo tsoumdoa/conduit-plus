@@ -181,8 +181,8 @@ public sealed record Theme
     public string ThresholdBand { get; init; } = "#FCECEF";
     /// <summary>Translucent neutral Within tolerance zone; preserves row interaction feedback.</summary>
     public string ToleranceBand { get; init; } = "#00000012";
-    /// <summary>Optional centre hairline override for contrast against the tolerance corridor.</summary>
-    public string? ToleranceCenterLine { get; init; }
+    /// <summary>Structural axis below data marks in the visual hierarchy.</summary>
+    public string Axis => ColorRgba.Parse(Ink).WithAlpha(115).ToHex();
     public string Highlight { get; init; } = "#DDEAFB";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
@@ -210,7 +210,7 @@ public sealed record Theme
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
         Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5", Data = "#A7AEBB",
-        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#FFFFFF03", ToleranceCenterLine = "#9AA0AC40",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#FFFFFF03",
         Highlight = "#21364F", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
     // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.
