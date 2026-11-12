@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace ConduitPlus.Core;
 
-public enum BarGoodWhen { Below, Above }
+public enum BarGoodWhen { Below, Above, Within }
 public enum BarOrder { Original, WorstFirst, BestFirst }
 public sealed record BarTextLayout(string[] Values, double[] ValueWidths, double LabelWidth, double ValueWidth);
 
@@ -14,7 +14,8 @@ public static class BarPresentation
     {
         null or "" or "below" => BarGoodWhen.Below,
         "above" => BarGoodWhen.Above,
-        _ => throw new ArgumentException("Good when must be Below or Above.")
+        "within" => BarGoodWhen.Within,
+        _ => throw new ArgumentException("Good when must be Below, Above or Within.")
     };
     public static BarOrder ParseSort(string? text) => text?.Trim().ToLowerInvariant() switch
     {
@@ -25,14 +26,21 @@ public static class BarPresentation
     };
     public static void Validate(CardSpec c)
     {
-        if (!Enum.IsDefined(c.GoodWhen)) throw new ArgumentException("Good when must be Below or Above.");
+        if (!Enum.IsDefined(c.GoodWhen)) throw new ArgumentException("Good when must be Below, Above or Within.");
         if (!Enum.IsDefined(c.BarSort)) throw new ArgumentException("Sort must be Original, Worst first or Best first.");
         if (c.MaxRows is < 0 or > 200) throw new ArgumentException("Visible rows must be 0–200.");
     }
-    public static bool IsGood(double value, double threshold, BarGoodWhen direction) =>
-        direction == BarGoodWhen.Above ? value >= threshold : value <= threshold;
+    public static string? ThresholdWarning(CardSpec c) => c.GoodWhen == BarGoodWhen.Within && (!c.HasThreshold || c.Threshold <= 0)
+        ? "Within needs a positive Threshold (the tolerance)." : null;
+    public static bool UsesThreshold(CardSpec c) => c.HasThreshold && (c.GoodWhen != BarGoodWhen.Within || c.Threshold > 0);
+    public static bool IsGood(double value, double threshold, BarGoodWhen direction) => direction switch
+    {
+        BarGoodWhen.Above => value >= threshold,
+        BarGoodWhen.Within => threshold > 0 && value >= -threshold && value <= threshold,
+        _ => value <= threshold
+    };
     public static string Color(CardSpec c, Theme t, int index) => c.Colors.Length > index ? c.Colors[index] :
-        !c.HasThreshold ? t.Data : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
+        !UsesThreshold(c) ? t.Data : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
 
     /// <summary>Original leaves data untouched. Sorted modes are stable, with missing values last in either direction.</summary>
     public static int[] Order(CardSpec c)
@@ -41,8 +49,9 @@ public static class BarPresentation
         if (c.BarSort == BarOrder.Original) return indices.ToArray();
         var worstAscending = c.GoodWhen == BarGoodWhen.Above;
         var ascending = c.BarSort == BarOrder.WorstFirst ? worstAscending : !worstAscending;
+        double? SortValue(int i) => c.GoodWhen == BarGoodWhen.Within && c.Values[i] is { } value ? Math.Abs(value) : c.Values[i];
         return indices.OrderBy(i => !c.Values[i].HasValue)
-            .ThenBy(i => c.Values[i], Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
+            .ThenBy(SortValue, Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
     }
 
     /// <summary>Shared column precision preserves digits through two places and small nonzero values through six.</summary>

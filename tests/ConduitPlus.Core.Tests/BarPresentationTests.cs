@@ -27,16 +27,100 @@ public sealed class BarPresentationTests
         Assert.Equal("#AABBCC", BarPresentation.Color(c with { Colors = ["#AABBCC"] }, Theme.Paper, 0));
     }
 
+    [Theory]
+    [InlineData(-7, false)] [InlineData(-5, true)] [InlineData(-2, true)]
+    [InlineData(0, true)] [InlineData(5, true)] [InlineData(9, false)]
+    public void WithinIncludesBothToleranceEdgesAndColorsStillWin(double value, bool good)
+    {
+        var c = Bar(value) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
+        c.Validate();
+        Assert.Null(BarPresentation.ThresholdWarning(c));
+        Assert.Equal(good, BarPresentation.IsGood(value, 5, BarGoodWhen.Within));
+        Assert.Equal(good ? Theme.Paper.Good : Theme.Paper.Bad, BarPresentation.Color(c, Theme.Paper, 0));
+        Assert.Equal("#AABBCC", BarPresentation.Color(c with { Colors = ["#AABBCC"] }, Theme.Paper, 0));
+        Assert.Equal(Theme.Paper.Data, BarPresentation.Color(c with { HasThreshold = false }, Theme.Paper, 0));
+    }
+
+    [Theory]
+    [InlineData(-5, true)] [InlineData(0, true)] [InlineData(5, false)]
+    public void InvalidOrMissingToleranceWarnsAndPaintsPlainBars(double threshold, bool supplied)
+    {
+        var c = Bar(-7) with { GoodWhen = BarGoodWhen.Within, Threshold = threshold, HasThreshold = supplied };
+        c.Validate();
+        Assert.Equal("Within needs a positive Threshold (the tolerance).", BarPresentation.ThresholdWarning(c));
+        Assert.False(BarPresentation.UsesThreshold(c));
+        if (threshold <= 0) Assert.False(BarPresentation.IsGood(0, threshold, BarGoodWhen.Within));
+        var canvas = new Commands(); CardPainter.Paint(canvas, c, Theme.Paper);
+        Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Data && r.Rect.Height == 8);
+        Assert.DoesNotContain(canvas.Rects, r => r.Fill == Theme.Paper.ThresholdBand);
+        Assert.Empty(canvas.Lines);
+        Assert.Equal("#AABBCC", BarPresentation.Color(c with { Colors = ["#AABBCC"] }, Theme.Paper, 0));
+        Assert.Contains("Within needs a positive Threshold (the tolerance).", Tooltip.For(c, "k0")!);
+        Assert.Throws<ArgumentException>(() => (c with { Threshold = double.NaN }).Validate());
+        Assert.Throws<ArgumentException>(() => (c with { Threshold = -5, GoodWhen = BarGoodWhen.Below }).Validate());
+    }
+
+    [Fact]
+    public void WithinSortsByMagnitudeWithStableTiesAndMissingLast()
+    {
+        var c = Bar(-7, null, 5, -5, 0, 9, -2, 2, null) with { GoodWhen = BarGoodWhen.Within, Threshold = 5, BarSort = BarOrder.WorstFirst };
+        Assert.Equal(new[] { 5, 0, 2, 3, 6, 7, 4, 1, 8 }, BarPresentation.Order(c));
+        Assert.Equal(new[] { 4, 6, 7, 2, 3, 0, 5, 1, 8 }, BarPresentation.Order(c with { BarSort = BarOrder.BestFirst }));
+        Assert.Equal(BarPresentation.Order(c), BarPresentation.Order(c with { HasThreshold = false }));
+        Assert.Equal(Enumerable.Range(0, 9), BarPresentation.Order(c with { BarSort = BarOrder.Original }));
+        Assert.Equal(new[] { "Row 1", "-7", "140% of threshold", "Within: good when −Threshold ≤ value ≤ Threshold", "k0" }, Tooltip.For(c, "k0"));
+    }
+
+    [Theory]
+    [InlineData("Paper")] [InlineData("Night")] [InlineData("Smoke")] [InlineData("Blueprint")]
+    public void WithinPaintsBandBehindBarsBetweenBothMarkersOnASignedTrack(string name)
+    {
+        Theme.TryGet(name, out var theme);
+        // Both bounds must fit even when data is one-sided, inside the tolerance, or entirely missing.
+        foreach (var values in new double?[][] { [-7, 0, 9, null], [9], [-7], [2], [null] })
+        {
+            var c = Bar(values) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
+            var canvas = new Commands(); CardPainter.Paint(canvas, c, theme);
+            var tracks = canvas.Rects.Where(r => r.Fill == theme.Track && r.Rect.Height == 8).ToArray();
+            var bands = canvas.Rects.Where(r => r.Fill == theme.ThresholdBand).ToArray();
+            Assert.Equal(values.Length, bands.Length);
+            Assert.Equal(2 * values.Length, canvas.Lines.Count);
+            var max = Math.Max(5, values.Select(v => Math.Abs(v ?? 0)).Max());
+            for (var i = 0; i < values.Length; i++)
+            {
+                var track = tracks[i].Rect; var band = bands[i].Rect;
+                var halfBand = track.Width / 2 * 5 / max;
+                Assert.Equal(track.X + track.Width / 2 - halfBand, band.X, 6);
+                Assert.Equal(halfBand * 2, band.Width, 6);
+                Assert.Equal(track.Y - 2, band.Y); Assert.Equal(12, band.Height);
+                Assert.True(band.X >= track.X - 1e-9 && band.X + band.Width <= track.X + track.Width + 1e-9);
+                var markers = canvas.Lines.Skip(i * 2).Take(2).OrderBy(l => l.From.X).ToArray();
+                Assert.Equal(band.X, markers[0].From.X, 6);
+                Assert.Equal(band.X + band.Width, markers[1].From.X, 6);
+                Assert.All(markers, m => { Assert.Equal(m.From.X, m.To.X); Assert.Equal(band.Y, m.From.Y); Assert.Equal(band.Y + band.Height, m.To.Y); Assert.Equal(theme.Muted, m.Color); });
+                if (values[i] is { } value)
+                {
+                    var fill = canvas.Rects.Single(r => r.Rect.Y == track.Y && r.Fill == (Math.Abs(value) <= 5 ? theme.Good : theme.Bad));
+                    Assert.True(canvas.Rects.IndexOf(bands[i]) < canvas.Rects.IndexOf(fill));
+                }
+            }
+        }
+    }
+
     [Fact]
     public void TextOptionsAndRangesHaveExactDiagnostics()
     {
         Assert.Equal(BarGoodWhen.Below, BarPresentation.ParseGoodWhen(null));
         Assert.Equal(BarGoodWhen.Above, BarPresentation.ParseGoodWhen(" aBoVe "));
+        Assert.Equal(BarGoodWhen.Within, BarPresentation.ParseGoodWhen(" wItHiN "));
+        Assert.Equal(new[] { "Below", "Above", "Within" }, InputOptions.BarGoodWhen.Select(o => o.Label));
+        Assert.True(InputOptions.BarGoodWhen[2].Matches("within"));
+        Assert.Equal("Good when must be Below, Above or Within.", Assert.Throws<ArgumentException>(() => (Bar(1) with { GoodWhen = (BarGoodWhen)99 }).Validate()).Message);
         Assert.Equal(BarOrder.WorstFirst, BarPresentation.ParseSort(" WORST FIRST "));
         Assert.Equal(BarOrder.Original, BarPresentation.ParseSort(null));
         Assert.True(InputOptions.BarGoodWhen[0].Matches(null));
         Assert.True(InputOptions.BarSort[0].Matches(null));
-        Assert.Equal("Good when must be Below or Above.", Assert.Throws<ArgumentException>(() => BarPresentation.ParseGoodWhen("higher")).Message);
+        Assert.Equal("Good when must be Below, Above or Within.", Assert.Throws<ArgumentException>(() => BarPresentation.ParseGoodWhen("higher")).Message);
         Assert.Equal("Sort must be Original, Worst first or Best first.", Assert.Throws<ArgumentException>(() => BarPresentation.ParseSort("descending")).Message);
         foreach (var n in new[] { -1, 201 })
             Assert.Equal("Visible rows must be 0–200.", Assert.Throws<ArgumentException>(() => (Bar(1) with { MaxRows = n }).Validate()).Message);
@@ -322,6 +406,8 @@ public sealed class BarPresentationTests
         var many = Bar(Enumerable.Range(0, 40).Select(i => (double?)(i + 1)).ToArray()) with { Width = 360, HasThreshold = false, SelectedKeys = ["k30"], HoverKey = "k28" };
         many = many with { ScrollOffset = TableScroll.Reveal(many, "k30") };
         foreach (var (label, card) in new[] {
+            ("within", Bar(Enumerable.Range(-7, 17).Select(v => (double?)v).ToArray()) with {
+                Title = "Within ±5 mm · worst first", GoodWhen = BarGoodWhen.Within, Threshold = 5, BarSort = BarOrder.WorstFirst, MaxRows = 0, Width = 360 }),
             ("signed-below", signed with { Title = "Signed deltas · good below zero" }),
             ("signed-above", signed with { Title = "Signed deltas · good above zero", GoodWhen = BarGoodWhen.Above }),
             ("scrolled-selection", many with { Title = "40 rows · selection revealed" }),
@@ -341,12 +427,13 @@ public sealed class BarPresentationTests
     {
         public List<(string Text, Point2 Point)> Texts { get; } = [];
         public List<(Rect2 Rect, string Fill)> Rects { get; } = [];
+        public List<(Point2 From, Point2 To, string Color)> Lines { get; } = [];
         public Size2 MeasureText(string text, double size, string font) => TextMetrics.Estimate(text, size, font);
         public void Text(string text, Point2 topLeft, double size, string color, string font) => Texts.Add((text, topLeft));
         public void Rect(Rect2 rect, string fill) => Rects.Add((rect, fill));
         public void Gradient(Rect2 rect, IReadOnlyList<string> colors) { }
         public void RoundedRect(Rect2 rect, double radius, string fill) { }
-        public void Line(Point2 from, Point2 to, string color, double width = 1) { }
+        public void Line(Point2 from, Point2 to, string color, double width = 1) => Lines.Add((from, to, color));
         public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) { }
         public void FillPolygon(IReadOnlyList<Point2> points, string fill) { }
         public IDisposable Clip(Rect2 rect) => new Scope();

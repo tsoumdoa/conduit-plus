@@ -73,7 +73,9 @@ public static class CardPainter
             var layout = BarPresentation.Layout(c, t);
             var labelWidth = layout.LabelWidth;
             var order = BarPresentation.Order(c);
-            var signed = c.Values.Any(v => v < 0);
+            var hasThreshold = BarPresentation.UsesThreshold(c);
+            var within = hasThreshold && c.GoodWhen == BarGoodWhen.Within;
+            var signed = within || c.Values.Any(v => v < 0);
             for (var i = 0; i < hits.Length; i++)
             {
                 var dataIndex = order[TableScroll.Offset(c) + i];
@@ -85,8 +87,11 @@ public static class CardPainter
                 var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
+                var toleranceWidth = c.Threshold / max * span;
+                if (within) canvas.Rect(new(origin - toleranceWidth, y - 2, 2 * toleranceWidth, 12), t.ThresholdBand);
                 if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), BarPresentation.Color(c, t, dataIndex));
-                if (c.HasThreshold) canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
+                if (hasThreshold) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
+                if (within) canvas.Line(new(origin - toleranceWidth, y - 2), new(origin - toleranceWidth, y + 10), t.Muted);
                 using (canvas.Clip(new(h.X + h.W - layout.ValueWidth + 6, h.Y, layout.ValueWidth - 6, h.H)))
                     canvas.Text(layout.Values[dataIndex], new(h.X + h.W - layout.ValueWidths[dataIndex], h.Y + 2), t.FontSize, t.Ink, t.Font);
             }

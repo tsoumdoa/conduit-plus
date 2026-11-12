@@ -141,7 +141,7 @@ public sealed class BarComponent : CardComponent
         _defaultsVersion = reader.ItemExists("ConduitPlus.DefaultsVersion") ? reader.GetInt32("ConduitPlus.DefaultsVersion") : 0;
         var result = base.Read(reader); Params.Input[4].Optional = true; return result;
     }
-    public BarComponent() : base("Bar", "Bar", "Keyed signed utilisation bars; NaN becomes a missing value") { }
+    public BarComponent() : base("Bar", "Bar", "Keyed signed bars with Below, Above or Within tolerance checks; NaN becomes a missing value") { }
     public override Guid ComponentGuid => new("a7f32adb-ce5f-49c8-a33f-e3834a0ae202");
     protected override ComponentIcon IconKind => ComponentIcon.Bar;
     protected override void RegisterInputParams(GH_InputParamManager p)
@@ -150,12 +150,12 @@ public sealed class BarComponent : CardComponent
         p.AddTextParameter("Labels", "L", "Optional labels (default 1…n; legacy files retain M01…)", GH_ParamAccess.list); p[1].Optional = true;
         p.AddTextParameter("Keys", "K", "Unique stable member keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Bar");
-        p.AddNumberParameter("Threshold", "Th", "Optional nonnegative threshold; unset uses the neutral data color, zero for signed deltas", GH_ParamAccess.item); p[4].Optional = true;
+        p.AddNumberParameter("Threshold", "Th", "Optional nonnegative threshold; Within needs a positive tolerance. Unset uses the neutral data color; Below/Above accept zero for signed deltas", GH_ParamAccess.item); p[4].Optional = true;
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position, or wire tl, tr, bl, br, lc or rc", GH_ParamAccess.item); p[5].Optional = true;
         p.AddColourParameter("Colors", "C", "Optional per-bar colors; set Threshold for good/bad colouring, otherwise the neutral theme data color", GH_ParamAccess.list); p[6].Optional = true;
         p.AddTextParameter("Members", "M", "One path-ordered branch per bar, including empty branches; requires explicit Keys", GH_ParamAccess.tree); p[7].Optional = true;
-        p.AddParameter(new Param_TextOption { Options = InputOptions.BarGoodWhen }, "Good when", "Gw", "Below (≤ threshold) or Above (≥ threshold); equality is good. Unset = Below; Colors override", GH_ParamAccess.item); p[8].Optional = true;
-        p.AddParameter(new Param_TextOption { Options = InputOptions.BarSort }, "Sort", "O", "Original, Worst first or Best first; missing values sort last. Worst is highest, or lowest when Good when is Above", GH_ParamAccess.item); p[9].Optional = true;
+        p.AddParameter(new Param_TextOption { Options = InputOptions.BarGoodWhen }, "Good when", "Gw", "Below: good when value ≤ Threshold; Above: good when value ≥ Threshold; Within: good when −Threshold ≤ value ≤ Threshold (positive tolerance). Unset = Below; Colors override", GH_ParamAccess.item); p[8].Optional = true;
+        p.AddParameter(new Param_TextOption { Options = InputOptions.BarSort }, "Sort", "O", "Original, Worst first or Best first; missing values sort last. Worst is highest for Below, lowest for Above, largest |value| for Within", GH_ParamAccess.item); p[9].Optional = true;
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once (default 12); 0 = all, 1–200 otherwise. Scroll with the viewport wheel or scrollbar; canvas uses the scrollbar", GH_ParamAccess.item, BarPresentation.DefaultVisibleRows);
 
     }
@@ -168,7 +168,12 @@ public sealed class BarComponent : CardComponent
         var visibleRows = BarPresentation.DefaultVisibleRows; da.GetData(10, ref visibleRows);
         var explicitKeys = keys.Count > 0;
         if (labels.Count == 0) labels = InputKeys.Numbered(values.Count, _defaultsVersion == 0).ToList(); keys = ReadKeys(labels, keys).ToList();
-        try { Output(da, new CardSpec { Id = CardId(da), Kind = CardKind.Bar, Groups = ReadMembers(da, 7, keys.ToArray(), values.Count, explicitKeys), Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, HasThreshold = hasThreshold, GoodWhen = BarPresentation.ParseGoodWhen(goodWhen), BarSort = BarPresentation.ParseSort(sort), MaxRows = visibleRows, WiredSlot = ReadSlot(da, 5) }); }
+        try
+        {
+            var card = new CardSpec { Id = CardId(da), Kind = CardKind.Bar, Groups = ReadMembers(da, 7, keys.ToArray(), values.Count, explicitKeys), Title = title, Values = values.Select(v => double.IsNaN(v) ? (double?)null : v).ToArray(), Labels = labels.ToArray(), Keys = keys.ToArray(), Colors = colors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}").ToArray(), Threshold = threshold, HasThreshold = hasThreshold, GoodWhen = BarPresentation.ParseGoodWhen(goodWhen), BarSort = BarPresentation.ParseSort(sort), MaxRows = visibleRows, WiredSlot = ReadSlot(da, 5) };
+            Output(da, card);
+            if (BarPresentation.ThresholdWarning(card) is { } warning) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, warning);
+        }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
 }
