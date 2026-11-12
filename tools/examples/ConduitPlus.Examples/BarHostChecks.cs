@@ -42,7 +42,20 @@ internal static class BarHostChecks
         var archive = new GH_Archive(); var chunk = archive.CreateTopLevelNode("Bar"); bar.Write(chunk);
         var restored = Add(); restored.Read((GH_IReader)chunk); Solve(restored);
         Check(Card(restored).GoodWhen == BarGoodWhen.Above && Card(restored).BarSort == BarOrder.WorstFirst && Card(restored).MaxRows == 2 && Card(restored).Keys[0] == "delta", "Bar options and persistent keys roundtrip.");
-        Text(bar, 8, "higher"); Solve(bar); Check(Error(bar, "Good when must be Below or Above."), "Good when error text.");
+        Check(InputOptions.BarGoodWhen.Select(o => o.Label).SequenceEqual(new[] { "Below", "Above", "Within" }), "Good when menu order.");
+        ((Param_TextOption)bar.Params.Input[8]).ApplyOption(InputOptions.BarGoodWhen[2]); Solve(bar);
+        Check(Card(bar).GoodWhen == BarGoodWhen.Within && bar.RuntimeMessages(GH_RuntimeMessageLevel.Warning).Contains("Within needs a positive Threshold (the tolerance)."), "Within menu choice and zero tolerance warning.");
+        foreach (var tolerance in new[] { -5d, 5d })
+        {
+            var parameter = (Param_Number)bar.Params.Input[4]; parameter.PersistentData.Clear(); parameter.PersistentData.Append(new GH_Number(tolerance)); parameter.ExpireSolution(false);
+            Text(bar, 8, " wItHiN "); Solve(bar);
+            Check(Card(bar).GoodWhen == BarGoodWhen.Within && Card(bar).Threshold == tolerance && !bar.RuntimeMessages(GH_RuntimeMessageLevel.Error).Any(), "Within accepts typed text and nonpositive tolerance without errors.");
+            Check(bar.RuntimeMessages(GH_RuntimeMessageLevel.Warning).Contains("Within needs a positive Threshold (the tolerance).") == (tolerance <= 0), "Within tolerance warning level and recovery.");
+        }
+        var withinArchive = new GH_Archive(); var withinChunk = withinArchive.CreateTopLevelNode("WithinBar"); bar.Write(withinChunk);
+        var withinRestored = Add(); withinRestored.Read((GH_IReader)withinChunk); Solve(withinRestored);
+        Check(Card(withinRestored).GoodWhen == BarGoodWhen.Within && Card(withinRestored).Threshold == 5, "Within options roundtrip.");
+        Text(bar, 8, "higher"); Solve(bar); Check(Error(bar, "Good when must be Below, Above or Within."), "Good when error text.");
         Text(bar, 8, " above "); Text(bar, 9, "descending"); Solve(bar); Check(Error(bar, "Sort must be Original, Worst first or Best first."), "Sort error text.");
         Text(bar, 9, " best FIRST "); Rows(bar, 0); Solve(bar);
         Check(Card(bar).GoodWhen == BarGoodWhen.Above && Card(bar).BarSort == BarOrder.BestFirst && TableScroll.Visible(Card(bar)) == 3, "Case-insensitive trimmed inputs and zero means all.");

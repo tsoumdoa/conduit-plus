@@ -1,9 +1,8 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace ConduitPlus.Core;
 
-public enum BarGoodWhen { Below, Above }
+public enum BarGoodWhen { Below, Above, Within }
 public enum BarOrder { Original, WorstFirst, BestFirst }
 public sealed record BarTextLayout(string[] Values, double[] ValueWidths, double LabelWidth, double ValueWidth);
 
@@ -15,7 +14,8 @@ public static class BarPresentation
     {
         null or "" or "below" => BarGoodWhen.Below,
         "above" => BarGoodWhen.Above,
-        _ => throw new ArgumentException("Good when must be Below or Above.")
+        "within" => BarGoodWhen.Within,
+        _ => throw new ArgumentException("Good when must be Below, Above or Within.")
     };
     public static BarOrder ParseSort(string? text) => text?.Trim().ToLowerInvariant() switch
     {
@@ -26,39 +26,41 @@ public static class BarPresentation
     };
     public static void Validate(CardSpec c)
     {
-        if (!Enum.IsDefined(c.GoodWhen)) throw new ArgumentException("Good when must be Below or Above.");
+        if (!Enum.IsDefined(c.GoodWhen)) throw new ArgumentException("Good when must be Below, Above or Within.");
         if (!Enum.IsDefined(c.BarSort)) throw new ArgumentException("Sort must be Original, Worst first or Best first.");
         if (c.MaxRows is < 0 or > 200) throw new ArgumentException("Visible rows must be 0–200.");
     }
-    public static bool IsGood(double value, double threshold, BarGoodWhen direction) =>
-        direction == BarGoodWhen.Above ? value >= threshold : value <= threshold;
+    public static string? ThresholdWarning(CardSpec c) => c.GoodWhen == BarGoodWhen.Within && (!c.HasThreshold || c.Threshold <= 0)
+        ? "Within needs a positive Threshold (the tolerance)." : null;
+    public static bool UsesThreshold(CardSpec c) => c.HasThreshold && (c.GoodWhen != BarGoodWhen.Within || c.Threshold > 0);
+    public static bool IsGood(double value, double threshold, BarGoodWhen direction) => direction switch
+    {
+        BarGoodWhen.Above => value >= threshold,
+        BarGoodWhen.Within => threshold > 0 && value >= -threshold && value <= threshold,
+        _ => value <= threshold
+    };
     public static string Color(CardSpec c, Theme t, int index) => c.Colors.Length > index ? c.Colors[index] :
-        !c.HasThreshold ? t.Accent : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
+        !UsesThreshold(c) ? t.Data : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
 
     /// <summary>Original leaves data untouched. Sorted modes are stable, with missing values last in either direction.</summary>
     public static int[] Order(CardSpec c)
     {
         var indices = Enumerable.Range(0, c.Values.Length);
         if (c.BarSort == BarOrder.Original) return indices.ToArray();
-        var worstAscending = c.HasThreshold && c.GoodWhen == BarGoodWhen.Above;
+        var worstAscending = c.GoodWhen == BarGoodWhen.Above;
         var ascending = c.BarSort == BarOrder.WorstFirst ? worstAscending : !worstAscending;
+        double? SortValue(int i) => c.GoodWhen == BarGoodWhen.Within && c.Values[i] is { } value ? Math.Abs(value) : c.Values[i];
         return indices.OrderBy(i => !c.Values[i].HasValue)
-            .ThenBy(i => c.Values[i], Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
+            .ThenBy(SortValue, Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
     }
 
-    /// <summary>Fewest decimals preserving the rounded values (and thus distinct values), capped at two.</summary>
-    public static int Precision(IEnumerable<double?> values)
-    {
-        var numbers = values.OfType<double>().Distinct().ToArray();
-        for (var d = 0; d < 2; d++)
-            if (numbers.All(v => Math.Round(v, d) == Math.Round(v, 2))) return d;
-        return 2;
-    }
+    /// <summary>Shared column precision preserves digits through two places and small nonzero values through six.</summary>
+    public static int Precision(IEnumerable<double?> values) => NumericFormatting.ColumnDecimals(values.OfType<double>());
     public static string Format(double? value, int precision) => value is { } v
-        ? NumericText.TrueMinus(v.ToString(precision == 0 ? "0" : "0." + new string('#', precision), CultureInfo.InvariantCulture)) : "—";
+        ? NumericText.TrueMinus(NumericFormatting.Fixed(v, precision)) : "—";
 
-    // Presentation copies keep the data arrays. Weak keys allow dead revisions to be collected;
-    // scroll/hover/selection and sort never remeasure a dataset. Hosts supply the same CSS measurer as Table.
+    // CardStore reuses owned arrays when bar content is equal across interaction snapshots.
+    // Weak keys release measurements with their content. Hosts share Table's CSS measurer.
     private static readonly ConditionalWeakTable<double?[], ConditionalWeakTable<string[], Dictionary<MetricsKey, BarTextLayout>>> Cache = new();
     private sealed record MetricsKey(double Width, double Padding, double FontSize, string Font, Func<string, double, string, Size2> Measure);
     public static BarTextLayout Layout(CardSpec c, Theme t)
@@ -88,7 +90,7 @@ public static class NumericText
     {
         var normalized = text.Replace('−', '-');
         if (!TablePresentation.TryNumber(normalized, out var number)) return text;
-        if (number == 0 && normalized.TrimStart().StartsWith('-')) return "0";
+        if (number == 0 && normalized.TrimStart().StartsWith('-')) return normalized.TrimStart()[1..];
         return text.Replace('-', '−');
     }
 }

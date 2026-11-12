@@ -49,12 +49,14 @@ internal static class TableHostChecks
         Tree(table, 1, Array.Empty<string>()); Solve(table);
         Check(Has(table, GH_RuntimeMessageLevel.Error, "Use Rows or Columns, not both."), "Persistent empty Rows branch counts as supplied.");
         Tree(table, 1); Tree(table, 7, ["a", "b"]); Solve(table);
-        Check(Has(table, GH_RuntimeMessageLevel.Error, "Columns has 1 branches but there are 2 Headers."), "Column count diagnostics.");
+        Check(Has(table, GH_RuntimeMessageLevel.Error, "Columns has 1 branch but there are 2 Headers.") &&
+            Has(table, GH_RuntimeMessageLevel.Error, "Entwine the column lists"), "Column count diagnostics and remedy.");
         Tree(table, 7, ["a", "b"], ["1"]); Solve(table);
-        Check(Has(table, GH_RuntimeMessageLevel.Error, "branch 0: 2, branch 1: 1"), "Ragged Columns counts.");
+        Check(Has(table, GH_RuntimeMessageLevel.Error, "'Room' has 2 items, 'Area' has 1 item"), "Ragged Columns counts name headers.");
         Tree(table, 7); Tree(table, 1, ["Office", "1"], ["Office", "2"]); Solve(table);
         Check(Card(table).Rows.Select(r => r.Key).SequenceEqual(new[] { "1", "2" }) &&
-            Has(table, GH_RuntimeMessageLevel.Warning, "First column repeats ('Office' ×2), so rows are keyed 1…n."), "Rows fallback warning.");
+            Has(table, GH_RuntimeMessageLevel.Remark, "First column repeats ('Office' ×2), so rows are keyed 1…n.") &&
+            !table.RuntimeMessages(GH_RuntimeMessageLevel.Warning).Any(), "Rows fallback remark.");
         Text(table, 2, "a"); Solve(table);
         Check(Has(table, GH_RuntimeMessageLevel.Error, "Key count must match row count."), "Explicit Keys count mismatch.");
         Text(table, 2, "a", "a"); Solve(table);

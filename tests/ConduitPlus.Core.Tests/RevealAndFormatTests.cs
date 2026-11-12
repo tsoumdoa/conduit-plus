@@ -28,7 +28,7 @@ public sealed class RevealAndFormatTests
         Assert.Equal(0, TableScroll.Reveal(c with { MaxRows = 1 }, "R9"));
     }
     [Theory]
-    [InlineData("123.4567", 2, "123.46")] [InlineData("0.5", 0, "0")] [InlineData("1.2", 3, "1.200")]
+    [InlineData("123.4567", 2, "123.46")] [InlineData("0.5", 0, "1")] [InlineData("1.2", 3, "1.200")]
     [InlineData("1,234.56", 1, "1234.6")] [InlineData("1.25E3", 0, "1250")] [InlineData("12 / 17", 2, "12 / 17")]
     [InlineData(null, 2, null)] [InlineData("NaN", 2, "NaN")]
     public void NumericPrecisionPreservesMissingAndNonnumericLabels(string? value, int decimals, string? expected) => Assert.Equal(expected, MetricFormatting.Format(value, decimals));

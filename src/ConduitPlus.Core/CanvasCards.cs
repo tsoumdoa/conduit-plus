@@ -176,7 +176,7 @@ public sealed class CanvasCardState
             { view.Column = null; view.Descending = false; }
             view.Offset = source.Kind is CardKind.Table or CardKind.Bar ? Math.Clamp(view.Offset, 0, TableScroll.MaxOffset(source)) : 0;
             var spec = projected[i] with { ScrollOffset = view.Offset, SortColumn = view.Column, SortDescending = view.Descending, WiredSlot = null };
-            if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
+            if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers, Current.SelectedMemberKeys) is { } added)
             { view.Offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = view.Offset }; }
             projected[i] = spec;
         }

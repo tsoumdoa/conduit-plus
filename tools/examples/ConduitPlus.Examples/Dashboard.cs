@@ -50,11 +50,7 @@ internal static class Dashboard
             var frozenPath = Path.Combine(root.FullName, "tools", "examples", "fixtures", "structural-dashboard.gh");
             Require(frozen.ReadFromFile(frozenPath) && frozen.ExtractObject(legacy, "Definition"), "Cannot read frozen fixture.");
             DisplayLifecycleChecks.ArchiveClean(frozen, frozenPath);
-            var oldBar = legacy.Objects.OfType<ConduitPlus.Grasshopper.BarComponent>().Single();
-            Require(oldBar.Params.Input.Count == 11 && oldBar.Params.Input[8] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
-                oldBar.Params.Input[9] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
-                oldBar.Params.Input[10] is Param_Integer n && n.PersistentData.AllData(true).OfType<GH_Integer>().Single().Value == 12,
-                "Frozen Bar must append unset Good when/Sort and the new 12-row default.");
+            CheckLegacyBar(legacy);
             var oldOverlay = legacy.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
             Require(oldOverlay.Params.Input.Count == 6 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } && oldOverlay.Params.Input[5] is Param_Number { PersistentData.DataCount: 0 }, "Legacy View and Size must be appended and unset.");
             Require(oldOverlay.Params.Input[0].SourceCount > 0, "Legacy card wires lost.");
@@ -63,7 +59,8 @@ internal static class Dashboard
             var saved = new GH_Archive(); Require(saved.AppendObject(legacy, "Definition"), "Cannot save legacy fixture.");
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size, Bar eleven inputs with the new 12-row default, and card wires passed.");
+            CheckLegacyBar(reopened);
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01â€¦ keys and eleven inputs with the new 12-row default passed before/after resave.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);
@@ -115,6 +112,18 @@ internal static class Dashboard
         }
         finally { Instances.DocumentServer.RemoveDocument(definition); }
     }
+    private static void CheckLegacyBar(GH_Document definition)
+    {
+        definition.Enabled = true;
+        definition.NewSolution(false);
+        var bar = definition.Objects.OfType<ConduitPlus.Grasshopper.BarComponent>().Single();
+        Require(bar.Params.Input.Count == 11 && bar.Params.Input[8] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+            bar.Params.Input[9] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+            bar.Params.Input[10] is Param_Integer n && n.PersistentData.AllData(true).OfType<GH_Integer>().Single().Value == 12,
+            "Frozen Bar must append unset Good when/Sort and the new 12-row default.");
+        var card = bar.Params.Output[0].VolatileData.AllData(true).Select(g => g.ScriptVariable()).OfType<CardSpec>().Single();
+        Require(card.Title == "Member utilisation" && card.HasThreshold && card.Threshold == 1 && card.Keys.SequenceEqual(Enumerable.Range(1, 17).Select(i => $"M{i:00}")), $"Frozen legacy Bar: title={card.Title}, threshold={card.Threshold}, hasThreshold={card.HasThreshold}, keys={string.Join(",", card.Keys)}.");
+    }
     private static void Build(string path)
     {
         using var gh = new GH_Document();
@@ -145,14 +154,14 @@ internal static class Dashboard
         Slot[] slots = [Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tr, Slot.Tr, Slot.Tl, Slot.Tr, Slot.Tl];
         for (var i = 0; i < cards.Length; i++) Text(cards[i], cards[i].Params.Input.FindIndex(p => p.Name == "Slot"), slots[i].ToString().ToLowerInvariant());
         var title = new ConduitPlus.Grasshopper.TitleComponent(); title.CreateAttributes(); title.Attributes.Pivot = new PointF(740, 1550); gh.AddObject(title, false);
-        Text(title, 0, "Truss utilisation review"); Text(title, 1, "4 bays · 24 m span"); Text(title, 2, "Illustrative results; not structural analysis or design verification."); Text(title, 3, "tc");
+        Text(title, 0, "Truss utilisation review"); Text(title, 1, "4 bays Â· 24 m span"); Text(title, 2, "Illustrative results; not structural analysis or design verification."); Text(title, 3, "tc");
         cards = [.. cards, title];
         overlay.Params.Input[0].DataMapping = GH_DataMapping.Flatten;
         overlay.Params.Input[1].DataMapping = GH_DataMapping.Flatten;
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);
-        Group("1  Explore span and load · illustrative data only", [span, load, truss]);
-        Group("2  Result cards · double-click inputs to inspect constants", cards);
-        Group("3  Keyed geometry → viewport", [link, overlay]);
+        Group("1  Explore span and load Â· illustrative data only", [span, load, truss]);
+        Group("2  Result cards Â· double-click inputs to inspect constants", cards);
+        Group("3  Keyed geometry â†’ viewport", [link, overlay]);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var archive = new GH_Archive(); Require(archive.AppendObject(gh, "Definition") && archive.WriteToFile(path, true, false), "Cannot save example.");
         Console.WriteLine("Generated " + path);

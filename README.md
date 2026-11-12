@@ -106,8 +106,8 @@ include failures. Their limits are fictitious, not regulatory checks:
 Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even
-when sorted. Click a row/bar to highlight the matching geometry with translucent
-faces and x-ray wires; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
+when sorted. Click a row/bar to highlight the matching geometry with a neutral white wash
+and cased accent x-ray outlines; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
 table and select **Hall / R17** from the model or bar to test reveal. Select **Bedroom** in the room-type legend
 or **Residential** in the GFA-by-use
 bar/legend to select every member of that category. The **Rooms below minimum**
@@ -155,13 +155,13 @@ to **Overlay**, or card outputs to **Canvas Card**.
 | Component | Inputs and behavior |
 |---|---|
 | Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves digits, numeric text uses a true minus (−), nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group and requires a single Value. A Value list makes one card per item using native GH matching for Title/Unit/Key. |
-| Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the theme accent with no marker; a set threshold enables good/bad colouring, including zero for deltas. Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. Appended inputs: **Good when** (Gw, index 8), right-click Below / Above (unset Below, ≤ / ≥ threshold; equality is good); **Sort** (O, index 9), Original / Worst first / Best first; **Visible rows** (N, index 10), default 12, 0 = all, otherwise 1–200. Worst is highest for Below, lowest for Above; without a threshold worst is highest. Sort is stable, missing values last in sorted modes, and keys, colours, labels and group memberships stay together. Values use up to two decimals without trailing zeros, a true minus (−), and a measured right-aligned column. |
+| Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the neutral theme data colour with no marker; a set threshold enables good/bad colouring (Below/Above accept zero for deltas; Within needs a positive tolerance). Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. Appended inputs: **Good when** (Gw, index 8), right-click Below / Above / Within (unset Below; ≤ / ≥ threshold, or −Threshold ≤ value ≤ Threshold; equality is good); **Sort** (O, index 9), Original / Worst first / Best first; **Visible rows** (N, index 10), default 12, 0 = all, otherwise 1–200. Worst is highest for Below, lowest for Above, or largest \|value\| for Within, including without a threshold. Sort is stable, missing values last in sorted modes, and keys, colours, labels and group memberships stay together. Values share one number of decimals: what the most precise value needs at two places (up to six so small values keep two significant digits). Every value shows that many, so decimal points line up. The measured right-aligned column uses a true minus (−); integer-only data has no decimals. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title (default “Line”), optional threshold and slot. A positive threshold, typed or wired, shows a band. Repeated labels with no Keys use 1…n with a Remark. |
-| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white against the viewport/canvas background). Scales with the viewport, hides last, not clickable. |
+| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
-| Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a warning; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
+| Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a remark; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
 | Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
 | Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Empty items warn and are skipped; foreign items and duplicate card IDs report their index, while valid siblings still draw. Publication failures appear as runtime errors. With Links wired, zero key overlap warns with examples; individual unmatched cards get Remarks when others match. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
@@ -190,7 +190,7 @@ Connect **Link** to **Overlay → Links**, and give the cards and linked geometr
 the same keys. With no label/key wires, new Bar and Line cards use 1…n and
 Link generates matching keys. Table keys default to the raw first-column values
 for both Rows and Columns when nonempty, nonreserved and unique; otherwise they
-fall back to 1…n with a warning. Set explicit Keys to override them. Keys are case-sensitive. Link supports points,
+fall back to 1…n with a remark. Set explicit Keys to override them. Keys are case-sensitive. Link supports points,
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
 geometry and caches its wires and shared pick/highlight meshes when solved.
 
@@ -198,22 +198,32 @@ Right-click a card's **Slot** input to pick Automatic or a viewport position,
 Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pick
 0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
 connected wire always takes priority. Unknown Slot text warns; use tl, tr, bl, br, lc or rc.
-Card and Link outputs have readable one-line summaries in Panels. Solve iteration
-zero retains the component ID; subsequent cards use positional `:n` suffixes.
-Unslotted cards from one component share the first card’s slot. If Values has many
+Card and Link outputs have readable one-line summaries in Panels. Metric lists,
+including grafted lists, show one card per value.
+If Values has many
 one-item branches, Bar/Line warns to flatten it for one chart.
 
+Have separate column lists? Entwine them into **Columns**, one branch per list.
 Table Columns follows tree path order: branch count must match Headers and every
 column must have the same number of items. Rows must each match Headers; ragged
 trees produce errors and are never padded. Connected inputs and persistent trees,
 including empty branches, count as supplied. Explicit Keys must match the row count.
-Column widths fit the headers and displayed content within Width; long cells are
+Column widths fit the headers, a bounded sample of content and each column's longest display string within Width; long cells are
 ellipsized. Header sorting uses those same column boundaries. Wholly numeric columns
-align right; mixed or empty columns align left. Unset Decimals preserves cell text.
+align right; mixed or empty columns align left. With Decimals unset, wholly numeric columns
+containing a value with more than four source decimal places (including exponent) trim float noise:
+all cells in that column use the fewest places ≥ 2 retaining at least two significant digits
+in every nonzero value, capped at six places. Other columns keep their text exactly.
+For example, `0.125, 2.857` and `0.0012, 0.0034` stay unchanged;
+`48.74153519689177, 3.2` becomes `48.74, 3.20`, and `0.00123456789, 0.5`
+becomes `0.0012, 0.5000` for consistent precision within the column. The six-place cap
+can lose significant digits for values smaller than `0.00001`; set Decimals explicitly to show more.
 Set Decimals to format finite invariant numeric cells only (0–12 places), with a true
-minus (−) and rounded negative zero displayed as 0. Keys and sorting retain raw values.
+minus (−), halves rounded away from zero, and rounded negative zero retaining the requested places (for example, 0.00).
+Numeric text accepts an optional sign, digits, optional dot fraction and optional exponent;
+commas, grouping separators, percentages and units remain text. Keys and sorting retain raw values.
 
-Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards stack in input order within each slot.
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
 
 ## Cards on the Grasshopper canvas
 
@@ -333,21 +343,36 @@ Plain-click a member or group to **Replace** the selection with its members.
 **Shift** adds, **Ctrl** removes, and **Ctrl+Shift** toggles those members.
 Repeating a plain click keeps that selection. **Clear** empties the domain.
 Escape cancels gestures or closes overflow UI; it does not clear selection. Selection outputs are
-sorted unique member keys, never group tokens. Partial groups show an accent
-dash; full groups and selected members keep the strong treatment. Hover outlines
-effective members and related groups; only the direct target gets a light fill.
+sorted unique member keys, never group tokens. Partial groups show a half-height accent
+tick in the card's left padding; full groups and selected rows get a full tick and
+selection fill. Row hover outlines effective members and related groups; only
+the direct row target gets a light fill. Metric hover uses a soft fill. Line hover
+uses a neutral band on the direct sample and hollow points on hovered members;
+selected samples use a 1 px accent rule and filled 8 px square with a surface ring. Missing samples have no point.
 Category colors stay visible. Member tooltips list containing labels (five plus
 a remainder); group tooltips report selected/hovered member counts. PNG, GH image
 and PDF card exports omit hover and retain selection. Displays stay independent
 unless explicitly connected to the same Scope.
 
+## Visible changes for saved files
+
+- Plain Title's automatic colour now follows the host background, including gradient
+  colours and Rendered-mode render backgrounds. Mixed backgrounds get a subtle glyph
+  halo when neither black nor white reaches 3:1 throughout. An explicit Colour still wins.
+- Mesh highlights use boundaries and feature edges instead of every triangulation edge;
+  each smooth closed component retains all-edge feedback. Picking is unchanged.
+- Selection uses padding ticks, distinct Paper fill, cased model outlines and a neutral
+  white wash. Hover has no model face fill; Line hover uses hollow points and soft bands.
+  Keyed Metric values, legend content and Table columns keep their original alignment.
+
 ## Scrolling and interaction
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
-  same key and draw linked geometry in a thin
-  accent wire with translucent faces for surface geometry. Plain click replaces selection;
-  Shift adds, Ctrl removes, and Ctrl+Shift toggles. Selected geometry draws stronger
-  translucent faces and thicker x-ray wires, also in captures. Only real point geometry
+  same key and draw linked geometry with a thin cased accent outline, without face fill.
+  Plain click replaces selection; Shift adds, Ctrl removes, and Ctrl+Shift toggles.
+  Selected geometry gets a thicker accent x-ray outline with contrasting black/white
+  casing and a neutral 20% white wash, also in captures. Mesh outlines use naked and feature edges (30° creases),
+  falling back to all edges per smooth closed component; picking still uses every edge. Only real point geometry
   draws point dots. Alt does not change viewport selection mode. Plain empty viewport
   clicks clear selection on release within four pixels; drags and Shift/Ctrl clicks retain it. **Clear** in a keyed card's header clears that
   owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.
@@ -429,12 +454,13 @@ raster pipeline, the former HTML/JS path and maintainability options.
 
 - Canvas Card now accepts a stack of up to 12 unique cards in tree order, with one shared selection domain. Cards keep their own widths, sort, scroll and raster density.
 - Bar now shows 12 rows by default, including saved files whose archive predates Visible rows. Use 0 for all rows. Remaining rows scroll with the wheel over the viewport card or its scrollbar; Canvas Card uses the scrollbar (the canvas wheel still zooms). A newly selected row is revealed; manual scrolling and hover do not snap back. Scale always uses all values. Bar and Table share a row-range/scroll footer.
-- Bar Good when defaults to Below; Above makes values at or above the threshold good. Equality is good in both directions. No threshold means plain accent bars; explicit Colors still override status. Sorting changes display order only, preserving selection, hover and group identity by key.
-- Bar values use automatic precision up to two decimals, omit trailing zeros and use the true minus (−); Metric numeric text uses the same minus and suppresses rounded negative zero.
+- Bar Good when defaults to Below; Above makes values at or above the threshold good. Within: good when −Threshold ≤ value ≤ Threshold. For example, use Within with Threshold = 5 mm for deviations within ±5 mm: −5 and +5 are good, −7 and +9 are bad. For a non-zero target, wire value − target into Values. Within shows both ±Threshold markers and a faint tolerance band; a missing or nonpositive tolerance warns and uses plain bars. Equality is good in every mode. No threshold means neutral data bars; explicit Colors still override status. Within sorts Worst first by largest |value| and Best first by smallest |value|. Sorting changes display order only, preserving selection, hover and group identity by key.
+- Bar values share the maximum decimal places needed after rounding to two places, extending up to six places for two significant digits if any nonzero value would round to zero. Rounding uses lossless round-trip text and half-away-from-zero, with trailing zeros to align decimal points and the true minus (−); integer-only data has no decimals. Metric numeric text uses the same minus and retains requested decimals for rounded negative zero.
 
 - Table accepts either Rows or appended Columns; Rows is optional, including in restored files. Both inputs error; neither warns. Existing input indices, GUIDs and stored values are retained.
-- Table row keys now default to raw first-column values instead of branch paths, for Rows as well as Columns. Repeated, empty or reserved defaults fall back to 1…n with a warning; explicit Keys still override them.
-- Table columns now fit their content within Width and wholly numeric columns align right. Optional Decimals changes numeric display only; unset keeps the original text, and sorting/keys keep raw values.
+- Table row keys now default to raw first-column values instead of branch paths, for Rows as well as Columns. Repeated, empty or reserved defaults fall back to 1…n with a remark; explicit Keys still override them.
+- Table columns now fit their content within Width and wholly numeric columns align right. Optional Decimals changes numeric display only; unset trims float noise only in numeric columns with more than four source decimal places, using a shared column precision of 2–6 places to retain two significant digits where the cap permits. Sorting/keys keep raw values. Table and Metric round numeric halves away from zero.
+- Table numbers containing thousands separators (such as `1,250`) now sort as text; use ungrouped invariant numbers for numeric sorting. To supply separate lists to Columns, Entwine the lists so each column has its own branch.
 - Typed/internalised Line Threshold and Legend Min/Max now apply. A single Legend bound warns and keeps matching swatches.
 - Overlay publishes valid siblings despite empty, foreign or duplicate inputs; Canvas Card explains upstream errors. Linked-key mismatch diagnostics expand groups and use case-sensitive matching.
 - Lists into Metric create distinct cards with native GH data matching; grouped Metric requires one Value. Branched Bar/Line inputs warn when flattening would make one chart.

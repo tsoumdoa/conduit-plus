@@ -9,7 +9,7 @@ public static class MetricFormatting
     {
         if (decimals is < 0 or > 12) throw new ArgumentOutOfRangeException(nameof(decimals), "Decimals must be 0–12.");
         var formatted = decimals.HasValue && double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number)
-            ? number.ToString($"F{decimals.Value}", CultureInfo.InvariantCulture) : value;
+            ? NumericFormatting.Fixed(value!.Trim(), number, decimals.Value) : value;
         return formatted is null ? null : NumericText.TrueMinus(formatted);
     }
 }

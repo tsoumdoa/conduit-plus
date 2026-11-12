@@ -23,9 +23,31 @@ public sealed class TooltipSortTests
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-            Assert.Equal(new[] { "Member 1", "0.123", "24.691% of threshold", "m1" }, Tooltip.For(c, "m1"));
+            Assert.Equal(new[] { "Member 1", "0.12", "24.691% of threshold", "m1" }, Tooltip.For(c, "m1"));
             Assert.Equal(new[] { "Member 1", "missing", "m1" }, Tooltip.For(c with { Values = [null] }, "m1"));
-            Assert.Equal(new[] { "m1", "-0.5", "-100% of threshold" }, Tooltip.For(c with { Labels = ["m1"], Values = [-.5] }, "m1"));
+            Assert.Equal(new[] { "m1", "−0.5", "-100% of threshold" }, Tooltip.For(c with { Labels = ["m1"], Values = [-.5] }, "m1"));
+        }
+        finally { CultureInfo.CurrentCulture = culture; }
+    }
+    [Fact]
+    public void BarTooltipUsesFullColumnPrecisionForSmallSignedValuesAndMissingRows()
+    {
+        var card = new CardSpec
+        {
+            Id = "small", Kind = CardKind.Bar, Keys = ["p", "n", "large", "missing"],
+            Labels = ["Positive", "Negative", "Larger", "Missing"], Values = [.00012, -.00012, .5, null],
+            GoodWhen = BarGoodWhen.Within, Threshold = .0001
+        };
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var layout = BarPresentation.Layout(card, Theme.Paper);
+            Assert.Equal(new[] { "0.00012", "−0.00012", "0.50000", "—" }, layout.Values);
+            for (var i = 0; i < 3; i++) Assert.Equal(layout.Values[i], Tooltip.For(card, card.Keys[i])![1]);
+            Assert.Equal("120% of threshold", Tooltip.For(card, "p")![2]);
+            Assert.Equal("120% of threshold", Tooltip.For(card, "n")![2]);
+            Assert.Equal(new[] { "Missing", "missing", "Within: good when −Threshold ≤ value ≤ Threshold", "missing" }, Tooltip.For(card, "missing"));
         }
         finally { CultureInfo.CurrentCulture = culture; }
     }
@@ -88,13 +110,16 @@ public sealed class TooltipSortTests
         Assert.Equal(1, other.SortColumn); Assert.False(other.SortDescending);
     }
     [Fact]
-    public void NumericSortUsesInvariantParsingIncludingExponentAndThousands()
+    public void NumericSortUsesTheSameStrictInvariantGrammarAsFormatting()
     {
         var culture = CultureInfo.CurrentCulture;
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-            Assert.Equal(new[] { "r2", "r3", "r0", "r1" }, TableSort.Rows(Table("1,000", "2e3", "1.5", "20")).Select(r => r.Key));
+            Assert.Equal(new[] { "r2", "r3", "r0", "r1" }, TableSort.Rows(Table("1000", "2e3", "1.5", "20")).Select(r => r.Key));
+            Assert.Equal(new[] { "r1", "r0" }, TableSort.Rows(Table("−4.0", "-10")).Select(r => r.Key));
+            // Comma text is compared as text, never rewritten/interpreted as 123 or 1234.
+            Assert.Equal(new[] { "r0", "r1", "r2" }, TableSort.Rows(Table("1,23", "1,234", "2")).Select(r => r.Key));
         }
         finally { CultureInfo.CurrentCulture = culture; }
     }
@@ -135,7 +160,7 @@ public sealed class TooltipSortTests
         var hits = CardMeasure.DataHits(c, Theme.Paper);
         Assert.Equal(new[] { "r1", "r0" }, hits.Select(h => h.Key));
         var canvas = new RecordingCanvas(); CardPainter.Paint(canvas, c, Theme.Paper);
-        Assert.Equal(new[] { "Sorted results", "Clear", "Value", "2", "10", "Rows 2–3 of 4 · scroll" }, canvas.Texts.Select(t => t.Text));
+        Assert.Equal(new[] { "Sorted results", "Clear", "Value", "2", "10", "2–3 of 4" }, canvas.Texts.Select(t => t.Text));
         Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Accent && r.Rect.Y == hits[0].Y);
         Assert.Equal("r2", Assert.Single(CardMeasure.DataHits(c with { ScrollOffset = 99, MaxRows = 1 }, Theme.Paper)).Key);
         var header = TableSort.Headers(c, Theme.Paper)[0]; var hovered = new RecordingCanvas();

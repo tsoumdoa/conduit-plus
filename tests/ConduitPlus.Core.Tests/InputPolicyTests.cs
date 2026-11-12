@@ -62,7 +62,7 @@ public sealed class InputPolicyTests
     {
         var notice = Assert.Single(LinkDiagnostics.Compare([Bar("area", "Bed 01", "Liv 02", "Bath")], ["R01", "R02", "R03"], true));
         Assert.True(notice.Warning);
-        Assert.Equal("Link keys don't match any card keys, so clicks won't highlight geometry. Link: 'R01', 'R02'. Bar \"Area\": 'Bed 01', 'Liv 02'. Keys are case-sensitive.", notice.Message);
+        Assert.Equal("Link keys don't match any card keys, so clicks won't highlight geometry. Link: 'R01', 'R02'. Bar \"Area\": 'Bed 01', 'Liv 02'. Keys are case-sensitive. Wire the same keys into Link Keys.", notice.Message);
         Assert.True(Assert.Single(LinkDiagnostics.Compare([Bar("area", "r01")], ["R01"], true)).Warning);
     }
 
@@ -87,9 +87,85 @@ public sealed class InputPolicyTests
     }
 
     [Fact]
-    public void EmptyGeometryExplainsMissingMatches()
+    public void ErroredLinkWithNoPublishedKeysStaysQuiet()
     {
-        Assert.Contains("No linked geometry is available.", Assert.Single(LinkDiagnostics.Compare([Bar("area", "a")], [], true)).Message);
+        var card = Bar("area", "a");
+        var membership = MembershipIndex.Create([new BrushRegistration("local", [card], [])]);
+        Assert.Empty(LinkDiagnostics.Compare([card], [], true, membership));
+    }
+
+    [Fact]
+    public void LinkWithoutGeometryStaysQuietEvenWithDeclaredKeys()
+    {
+        var card = Bar("area", "a");
+        var membership = MembershipIndex.Create([new BrushRegistration("local", [card], ["b"])]);
+        Assert.Empty(LinkDiagnostics.Compare([card], [], true, membership));
+    }
+
+    [Fact]
+    public void EmptyLinkBranchStillDisablesCollidingGroup()
+    {
+        var card = Group("local", "G", "a");
+        var membership = MembershipIndex.Create([new BrushRegistration("local", [card], ["G", "b"])]);
+        Assert.Null(membership.Resolve("G", BrushTargetKind.Group));
+        Assert.Empty(LinkDiagnostics.Compare([card], ["b"], true, membership));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void ScopePeerIndividualOrConflictingGroupDisablesMismatchTarget(bool conflict)
+    {
+        var card = Group("local", "G", "a");
+        var peer = conflict ? Group("peer", "G", "different") : Bar("peer", "G");
+        var membership = MembershipIndex.Create([new BrushRegistration("local", [card], ["b"]), new BrushRegistration("peer", [peer], [])]);
+        Assert.Null(membership.Resolve("G", BrushTargetKind.Group));
+        Assert.Empty(LinkDiagnostics.Compare([card], ["b"], true, membership));
+    }
+
+    [Fact]
+    public void ScopePeerGeometryDoesNotInventLocalMatches()
+    {
+        var card = Bar("local", "a");
+        var membership = MembershipIndex.Create([new BrushRegistration("local", [card], ["b"]), new BrushRegistration("peer", [], ["a"])]);
+        Assert.True(Assert.Single(LinkDiagnostics.Compare([card], ["b"], true, membership)).Warning);
+    }
+
+    private static CardSpec Group(string id, string key, params string[] members) => Bar(id, key) with
+    { Groups = ImmutableDictionary<string, GroupDefinition>.Empty.Add(key, new(members.ToImmutableArray())) };
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void ReversedAndInterleavedIterationsKeepOneSlotAndNextAllocation(bool reverse)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var iterations = new[] { 0, 1, 2 };
+        if (reverse) Array.Reverse(iterations);
+        var cards = iterations.Select(i => Bar(CardIdentity.ForIteration(id, i), "a")).ToArray();
+        Assert.Equal(new[] { Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tr }, SlotLayout.ResolveAll([.. cards, Bar("next", "b")]));
+        Assert.Equal(new[] { Slot.Tl, Slot.Tr, Slot.Tl, Slot.Br, Slot.Bl }, SlotLayout.ResolveAll([cards[0], Bar("other", "b"), cards[1], cards[2] with { WiredSlot = Slot.Br }, Bar("next", "c")]));
+        Assert.Equal(new[] { Slot.Br, Slot.Tl, Slot.Tr }, SlotLayout.ResolveAll([cards[0] with { WiredSlot = Slot.Br }, cards[1], Bar("next", "c")]));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void IterationCardsStayAdjacentInTheirIncomingOrder(bool reverse)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var a = Bar(CardIdentity.ForIteration(id, reverse ? 1 : 0), "a");
+        var b = Bar(CardIdentity.ForIteration(id, reverse ? 0 : 1), "b");
+        var other = Bar("other", "c") with { WiredSlot = Slot.Tl };
+        var owner = Guid.NewGuid();
+        var result = ViewportLayout.Solve(new(new(1920, 1080), 1, [new(owner, 1, Theme.Paper, [a, other, b])], TextMetrics.Estimate, new()));
+        Assert.Empty(result.Hidden);
+        Assert.Equal(new[] { a.Id, b.Id, other.Id }, result.Placements.OrderBy(p => p.Y).Select(p => p.CardId));
+    }
+
+    [Fact]
+    public void UnsetThresholdNeverAddsPercentageToTooltip()
+    {
+        var card = Bar("bar", "a") with { HasThreshold = false, Threshold = 1 };
+        Assert.DoesNotContain(Tooltip.For(card, "a")!, line => line.Contains("% of threshold", StringComparison.Ordinal));
+        Assert.Contains("100% of threshold", Tooltip.For(card with { HasThreshold = true }, "a")!);
     }
 
     [Fact]
@@ -101,11 +177,11 @@ public sealed class InputPolicyTests
     }
 
     [Fact]
-    public void UnsetBarThresholdUsesAccentAndNoMarkerWhileExplicitColoursWin()
+    public void UnsetBarThresholdUsesNeutralDataAndNoMarkerWhileExplicitColoursWin()
     {
         var card = Bar("area", "a", "b") with { Values = [5, 10], HasThreshold = false };
         var canvas = new PaintCanvas(); CardPainter.Paint(canvas, card, Theme.Paper);
-        Assert.Equal(new[] { Theme.Paper.Accent, Theme.Paper.Accent }, canvas.Bars);
+        Assert.Equal(new[] { Theme.Paper.Data, Theme.Paper.Data }, canvas.Bars);
         Assert.Equal(0, canvas.Lines);
         canvas = new(); CardPainter.Paint(canvas, card with { HasThreshold = true }, Theme.Paper);
         Assert.Equal(new[] { Theme.Paper.Bad, Theme.Paper.Bad }, canvas.Bars); Assert.Equal(2, canvas.Lines);
