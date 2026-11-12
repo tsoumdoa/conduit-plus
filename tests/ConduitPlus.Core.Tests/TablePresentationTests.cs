@@ -162,12 +162,20 @@ public sealed class TablePresentationTests
     }
 
     [Theory]
-    [InlineData("1.123", "2.123", "1", "2")]
-    [InlineData("1.123", "1.223", "1.1", "1.2")]
-    [InlineData("1.123", "1.133", "1.12", "1.13")]
-    [InlineData("1.123", "1.124", "1.12", "1.12")]
+    [InlineData("0.125", "2.857", "0.125", "2.857")]
+    [InlineData("0.0012", "0.0034", "0.0012", "0.0034")]
+    [InlineData("0.125", "0.25", "0.125", "0.25")]
+    [InlineData("25.512", "52.538", "25.512", "52.538")]
+    [InlineData("48.74153519689177", "3.2", "48.74", "3.20")]
+    [InlineData("0.00123456789", "0.5", "0.0012", "0.5000")]
+    [InlineData("-0.00123456789", "0", "−0.0012", "0.0000")]
+    [InlineData("1e-5", "2e-5", "0.000010", "0.000020")]
+    [InlineData("1.2345e2", "3.2", "1.2345e2", "3.2")]
+    [InlineData("1.2e-4", "0.5", "0.00012", "0.50000")]
+    [InlineData("1.00000", "2", "1.00", "2.00")]
     [InlineData("1.20", "2.30", "1.20", "2.30")]
     [InlineData("1.123", "text", "1.123", "text")]
+    [InlineData("1.1234567", "text", "1.1234567", "text")]
     public void UnsetPrecisionAutomaticallyFormatsOnlyHighPrecisionNumericColumns(string a, string b, string expectedA, string expectedB)
     {
         var card = new CardSpec { Id = "auto", Kind = CardKind.Table, Width = 600,
@@ -176,6 +184,18 @@ public sealed class TablePresentationTests
         var cells = canvas.Texts.Where(t => t.Point.Y > CardMeasure.BodyTop + Theme.Paper.RowHeight).Select(t => t.Text).ToArray();
         Assert.Equal(new[] { expectedA, "48.74153519689177 m²", expectedB, "1,234.5678" }, cells);
         Assert.Equal(a, card.Rows[0].Cells[0]);
+    }
+
+    [Theory]
+    [InlineData("0.125", "0.125")]
+    [InlineData("48.74153519689177", "48.74")]
+    [InlineData("0.00123456789", "0.0012")]
+    [InlineData("1e-5", "0.000010")]
+    public void SingleRowUsesMagnitudeRatherThanDistinctness(string raw, string expected)
+    {
+        var card = new CardSpec { Id = "single", Kind = CardKind.Table, Headers = ["Value"], Rows = [new("a", [raw])] };
+        var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
+        Assert.Equal(expected, canvas.Texts.Last().Text);
     }
 
     [Fact]
@@ -221,8 +241,10 @@ public sealed class TablePresentationTests
         if (sorted)
         {
             var glyph = Assert.Single(canvas.Polygons);
-            Assert.Equal(end + 1, glyph.Min(p => p.X), 6);
+            Assert.Equal(end + 0.5, glyph.Min(p => p.X), 6);
+            Assert.Equal(5, glyph.Max(p => p.X) - glyph.Min(p => p.X));
             Assert.True(glyph.Max(p => p.X) < columns[1].X + columns[1].Width);
+            Assert.All(glyph, p => Assert.InRange(p.Y, CardMeasure.BodyTop, CardMeasure.BodyTop + Theme.Paper.RowHeight));
         }
         else Assert.Empty(canvas.Polygons);
         Assert.Equal(TableSort.Headers(card, Theme.Paper), TableSort.Headers(TableSort.Cycle(card, 1), Theme.Paper));
@@ -284,12 +306,17 @@ public sealed class TablePresentationTests
             ("narrow-unsorted", Fixture() with { Width = 260, SortColumn = null }),
             ("structural", StructuralDemo.Create().Single(c => c.Kind == CardKind.Table) with { SortColumn = 1 }),
             ("six-380", SixColumns()), ("six-380-sorted", SixColumns() with { SortColumn = 2 }),
-            ("raw-analysis", SixColumns() with { Decimals = null, Rows = [new("R01", ["R01", "1", "48.74153519689177", "51.1234567", "62.1234567", "0.321987"]),
-                new("R02", ["R02", "2", "48.84276519358723", "51.2234567", "62.2234567", "0.421987"])] }) })
+            ("raw-analysis", SixColumns() with { Decimals = null, Rows = [new("R01", ["R01", "1", "48.74153519689177", "51.1234567", "62.1234567", "0.00123456789"]),
+                new("R02", ["R02", "2", "3.2", "51.2234567", "62.2234567", "0.5"])] }) })
         {
             using var bitmap = RasterDrawing.Render(card, theme, 2);
             Assert.True(bitmap.Width > 0 && bitmap.Height > 0);
             bitmap.Save(Path.Combine(output, $"table-{label}-{name.ToLowerInvariant()}.png"), ImageFormat.Png);
+            if (label == "six-380-sorted")
+            {
+                using var scaleOne = RasterDrawing.Render(card, theme, 1);
+                scaleOne.Save(Path.Combine(output, $"table-{label}-{name.ToLowerInvariant()}-scale-1.png"), ImageFormat.Png);
+            }
         }
     }
 

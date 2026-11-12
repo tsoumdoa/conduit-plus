@@ -330,7 +330,7 @@ public sealed class TableComponent : CardComponent
         p.AddIntegerParameter("Visible rows", "N", "Rows shown at once; more rows scroll (wheel or scrollbar)", GH_ParamAccess.item, TableScroll.DefaultVisibleRows);
         p.AddNumberParameter("Width", "W", "Table width in CSS pixels (180–1200)", GH_ParamAccess.item, 380);
         p.AddTextParameter("Columns", "Co", "One branch per column in path order, one item per row; set Rows or Columns", GH_ParamAccess.tree); p[7].Optional = true;
-        p.AddIntegerParameter("Decimals", "D", "Optional numeric display precision (0–12); unset automatically formats high-precision numeric columns (0–2 places); sorting uses raw values", GH_ParamAccess.item); p[8].Optional = true;
+        p.AddIntegerParameter("Decimals", "D", "Optional numeric display precision (0–12); unset preserves text unless a wholly numeric column has a value with more than 4 source decimal places (including exponent). Then all cells use the fewest places from 2–6 retaining two significant digits in every nonzero value, capped at 6; sorting uses raw values", GH_ParamAccess.item); p[8].Optional = true;
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {

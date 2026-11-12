@@ -108,8 +108,8 @@ public static class CardPainter
                 // Overlay the triangle in the right padding; no per-column sort gutter.
                 var x = columns[col].X + columns[col].Width - 3; var y = CardMeasure.BodyTop + 10;
                 using var glyphClip = canvas.Clip(new(columns[col].X, CardMeasure.BodyTop, columns[col].Width, t.RowHeight));
-                canvas.FillPolygon(c.SortDescending ? [new(x - 2, y - 2), new(x + 2, y - 2), new(x, y + 2)] :
-                    [new(x - 2, y + 2), new(x + 2, y + 2), new(x, y - 2)], t.Muted);
+                canvas.FillPolygon(c.SortDescending ? [new(x - 2.5, y - 2.5), new(x + 2.5, y - 2.5), new(x, y + 2.5)] :
+                    [new(x - 2.5, y + 2.5), new(x + 2.5, y + 2.5), new(x, y - 2.5)], t.Ink);
             }
             var rows = TableSort.Rows(c);
             var offset = TableScroll.Offset(c);

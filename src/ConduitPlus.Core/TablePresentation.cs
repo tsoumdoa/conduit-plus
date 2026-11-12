@@ -28,7 +28,19 @@ public static partial class TablePresentation
     {
         ValidateDecimals(decimals);
         if (decimals is not { } d || !TryNumber(text, out var value)) return text ?? "—";
-        return NumericFormatting.Fixed(value, d).Replace('-', '−');
+        return NumericFormatting.Fixed(text!, value, d).Replace('-', '−');
+    }
+
+    // Count source places (including trailing zeroes), adjusted for scientific notation.
+    // Called only after TryNumber has validated the grammar and finite value.
+    private static bool HasFloatNoise(string text)
+    {
+        var exponentIndex = text.IndexOfAny(['e', 'E']);
+        var mantissa = exponentIndex < 0 ? text : text[..exponentIndex];
+        var dot = mantissa.IndexOf('.');
+        var places = dot < 0 ? 0 : mantissa.Length - dot - 1;
+        var exponent = exponentIndex < 0 ? 0 : double.Parse(text[(exponentIndex + 1)..].Replace('−', '-'), CultureInfo.InvariantCulture);
+        return places - exponent > 4;
     }
 
     // CardStore carries its owned arrays across snapshots when authored table content is equal.
@@ -78,11 +90,10 @@ public static partial class TablePresentation
             var precision = Enumerable.Repeat(c.Decimals, headers.Length).ToArray();
             if (c.Decimals is null)
                 for (var col = 0; col < headers.Length; col++)
-                    if (numeric[col])
+                    if (numeric[col] && c.Rows.Any(r => HasFloatNoise(r.Cells[col]!)))
                     {
                         var values = c.Rows.Select(r => { TryNumber(r.Cells[col], out var v); return v; }).ToArray();
-                        if (values.Any(v => Math.Round(v, 2, MidpointRounding.AwayFromZero) != v))
-                            precision[col] = NumericFormatting.AutomaticDecimals(values);
+                        precision[col] = NumericFormatting.AutomaticDecimals(values);
                     }
             var longest = new string[headers.Length];
             var formatted = new Dictionary<(string Raw, int? Decimals), string>();

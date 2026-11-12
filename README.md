@@ -211,8 +211,13 @@ including empty branches, count as supplied. Explicit Keys must match the row co
 Column widths fit the headers, a bounded sample of content and each column's longest display string within Width; long cells are
 ellipsized. Header sorting uses those same column boundaries. Wholly numeric columns
 align right; mixed or empty columns align left. With Decimals unset, wholly numeric columns
-containing values with more than two decimal places use the fewest places from 0–2 that
-keep distinct values distinct (or two places if that is impossible). Other cell text is preserved.
+containing a value with more than four source decimal places (including exponent) trim float noise:
+all cells in that column use the fewest places ≥ 2 retaining at least two significant digits
+in every nonzero value, capped at six places. Other columns keep their text exactly.
+For example, `0.125, 2.857` and `0.0012, 0.0034` stay unchanged;
+`48.74153519689177, 3.2` becomes `48.74, 3.20`, and `0.00123456789, 0.5`
+becomes `0.0012, 0.5000` for consistent precision within the column. The six-place cap
+can lose significant digits for values smaller than `0.00001`; set Decimals explicitly to show more.
 Set Decimals to format finite invariant numeric cells only (0–12 places), with a true
 minus (−), halves rounded away from zero, and rounded negative zero retaining the requested places (for example, 0.00).
 Numeric text accepts an optional sign, digits, optional dot fraction and optional exponent;
@@ -427,7 +432,7 @@ raster pipeline, the former HTML/JS path and maintainability options.
 
 - Table accepts either Rows or appended Columns; Rows is optional, including in restored files. Both inputs error; neither warns. Existing input indices, GUIDs and stored values are retained.
 - Table row keys now default to raw first-column values instead of branch paths, for Rows as well as Columns. Repeated, empty or reserved defaults fall back to 1…n with a remark; explicit Keys still override them.
-- Table columns now fit their content within Width and wholly numeric columns align right. Optional Decimals changes numeric display only; unset automatically formats high-precision numeric columns to 0–2 places. Sorting/keys keep raw values. Table and Metric round numeric halves away from zero.
+- Table columns now fit their content within Width and wholly numeric columns align right. Optional Decimals changes numeric display only; unset trims float noise only in numeric columns with more than four source decimal places, using a shared column precision of 2–6 places to retain two significant digits where the cap permits. Sorting/keys keep raw values. Table and Metric round numeric halves away from zero.
 - Table numbers containing thousands separators (such as `1,250`) now sort as text; use ungrouped invariant numbers for numeric sorting. To supply separate lists to Columns, Entwine the lists so each column has its own branch.
 - Typed/internalised Line Threshold and Legend Min/Max now apply. A single Legend bound warns and keeps matching swatches.
 - Overlay publishes valid siblings despite empty, foreign or duplicate inputs; Canvas Card explains upstream errors. Linked-key mismatch diagnostics expand groups and use case-sensitive matching.
