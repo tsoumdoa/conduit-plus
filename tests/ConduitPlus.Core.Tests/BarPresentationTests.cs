@@ -129,16 +129,53 @@ public sealed class BarPresentationTests
     public void WithinAxisHasCrispTwoPixelStripAtBothScales(string name, int scale)
     {
         Theme.TryGet(name, out var t);
-        var c = Bar(-7, 0, 9) with { GoodWhen = BarGoodWhen.Within, Threshold = 5, Width = 360 };
-        using var image = RasterDrawing.Render(c, t, scale);
-        var h = CardMeasure.DataHits(c, t)[0]; var layout = BarPresentation.Layout(c, t);
-        var center = Math.Round(h.X + layout.LabelWidth + (h.W - layout.LabelWidth - layout.ValueWidth) / 2 - 1) + 1;
-        var left = (int)((center - 1) * scale); var y = (int)((h.Y + h.H - 2) * scale);
-        var background = image.GetPixel(left - 1, y);
-        var axis = image.GetPixel(left, y);
-        Assert.NotEqual(background, axis);
-        for (var x = left; x < left + 2 * scale; x++) Assert.Equal(axis, image.GetPixel(x, y));
-        Assert.Equal(background, image.GetPixel(left + 2 * scale, y));
+        foreach (var width in new[] { 359, 360, 361 })
+        {
+            var c = Bar(-3, 0, 3, null) with { GoodWhen = BarGoodWhen.Within, Threshold = 5, Width = width };
+            using var image = RasterDrawing.Render(c, t, scale);
+            var commands = new Commands(); CardPainter.Paint(commands, c, t);
+            var axis = Assert.Single(commands.Rects, r => r.Fill == t.Axis).Rect;
+            Assert.Equal(Math.Round(axis.X), axis.X);
+            Assert.Equal(2, axis.Width);
+            var hits = CardMeasure.DataHits(c, t);
+            var margin = RasterDrawing.Margin(t, scale);
+            var left = margin + (int)(axis.X * scale);
+            var right = left + 2 * scale;
+            int Y(int row) => margin + (int)((hits[row].Y + 10) * scale);
+            var gapAxis = image.GetPixel(left, Y(1));
+            var corridor = image.GetPixel(left - 4 * scale, Y(1));
+            Assert.NotEqual(corridor, gapAxis);
+            foreach (var row in new[] { 0, 1, 2, 3 })
+                for (var x = left; x < right; x++) Assert.Equal(gapAxis, image.GetPixel(x, Y(row)));
+            Assert.Equal(corridor, image.GetPixel(left - 1, Y(1)));
+            Assert.Equal(corridor, image.GetPixel(right, Y(1)));
+            // Both signs meet the strip edge, without a gap or a partially covered axis pixel.
+            var negative = commands.Rects.Single(r => r.Fill == t.Data && r.Rect.Y == hits[0].Y + 7).Rect;
+            var positive = commands.Rects.Single(r => r.Fill == t.Data && r.Rect.Y == hits[2].Y + 7).Rect;
+            Assert.Equal(axis.X, negative.X + negative.Width, 6);
+            Assert.Equal(axis.X + axis.Width, positive.X, 6);
+            var bar = image.GetPixel(left - 4 * scale, Y(0));
+            Assert.Equal(bar, image.GetPixel(left - 1, Y(0)));
+            Assert.Equal(bar, image.GetPixel(right, Y(2)));
+            var size = CardMeasure.Measure(c, t);
+            var surface = image.GetPixel(margin + width * scale / 2, margin + (int)((size.Height - 5) * scale));
+            // Compare actual rendered pixels, including translucent themes over a mid-grey backdrop.
+            static double Luminance(System.Drawing.Color color)
+            {
+                double Channel(byte channel)
+                {
+                    var srgb = (channel * color.A / 255.0 + 128 * (1 - color.A / 255.0)) / 255;
+                    return srgb <= .04045 ? srgb / 12.92 : Math.Pow((srgb + .055) / 1.055, 2.4);
+                }
+                return .2126 * Channel(color.R) + .7152 * Channel(color.G) + .0722 * Channel(color.B);
+            }
+            var baseline = Luminance(surface);
+            var corridorContrast = Math.Abs(Luminance(corridor) - baseline);
+            var axisContrast = Math.Abs(Luminance(gapAxis) - baseline);
+            var barContrast = Math.Abs(Luminance(bar) - baseline);
+            Assert.True(corridorContrast < axisContrast, $"{name}: corridor must be quieter than axis");
+            Assert.True(axisContrast < barContrast, $"{name}: axis must be quieter than bars");
+        }
     }
 
     [Theory]
@@ -151,9 +188,14 @@ public sealed class BarPresentationTests
         var span = (h.W - layout.LabelWidth - layout.ValueWidth) / 2;
         var origin = Math.Round(h.X + layout.LabelWidth + span - 1) + 1;
         var scale = span / Math.Max(5, Math.Abs(value));
+        if (value == 0)
+        {
+            Assert.DoesNotContain(canvas.Rects, r => r.Fill == t.Data || r.Fill == t.Bad);
+            return;
+        }
         var inside = Assert.Single(canvas.Rects, r => r.Fill == t.Data);
-        Assert.Equal(Math.Min(5, Math.Abs(value)) * scale, inside.Rect.Width, 6);
-        Assert.Equal(value < 0 ? origin - inside.Rect.Width : origin, inside.Rect.X, 6);
+        Assert.Equal(Math.Min(5, Math.Abs(value)) * scale - 1, inside.Rect.Width, 6);
+        Assert.Equal(value < 0 ? origin - 1 - inside.Rect.Width : origin + 1, inside.Rect.X, 6);
         var bad = canvas.Rects.Where(r => r.Fill == t.Bad).ToArray();
         if (Math.Abs(value) <= 5) Assert.Empty(bad);
         else

@@ -76,7 +76,7 @@ public static class CardPainter
             var within = hasThreshold && c.GoodWhen == BarGoodWhen.Within;
             var signed = within || c.Values.Any(v => v < 0);
             const int axisWidth = 2;
-            // Integer strip edges remain crisp at 1x/2x; bars share the snapped centre.
+            // Integer strip edges remain crisp at 1x/2x; bars stop at the strip edges.
             double AxisCenter(double x) => Math.Round(x - axisWidth / 2.0) + axisWidth / 2.0;
             if (within && hits.Length > 0)
             {
@@ -103,15 +103,27 @@ public static class CardPainter
                 var toleranceWidth = c.Threshold / max * span;
                 if (value is { } v)
                 {
+                    // Keep the scale endpoints and tolerance split fixed; trim only the
+                    // innermost pixel so neither sign overpaints the two-pixel target strip.
+                    void Segment(double left, double width, string color)
+                    {
+                        var right = left + width;
+                        if (within)
+                        {
+                            if (v < 0) right = Math.Min(right, origin - axisWidth / 2.0);
+                            else left = Math.Max(left, origin + axisWidth / 2.0);
+                        }
+                        if (right > left || !within) canvas.Rect(new(left, y, right - left, 8), color);
+                    }
                     var length = Math.Abs(v) / max * span;
                     if (!within || c.Colors.Length > dataIndex)
-                        canvas.Rect(new(v < 0 ? origin - length : origin, y, length, 8), BarPresentation.Color(c, t, dataIndex));
+                        Segment(v < 0 ? origin - length : origin, length, BarPresentation.Color(c, t, dataIndex));
                     else
                     {
                         var inside = Math.Min(length, toleranceWidth);
-                        canvas.Rect(new(v < 0 ? origin - inside : origin, y, inside, 8), t.Data);
+                        Segment(v < 0 ? origin - inside : origin, inside, t.Data);
                         if (length > toleranceWidth)
-                            canvas.Rect(new(v < 0 ? origin - length : origin + toleranceWidth, y, length - toleranceWidth, 8), t.Bad);
+                            Segment(v < 0 ? origin - length : origin + toleranceWidth, length - toleranceWidth, t.Bad);
                     }
                 }
                 if (hasThreshold && !within) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
