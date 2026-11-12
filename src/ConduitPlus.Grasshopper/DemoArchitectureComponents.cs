@@ -60,7 +60,7 @@ public sealed class DemoRoomsComponent : DemoArchitectureComponent
             da.SetDataList(0, geometry);
             da.SetDataList(1, r.Rooms.Select(room => room.Key)); da.SetDataList(2, r.Rooms.Select(room => room.Name));
             da.SetDataList(3, r.Rooms.Select(room => room.Delta));
-            da.SetDataTree(4, DemoArchitectureRows.Create(r.Rooms.Select(room => new[] { room.Name, room.Type, F(room.Area), F(room.Required), F(room.Delta), room.Pass ? "Pass" : "FAIL" })));
+            da.SetDataTree(4, DemoArchitectureRows.Create(r.Rooms.Select(room => new[] { room.Name, room.Type, F(room.Area), F(room.Required), F(room.Delta), room.Pass ? "Pass" : "Fail" })));
             da.SetData(5, r.GrossArea); da.SetData(6, r.NetToGrossPercent); da.SetData(7, r.CirculationPercent); da.SetData(8, r.Failing);
             da.SetDataList(9, r.Rooms.Select(room => ColorTranslator.FromHtml(room.Pass ? Theme.Paper.Good : Theme.Paper.Bad)));
             da.SetDataList(10, r.Rooms.Select(room => room.Type).Distinct());
@@ -72,7 +72,7 @@ public sealed class DemoRoomsComponent : DemoArchitectureComponent
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
-    private static string F(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
+    private static string F(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
 }
 
 public sealed class DemoMassingComponent : DemoArchitectureComponent

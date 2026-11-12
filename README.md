@@ -18,11 +18,11 @@ A docked Inspector is future work.
 2. Feed values + names into **Bar**; set **Threshold** and **Good when** for your check.
 3. Feed types into **Colour Categories** (Programme style); send its colours to native
    **Custom Preview** with your geometry, and its **Legend** to the display.
-4. Feed the same geometry into **Link**, then cards + Link into **Overlay**.
-   Without labels, Bar and Link default to keys 1…n; with names, wire matching keys.
+   Wire matching names into Colour Categories **Keys** to enable legend selection.
+4. Wire geometry into Link **Geometry**, the same names into Link **Keys**, and Link into Overlay **Links**.
+   Send cards into Overlay **Cards**; Bar and Table use their names as keys by default.
+   Wire **Scope** into both displays’ **Scope** inputs to share the selection.
 5. Send Metric + Bar + Table cards into one **Canvas Card** to keep the review on the canvas.
-   Hello feeds Metric a two-item list: **Total area 90 m²** and **Rooms below 15 m² 3**.
-   These are fixed summary inputs; update them when editing the room-area list.
 
 ## Requirements
 

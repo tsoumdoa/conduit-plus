@@ -41,15 +41,23 @@ internal static class Showcase
         Instances.DocumentServer.AddDocument(gh); gh.Enabled = true; GH_Document.EnableSolutions = true;
         try
         {
+            if (!hello && args.Contains("--plan-scale"))
+                gh.Objects.OfType<GH_NumberSlider>().Single(s => s.NickName == "Plan scale").SetSliderValue(decimal.Parse(args[Array.IndexOf(args, "--plan-scale") + 1], System.Globalization.CultureInfo.InvariantCulture));
             gh.NewSolution(false);
             DisplayLifecycleChecks.DefinitionSolved();
+            if (hello) CheckHelloEdits(gh);
+            else if (!args.Contains("--verify-only")) CheckScaleEndpoints(gh);
+            if (!hello) CheckPlanSeparation(gh);
             var messages = gh.Objects.OfType<IGH_ActiveObject>().SelectMany(o => new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }
                 .SelectMany(level => o.RuntimeMessages(level).Select(m => $"{o.NickName} ({o.Name}): {level}: {m}"))).ToArray();
             foreach (var m in messages) Console.WriteLine(m);
             Require(messages.Length == 0, example + " must solve with zero warnings/errors.");
             Require(!hello || !gh.Objects.OfType<GH_Component>().Any(c => c.Name.StartsWith("Demo ", StringComparison.Ordinal)), "Hello must use native data.");
             if (!args.Contains("--verify-only")) Relayout(gh, path);
-            File.WriteAllText(Path.Combine(output, "definition.md"), Dump(gh, messages));
+            if (hello) CheckHelloWires(gh);
+            var diagnostic = !hello && args.Contains("--plan-scale") && args[Array.IndexOf(args, "--plan-scale") + 1] != "1"
+                ? "definition-scale-" + args[Array.IndexOf(args, "--plan-scale") + 1] + ".md" : "definition.md";
+            File.WriteAllText(Path.Combine(output, diagnostic), Dump(gh, messages));
 
             var overlay = gh.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
             var session = Session(doc, view, overlay.InstanceGuid);
@@ -70,7 +78,11 @@ internal static class Showcase
             }
             previewConduit.Enabled = true;
             view.ActiveViewport.SetProjection(DefinedViewportProjection.Top, "Top", false);
-            view.ActiveViewport.ZoomBoundingBox(hello ? new BoundingBox(-15, -8, -1, 40, 17, 1) : new BoundingBox(-25, -13, -1, 69, 29, 1));
+            var scene = gh.Objects.OfType<GH_Component>().Where(c => c.Name == "Custom Preview")
+                .SelectMany(c => c.Params.Input[0].VolatileData.AllData(true)).OfType<IGH_GeometricGoo>()
+                .Select(g => g.Boundingbox).Aggregate((a, b) => { a.Union(b); return a; });
+            view.ActiveViewport.ZoomBoundingBox(hello ? new BoundingBox(-15, -8, -1, 40, 17, 1)
+                : new BoundingBox(-scene.Max.X * .57, -scene.Max.Y * .8125, -1, scene.Max.X * 1.57, scene.Max.Y * 1.8125, 1));
             view.Redraw();
             var cards = (CardSpec[])Get(session, "Cards");
             Console.WriteLine($"{example} overlay: {cards.Length} cards: {string.Join(", ", cards.Select(c => c.Kind + " " + c.Title))}");
@@ -103,7 +115,7 @@ internal static class Showcase
                 Select(session, legend.Id, gh.Objects.OfType<ConduitPlus.Grasshopper.ColourCategoriesComponent>().First().Params.Output[4].VolatileData.AllData(true).First().ToString()!, BrushSelectMode.Replace);
                 if (shot.EndsWith("-partial", StringComparison.Ordinal)) Select(session, "model", "R01", BrushSelectMode.Remove);
             }
-            Capture(doc, view, output, "viewport-" + shot);
+            Capture(doc, view, output, "viewport-" + shot, previewConduit, args.Contains("--review-capture-checks"));
             if (args.Contains("--verify-only")) return;
 
             // Every generated card, including the canvas reference stacks, at 2x in every theme: the cards as a reviewer would zoom in on them.
@@ -153,6 +165,81 @@ internal static class Showcase
         finally { Instances.DocumentServer.RemoveDocument(gh); }
     }
 
+    private static CardSpec[] ComponentCards(GH_Document gh) => gh.Objects.OfType<GH_Component>()
+        .Where(c => c is ConduitPlus.Grasshopper.MetricComponent or ConduitPlus.Grasshopper.BarComponent or ConduitPlus.Grasshopper.TableComponent)
+        .SelectMany(c => c.Params.Output[0].VolatileData.AllData(true)).OfType<GH_ObjectWrapper>().Select(w => (CardSpec)w.Value).ToArray();
+
+    private static void RequireClean(GH_Document gh)
+    {
+        var messages = gh.Objects.OfType<IGH_ActiveObject>().SelectMany(o => new[] { GH_RuntimeMessageLevel.Warning, GH_RuntimeMessageLevel.Error }
+            .SelectMany(level => o.RuntimeMessages(level).Select(m => $"{o.NickName} ({o.Name}): {level}: {m}"))).ToArray();
+        Require(messages.Length == 0, "Edited definition must solve without warnings/errors: " + string.Join("; ", messages));
+    }
+
+    private static void CheckHelloEdits(GH_Document gh)
+    {
+        var metric = gh.Objects.OfType<ConduitPlus.Grasshopper.MetricComponent>().Single();
+        Require(metric.Params.Input[0].SourceCount > 0, "Hello Metrics must be computed from wired values.");
+        var panel = gh.Objects.OfType<GH_Panel>().Single(p => p.NickName == "Area (m²)");
+        var original = panel.UserText;
+        try
+        {
+            panel.UserText = original.Replace("9", "16", StringComparison.Ordinal); panel.ExpireSolution(false); gh.NewSolution(false);
+            RequireClean(gh);
+            var cards = ComponentCards(gh);
+            Require(cards.Where(c => c.Kind == CardKind.Metric).Select(c => (c.Title, c.Value ?? "")).SequenceEqual(new[] { ("Total area", "97"), ("Rooms below 15 m²", "2") }),
+                "Editing Store 01 from 9 to 16 must update Hello Metrics to 97 and 2.");
+            Require(cards.Single(c => c.Kind == CardKind.Bar).Values.Contains(16), "Hello Bar must update with the edited area.");
+            Require(cards.Single(c => c.Kind == CardKind.Table).Rows.Any(r => r.Cells.Contains("Store 01") && r.Cells.Contains("16")), "Hello Table must update with the edited area.");
+        }
+        finally { panel.UserText = original; panel.ExpireSolution(false); gh.NewSolution(false); }
+        Console.WriteLine("Hello edit check passed: Store 01 9 → 16 updates Metric 97 m² / 2, Bar and Table; original data restored.");
+    }
+
+    private static void CheckHelloWires(GH_Document gh)
+    {
+        foreach (var target in gh.Objects.OfType<GH_Component>())
+        foreach (var input in target.Params.Input)
+        foreach (var source in input.Sources)
+            Require(source.Attributes.OutputGrip.X < input.Attributes.InputGrip.X,
+                $"Hello wires must flow left to right: {source.Attributes.GetTopLevel.DocObject.NickName} → {target.NickName}.{input.NickName}.");
+        Console.WriteLine("Hello canvas check passed: every wire flows left to right.");
+    }
+
+    private static void CheckScaleEndpoints(GH_Document gh)
+    {
+        var slider = gh.Objects.OfType<GH_NumberSlider>().Single(s => s.NickName == "Plan scale");
+        var original = slider.CurrentValue;
+        try
+        {
+            foreach (var value in new[] { .5m, 2m })
+            {
+                slider.SetSliderValue(value); slider.ExpireSolution(false); gh.NewSolution(false);
+                RequireClean(gh); CheckPlanSeparation(gh);
+                var scale = gh.Objects.OfType<ConduitPlus.Grasshopper.ColourScaleComponent>().Single();
+                Require(scale.Params.Output[0].VolatileData.AllData(true).OfType<GH_Colour>().Select(c => c.Value).Distinct().Count() > 1,
+                    "Area colours must retain their range at both plan-scale endpoints.");
+            }
+        }
+        finally { slider.SetSliderValue(original); slider.ExpireSolution(false); gh.NewSolution(false); }
+        var bar = ComponentCards(gh).Single(c => c.Title == "Area − minimum (m²)");
+        Require(bar.Values.Length == 16 && !bar.Keys.Contains("R17"), "Headline Bar must exclude the hall.");
+        Require(BarPresentation.Order(bar).Take(bar.RowLimit).Any(i => bar.Values[i] > 0), "Headline Bar must include a visible surplus.");
+        var within = ComponentCards(gh).Single(c => c.GoodWhen == BarGoodWhen.Within);
+        Require(within.MaxRows == 0 && within.Values.Any(v => BarPresentation.IsGood(v!.Value, 2, BarGoodWhen.Within))
+            && within.Values.Any(v => !BarPresentation.IsGood(v!.Value, 2, BarGoodWhen.Within)), "Within study must show pass and fail rows.");
+        Console.WriteLine("Showcase scale checks passed at 0.5 and 2: 4 m plan gap, distinct area colours and zero warnings; default scale restored.");
+    }
+
+    private static void CheckPlanSeparation(GH_Document gh)
+    {
+        BoundingBox Bounds(string name) => gh.Objects.OfType<GH_Component>().Single(c => c.NickName == name)
+            .Params.Input[0].VolatileData.AllData(true).OfType<IGH_GeometricGoo>().Select(g => g.Boundingbox)
+            .Aggregate((a, b) => { a.Union(b); return a; });
+        var first = Bounds("Programme preview"); var second = Bounds("Area preview");
+        Require(Math.Abs(second.Min.X - first.Max.X - 4) < 1e-8, "Plans must retain a 4 m gap from the first plan's bounding box.");
+    }
+
     private static void Relayout(GH_Document gh, string path)
     {
         void Layout()
@@ -162,18 +249,23 @@ internal static class Showcase
         }
         Layout();
         var groups = gh.Objects.OfType<GH_Group>().ToArray();
-        var left = 80f; var right = 80f;
+        var cursorX = 40f; var lowerY = 0f;
         for (var i = 0; i < groups.Length; i++)
         {
             var group = groups[i]; var bounds = group.Attributes.Bounds;
-            var target = i < 3 ? new PointF(40, left) : new PointF(1900, right);
+            var target = i < 3 ? new PointF(cursorX, 80) : new PointF(900, lowerY);
             foreach (var id in group.ObjectIDs)
             {
                 var obj = gh.FindObject(id, true)!; var pivot = obj.Attributes.Pivot;
                 obj.Attributes.Pivot = new(pivot.X + target.X - bounds.X, pivot.Y + target.Y - bounds.Y);
             }
             Layout();
-            if (i < 3) left = group.Attributes.Bounds.Bottom + 160; else right = group.Attributes.Bounds.Bottom + 160;
+            if (i < 3)
+            {
+                cursorX = group.Attributes.Bounds.Right + 120;
+                lowerY = Math.Max(lowerY, group.Attributes.Bounds.Bottom + 160);
+            }
+            else lowerY = group.Attributes.Bounds.Bottom + 160;
         }
         // Save the editable preview-enabled definition, before headless rendering disables it.
         var archive = new GH_Archive(); Require(archive.AppendObject(gh, "Definition") && archive.WriteToFile(path, true, false), "Cannot re-save " + path);
@@ -187,6 +279,25 @@ internal static class Showcase
             var mesh = new Mesh(); foreach (var piece in Mesh.CreateFromBrep(brep, MeshingParameters.FastRenderMesh)) { mesh.Append(piece); piece.Dispose(); }
             mesh.Normals.ComputeNormals(); mesh.VertexColors.CreateMonotoneMesh(colour); faces.Add((mesh, brep.DuplicateNakedEdgeCurves(true, false), colour));
         }
+        internal void RequireCapturedFaces(Bitmap png, RhinoViewport viewport)
+        {
+            var matches = 0;
+            foreach (var (mesh, _, colour) in faces)
+            {
+                var point = viewport.WorldToClient(mesh.GetBoundingBox(true).Center);
+                var x = (int)Math.Round(point.X); var y = (int)Math.Round(point.Y);
+                if (x < 0 || y < 0 || x >= png.Width || y >= png.Height) continue;
+                var pixel = png.GetPixel(x, y);
+                // Selection may tint a minority of rooms; the remaining faces must match their preview colours.
+                if (pixel.A > 200 && Math.Abs(pixel.R - colour.R) + Math.Abs(pixel.G - colour.G) + Math.Abs(pixel.B - colour.B) < 40) matches++;
+            }
+            Require(matches >= (faces.Count + 1) / 2, $"Incomplete review capture: only {matches}/{faces.Count} room faces match the solved preview colours.");
+            Console.WriteLine($"Review image check passed: {matches}/{faces.Count} room faces match solved colours.");
+        }
+        protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
+        {
+            foreach (var (mesh, _, _) in faces) e.IncludeBoundingBox(mesh.GetBoundingBox(true));
+        }
         protected override void PostDrawObjects(DrawEventArgs e)
         {
             foreach (var (mesh, edges, colour) in faces)
@@ -195,9 +306,9 @@ internal static class Showcase
         public void Dispose() { Enabled = false; foreach (var (mesh, edges, _) in faces) { mesh.Dispose(); foreach (var edge in edges) edge.Dispose(); } }
     }
 
-    private static void Capture(RhinoDoc doc, RhinoView view, string output, string name)
+    private static void Capture(RhinoDoc doc, RhinoView view, string output, string name, ReviewPreview preview, bool checkScene)
     {
-        view.Redraw();
+        view.Redraw(); RhinoApp.Wait(); view.Redraw();
         typeof(ConduitPlusCapture).GetMethod("Capture", Static)!.Invoke(null, [doc, view, 1]);
         var source = Path.Combine(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!, "captures", "raster-1x.png");
         var target = Path.Combine(output, name + ".png");
@@ -206,6 +317,7 @@ internal static class Showcase
         using (var flat = new Bitmap(png.Width, png.Height))
         {
             using (var g = Graphics.FromImage(flat)) { g.Clear(Color.FromArgb(214, 214, 214)); g.DrawImage(png, 0, 0, png.Width, png.Height); }
+            if (checkScene) preview.RequireCapturedFaces(flat, view.ActiveViewport);
             flat.Save(target, ImageFormat.Png);
         }
         File.Move(Path.ChangeExtension(source, ".json"), Path.ChangeExtension(target, ".json"), true);

@@ -43,7 +43,7 @@ internal static class Dashboard
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "showcase" or "hello")
         {
-            foreach (var name in new[] { "SurfaceComponents", "XformComponents", "MathComponents" })
+            foreach (var name in new[] { "SurfaceComponents", "XformComponents", "MathComponents", "VectorComponents" })
                 Register(Assembly.LoadFrom(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Rhino 8", "Plug-ins", "Grasshopper", "Components", name + ".gha")));
             Showcase.Run(doc, view, root.FullName, args); return;
         }

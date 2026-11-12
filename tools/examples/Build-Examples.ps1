@@ -3,7 +3,9 @@ param(
     [string]$Output = (Join-Path ([IO.Path]::GetTempPath()) ('ConduitPlus/examples-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
     [ValidateSet('All', 'Structural', 'Rooms', 'Massing', 'Showcase', 'Hello')][string]$Example = 'All',
     [string]$Shot = 'paper',
+    [ValidateRange(0.5, 2)][decimal]$PlanScale = 1,
     [switch]$VerifyOnly,
+    [switch]$ReviewCaptureChecks,
     [switch]$CanvasStackChecks,
     [switch]$Exports,
     [switch]$Safe,
@@ -32,12 +34,14 @@ foreach ($fixture in $fixtures) {
     $assembly = Join-Path $PSScriptRoot "ConduitPlus.Examples/bin/$Configuration/net8.0-windows/ConduitPlus.Examples.dll"
     $arguments = @('"' + $assembly + '"')
     if ($VerifyOnly) { $arguments += '--verify-only' }
+    if ($ReviewCaptureChecks) { $arguments += '--review-capture-checks' }
     if ($CanvasStackChecks) { $arguments += '--canvas-stack-checks' }
     if ($Exports) { $arguments += '--exports' }
     if ($Safe) { $arguments += '--safe' }
     if ($Compact) { $arguments += '--compact' }
     $arguments += @('--example', $fixture.ToLowerInvariant())
     $arguments += @('--shot', $Shot)
+    $arguments += @('--plan-scale', $PlanScale.ToString([Globalization.CultureInfo]::InvariantCulture))
     $arguments += @('--scale', $Scale)
     $arguments += @('--theme', $Theme)
     $arguments += @('--state', $State.ToLowerInvariant())
