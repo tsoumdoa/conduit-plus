@@ -54,7 +54,7 @@ internal static class Dashboard
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
             CheckLegacyBar(reopened);
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01â€¦ keys and eleven inputs with the new 12-row default passed before/after resave.");
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01… keys and eleven inputs with the new 12-row default passed before/after resave.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);
@@ -148,14 +148,14 @@ internal static class Dashboard
         Slot[] slots = [Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tl, Slot.Tr, Slot.Tr, Slot.Tl, Slot.Tr, Slot.Tl];
         for (var i = 0; i < cards.Length; i++) Text(cards[i], cards[i].Params.Input.FindIndex(p => p.Name == "Slot"), slots[i].ToString().ToLowerInvariant());
         var title = new ConduitPlus.Grasshopper.TitleComponent(); title.CreateAttributes(); title.Attributes.Pivot = new PointF(740, 1550); gh.AddObject(title, false);
-        Text(title, 0, "Truss utilisation review"); Text(title, 1, "4 bays Â· 24 m span"); Text(title, 2, "Illustrative results; not structural analysis or design verification."); Text(title, 3, "tc");
+        Text(title, 0, "Truss utilisation review"); Text(title, 1, "4 bays · 24 m span"); Text(title, 2, "Illustrative results; not structural analysis or design verification."); Text(title, 3, "tc");
         cards = [.. cards, title];
         overlay.Params.Input[0].DataMapping = GH_DataMapping.Flatten;
         overlay.Params.Input[1].DataMapping = GH_DataMapping.Flatten;
         foreach (var card in cards) Wire(overlay, 0, card.Params.Output[0]); Wire(overlay, 1, link.Params.Output[0]);
-        Group("1  Explore span and load Â· illustrative data only", [span, load, truss]);
-        Group("2  Result cards Â· double-click inputs to inspect constants", cards);
-        Group("3  Keyed geometry â†’ viewport", [link, overlay]);
+        Group("1  Explore span and load · illustrative data only", [span, load, truss]);
+        Group("2  Result cards · double-click inputs to inspect constants", cards);
+        Group("3  Keyed geometry → viewport", [link, overlay]);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var archive = new GH_Archive(); Require(archive.AppendObject(gh, "Definition") && archive.WriteToFile(path, true, false), "Cannot save example.");
         Console.WriteLine("Generated " + path);
