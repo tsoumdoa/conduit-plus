@@ -73,9 +73,11 @@ internal sealed partial class OverlaySession : IDisposable
             HideTooltip();
             Theme = resolved;
         }
-        specs = ApplyViewState(OverlayManager.Project(this, specs));
+        specs = OverlayManager.Project(this, specs);
+        var domain = OverlayManager.DomainSnapshot(this);
         _brush = OverlayManager.Snapshot(this);
-        if (OverlayManager.DomainSnapshot(this) is { } domain)
+        specs = ApplyViewState(specs, domain is null ? _brush.SelectedKeys.ToHashSet(StringComparer.Ordinal) : domain.SelectedMemberKeys);
+        if (domain is not null)
         { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.HoveredKeys; }
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
@@ -99,7 +101,7 @@ internal sealed partial class OverlaySession : IDisposable
 
     private Theme ResolveTheme() => RhinoTheme.ForViewport(_themeSelection, View.MainViewport);
 
-    private CardSpec[] ApplyViewState(CardSpec[] specs) => specs.Select(c =>
+    private CardSpec[] ApplyViewState(CardSpec[] specs, IReadOnlySet<string> selectedMembers) => specs.Select(c =>
     {
         // Form first: it changes how many rows a Table or Bar shows, which bounds the scroll offset below.
         var form = _forms.GetValueOrDefault(c.Id, CardForm.None);
@@ -117,7 +119,7 @@ internal sealed partial class OverlaySession : IDisposable
             else _headerHover = null;
         }
         // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
-        if (c.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(c, _selectedMembers) is { } added)
+        if (c.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(c, _selectedMembers, selectedMembers) is { } added)
         {
             var revealed = TableScroll.Reveal(c, added);
             _scroll[c.Id] = revealed;

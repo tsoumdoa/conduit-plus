@@ -101,11 +101,11 @@ public sealed class InputPolicyTests
     }
 
     [Fact]
-    public void UnsetBarThresholdUsesAccentAndNoMarkerWhileExplicitColoursWin()
+    public void UnsetBarThresholdUsesNeutralDataAndNoMarkerWhileExplicitColoursWin()
     {
         var card = Bar("area", "a", "b") with { Values = [5, 10], HasThreshold = false };
         var canvas = new PaintCanvas(); CardPainter.Paint(canvas, card, Theme.Paper);
-        Assert.Equal(new[] { Theme.Paper.Accent, Theme.Paper.Accent }, canvas.Bars);
+        Assert.Equal(new[] { Theme.Paper.Data, Theme.Paper.Data }, canvas.Bars);
         Assert.Equal(0, canvas.Lines);
         canvas = new(); CardPainter.Paint(canvas, card with { HasThreshold = true }, Theme.Paper);
         Assert.Equal(new[] { Theme.Paper.Bad, Theme.Paper.Bad }, canvas.Bars); Assert.Equal(2, canvas.Lines);

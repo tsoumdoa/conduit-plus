@@ -27,7 +27,7 @@ public sealed class BarScrollTests
             Assert.True(bar.Thumb.Y >= bar.Track.Y && bar.Thumb.Y + bar.Thumb.Height <= bar.Track.Y + bar.Track.Height);
         }
         Assert.Equal(11, TableScroll.Reveal(c, "k16"));
-        Assert.Equal("k16", BrushPresentation.FirstNewRow(c with { SelectedKeys = ["k16"] }, new HashSet<string>()));
+        Assert.Equal("k16", BrushPresentation.FirstNewRow(c, new HashSet<string>(), new HashSet<string> { "k16" }));
         Assert.False(TableScroll.CanScroll(c with { Form = CardForm.None, MaxRows = 0 }));
     }
 }

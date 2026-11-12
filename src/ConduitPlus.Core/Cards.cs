@@ -126,7 +126,7 @@ public static class TableScroll
 
     public static double FooterHeight(CardSpec c, Theme t) => CanScroll(c) ? t.RowHeight : 0;
     public static string? Footer(CardSpec c) => !CanScroll(c) ? null :
-        $"Rows {Offset(c) + 1}–{Offset(c) + Visible(c)} of {(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length)} · scroll";
+        $"{Offset(c) + 1}–{Offset(c) + Visible(c)} of {(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length)}";
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
         if (Bar(c, t) is not { } bar) return;
@@ -174,6 +174,7 @@ public sealed record Theme
     public string Line { get; init; } = "#E3E5E9";
     public string Track { get; init; } = "#EEF0F3";
     public string Accent { get; init; } = "#2B59F0";
+    public string Data { get; init; } = "#515968";
     public string Bad { get; init; } = "#C2334D";
     public string Good { get; init; } = "#1F8A5B";
     public string Area { get; init; } = "#E7EDFF";
@@ -203,7 +204,7 @@ public sealed record Theme
     public static Theme Night { get; } = new()
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
-        Line = "#2C3039", Track = "#262A31", Accent = "#6D8CFF",
+        Line = "#2C3039", Track = "#262A31", Accent = "#6D8CFF", Data = "#A7AEBB",
         Good = "#4CC48E", Bad = "#F06D86", Area = "#252F4F", ThresholdBand = "#3D2733",
         Highlight = "#303C60", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
@@ -213,7 +214,7 @@ public sealed record Theme
     public static Theme Smoke { get; } = new()
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
-        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#8FB0FF", Radius = 10,
+        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#8FB0FF", Data = "#B8BFCC", Radius = 10,
         Good = "#2FAE74", Bad = "#E0546F", Area = "#8FB0FF26", ThresholdBand = "#E0546F26",
         Highlight = "#8FB0FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
         // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
@@ -221,7 +222,7 @@ public sealed record Theme
     public static Theme Blueprint { get; } = new()
     {
         Name = "Blueprint", Surface = "#0A2654CC", Ink = "#E6F1FF", Muted = "#8FB4E3",
-        Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Radius = 0,
+        Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Data = "#B5CBE8", Radius = 0,
         Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E",
         Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
         Border = "#8CBEFF73", BorderWidth = 1
@@ -277,6 +278,12 @@ public sealed class CardStore
                 snapshot.Rows.Length == previous.Spec.Rows.Length && snapshot.Rows.Zip(previous.Spec.Rows).All(pair =>
                     pair.First.Key == pair.Second.Key && pair.First.Cells.SequenceEqual(pair.Second.Cells)))
                 snapshot = snapshot with { Headers = previous.Spec.Headers, Rows = previous.Spec.Rows };
+            // Preserve owned bar content for the weak measurement cache across real store
+            // updates (hover, selection, scrolling and sort). Equality still detects mutation.
+            if (_cards.TryGetValue(input.Id, out previous) && snapshot.Kind == CardKind.Bar &&
+                previous.Spec.Kind == CardKind.Bar && snapshot.Values.SequenceEqual(previous.Spec.Values) &&
+                snapshot.Labels.SequenceEqual(previous.Spec.Labels))
+                snapshot = snapshot with { Values = previous.Spec.Values, Labels = previous.Spec.Labels };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
         }

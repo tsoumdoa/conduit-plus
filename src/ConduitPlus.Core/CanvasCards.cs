@@ -116,7 +116,7 @@ public sealed class CanvasCardState
             ScrollOffset = _offset, SortColumn = _column, SortDescending = _descending,
             WiredSlot = null
         };
-        if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers) is { } added)
+        if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers, Current.SelectedMemberKeys) is { } added)
         { _offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = _offset }; }
         _selectedMembers = Current.SelectedMemberKeys;
         _store.Update([spec]); Spec = _store.Snapshot[0];

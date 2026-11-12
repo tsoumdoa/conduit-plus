@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace ConduitPlus.Core;
@@ -33,32 +32,26 @@ public static class BarPresentation
     public static bool IsGood(double value, double threshold, BarGoodWhen direction) =>
         direction == BarGoodWhen.Above ? value >= threshold : value <= threshold;
     public static string Color(CardSpec c, Theme t, int index) => c.Colors.Length > index ? c.Colors[index] :
-        !c.HasThreshold ? t.Accent : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
+        !c.HasThreshold ? t.Data : IsGood(c.Values[index]!.Value, c.Threshold, c.GoodWhen) ? t.Good : t.Bad;
 
     /// <summary>Original leaves data untouched. Sorted modes are stable, with missing values last in either direction.</summary>
     public static int[] Order(CardSpec c)
     {
         var indices = Enumerable.Range(0, c.Values.Length);
         if (c.BarSort == BarOrder.Original) return indices.ToArray();
-        var worstAscending = c.HasThreshold && c.GoodWhen == BarGoodWhen.Above;
+        var worstAscending = c.GoodWhen == BarGoodWhen.Above;
         var ascending = c.BarSort == BarOrder.WorstFirst ? worstAscending : !worstAscending;
         return indices.OrderBy(i => !c.Values[i].HasValue)
             .ThenBy(i => c.Values[i], Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
     }
 
-    /// <summary>Fewest decimals preserving the rounded values (and thus distinct values), capped at two.</summary>
-    public static int Precision(IEnumerable<double?> values)
-    {
-        var numbers = values.OfType<double>().Distinct().ToArray();
-        for (var d = 0; d < 2; d++)
-            if (numbers.All(v => Math.Round(v, d) == Math.Round(v, 2))) return d;
-        return 2;
-    }
+    /// <summary>Fewest decimals retaining distinct authored values, capped at two.</summary>
+    public static int Precision(IEnumerable<double?> values) => NumericFormatting.AutomaticDecimals(values.OfType<double>());
     public static string Format(double? value, int precision) => value is { } v
-        ? NumericText.TrueMinus(v.ToString(precision == 0 ? "0" : "0." + new string('#', precision), CultureInfo.InvariantCulture)) : "—";
+        ? NumericText.TrueMinus(NumericFormatting.Fixed(v, precision)) : "—";
 
-    // Presentation copies keep the data arrays. Weak keys allow dead revisions to be collected;
-    // scroll/hover/selection and sort never remeasure a dataset. Hosts supply the same CSS measurer as Table.
+    // CardStore reuses owned arrays when bar content is equal across interaction snapshots.
+    // Weak keys release measurements with their content. Hosts share Table's CSS measurer.
     private static readonly ConditionalWeakTable<double?[], ConditionalWeakTable<string[], Dictionary<MetricsKey, BarTextLayout>>> Cache = new();
     private sealed record MetricsKey(double Width, double Padding, double FontSize, string Font, Func<string, double, string, Size2> Measure);
     public static BarTextLayout Layout(CardSpec c, Theme t)
@@ -88,7 +81,7 @@ public static class NumericText
     {
         var normalized = text.Replace('−', '-');
         if (!TablePresentation.TryNumber(normalized, out var number)) return text;
-        if (number == 0 && normalized.TrimStart().StartsWith('-')) return "0";
+        if (number == 0 && normalized.TrimStart().StartsWith('-')) return normalized.TrimStart()[1..];
         return text.Replace('-', '−');
     }
 }

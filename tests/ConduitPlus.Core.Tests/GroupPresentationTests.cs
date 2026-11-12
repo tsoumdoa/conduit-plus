@@ -189,9 +189,9 @@ public sealed class GroupPresentationTests
         var table = new CardSpec { Id = "table", Kind = CardKind.Table, Headers = ["Area"], MaxRows = 1, SortColumn = 0,
             Rows = [new("R1", ["3"]), new("R2", ["1"]), new("R3", ["2"])], SelectedKeys = ["R1", "R2", "R3"] };
         var previous = new HashSet<string>(StringComparer.Ordinal) { "R2" };
-        Assert.Equal("R3", BrushPresentation.FirstNewRow(table, previous));
-        Assert.Equal(1, TableScroll.Reveal(table, BrushPresentation.FirstNewRow(table, previous)!));
-        previous.UnionWith(table.SelectedKeys); Assert.Null(BrushPresentation.FirstNewRow(table, previous));
+        Assert.Equal("R3", BrushPresentation.FirstNewRow(table, previous, table.SelectedKeys.ToHashSet(StringComparer.Ordinal)));
+        Assert.Equal(1, TableScroll.Reveal(table, BrushPresentation.FirstNewRow(table, previous, table.SelectedKeys.ToHashSet(StringComparer.Ordinal))!));
+        previous.UnionWith(table.SelectedKeys); Assert.Null(BrushPresentation.FirstNewRow(table, previous, table.SelectedKeys.ToHashSet(StringComparer.Ordinal)));
     }
 
     private sealed class RecordingCanvas : ICanvas2D
