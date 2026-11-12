@@ -179,6 +179,8 @@ public sealed record Theme
     public string Good { get; init; } = "#1F8A5B";
     public string Area { get; init; } = "#E5EFFB";
     public string ThresholdBand { get; init; } = "#FCECEF";
+    /// <summary>Neutral Within tolerance zone; follows Line unless the palette needs more contrast.</summary>
+    public string? ToleranceBand { get; init; }
     public string Highlight { get; init; } = "#DDEAFB";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
@@ -206,7 +208,7 @@ public sealed record Theme
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
         Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5", Data = "#A7AEBB",
-        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#343946",
         Highlight = "#21364F", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
     // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.

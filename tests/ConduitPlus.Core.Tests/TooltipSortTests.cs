@@ -23,9 +23,31 @@ public sealed class TooltipSortTests
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-            Assert.Equal(new[] { "Member 1", "0.123", "24.691% of threshold", "m1" }, Tooltip.For(c, "m1"));
+            Assert.Equal(new[] { "Member 1", "0.12", "24.691% of threshold", "m1" }, Tooltip.For(c, "m1"));
             Assert.Equal(new[] { "Member 1", "missing", "m1" }, Tooltip.For(c with { Values = [null] }, "m1"));
-            Assert.Equal(new[] { "m1", "-0.5", "-100% of threshold" }, Tooltip.For(c with { Labels = ["m1"], Values = [-.5] }, "m1"));
+            Assert.Equal(new[] { "m1", "−0.5", "-100% of threshold" }, Tooltip.For(c with { Labels = ["m1"], Values = [-.5] }, "m1"));
+        }
+        finally { CultureInfo.CurrentCulture = culture; }
+    }
+    [Fact]
+    public void BarTooltipUsesFullColumnPrecisionForSmallSignedValuesAndMissingRows()
+    {
+        var card = new CardSpec
+        {
+            Id = "small", Kind = CardKind.Bar, Keys = ["p", "n", "large", "missing"],
+            Labels = ["Positive", "Negative", "Larger", "Missing"], Values = [.00012, -.00012, .5, null],
+            GoodWhen = BarGoodWhen.Within, Threshold = .0001
+        };
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var layout = BarPresentation.Layout(card, Theme.Paper);
+            Assert.Equal(new[] { "0.00012", "−0.00012", "0.50000", "—" }, layout.Values);
+            for (var i = 0; i < 3; i++) Assert.Equal(layout.Values[i], Tooltip.For(card, card.Keys[i])![1]);
+            Assert.Equal("120% of threshold", Tooltip.For(card, "p")![2]);
+            Assert.Equal("120% of threshold", Tooltip.For(card, "n")![2]);
+            Assert.Equal(new[] { "Missing", "missing", "Within: good when −Threshold ≤ value ≤ Threshold", "missing" }, Tooltip.For(card, "missing"));
         }
         finally { CultureInfo.CurrentCulture = culture; }
     }

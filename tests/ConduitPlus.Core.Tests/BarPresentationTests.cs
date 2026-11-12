@@ -68,7 +68,7 @@ public sealed class BarPresentationTests
         Assert.Equal(new[] { 4, 6, 7, 2, 3, 0, 5, 1, 8 }, BarPresentation.Order(c with { BarSort = BarOrder.BestFirst }));
         Assert.Equal(BarPresentation.Order(c), BarPresentation.Order(c with { HasThreshold = false }));
         Assert.Equal(Enumerable.Range(0, 9), BarPresentation.Order(c with { BarSort = BarOrder.Original }));
-        Assert.Equal(new[] { "Row 1", "-7", "140% of threshold", "Within: good when −Threshold ≤ value ≤ Threshold", "k0" }, Tooltip.For(c, "k0"));
+        Assert.Equal(new[] { "Row 1", "−7", "140% of threshold", "Within: good when −Threshold ≤ value ≤ Threshold", "k0" }, Tooltip.For(c, "k0"));
     }
 
     [Theory]
@@ -82,7 +82,7 @@ public sealed class BarPresentationTests
             var c = Bar(values) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
             var canvas = new Commands(); CardPainter.Paint(canvas, c, theme);
             var tracks = canvas.Rects.Where(r => r.Fill == theme.Track && r.Rect.Height == 8).ToArray();
-            var bands = canvas.Rects.Where(r => r.Fill == theme.Line && r.Rect.Height == 12).ToArray();
+            var bands = canvas.Rects.Where(r => r.Fill == (theme.ToleranceBand ?? theme.Line) && r.Rect.Height == 12).ToArray();
             Assert.Equal(values.Length, bands.Length);
             Assert.Equal(2 * values.Length, canvas.Lines.Count);
             var max = Math.Max(5, values.Select(v => Math.Abs(v ?? 0)).Max());
@@ -146,7 +146,7 @@ public sealed class BarPresentationTests
         Assert.Contains(canvas.Rects, r => r.Fill == Theme.Paper.Highlight && r.Rect.Y == 36);
         Assert.Contains(canvas.Rects, r => r.Fill == "#000005" && r.Rect.Y == 43);
         Assert.Equal(new[] { "m1", "m2" }, c.Groups["k4"].Members);
-        Assert.Equal(new[] { "Row 3", "-4", "-400% of threshold", "k2" }, Tooltip.For(c, "k2"));
+        Assert.Equal(new[] { "Row 3", "−4", "-400% of threshold", "k2" }, Tooltip.For(c, "k2"));
     }
 
     [Fact]

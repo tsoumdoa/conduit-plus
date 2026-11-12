@@ -87,7 +87,7 @@ public static class CardPainter
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
                 var toleranceWidth = c.Threshold / max * span;
-                if (within) canvas.Rect(new(origin - toleranceWidth, y - 2, 2 * toleranceWidth, 12), t.Line);
+                if (within) canvas.Rect(new(origin - toleranceWidth, y - 2, 2 * toleranceWidth, 12), t.ToleranceBand ?? t.Line);
                 if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), BarPresentation.Color(c, t, dataIndex));
                 if (hasThreshold) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
                 if (within) canvas.Line(new(origin - toleranceWidth, y - 2), new(origin - toleranceWidth, y + 10), t.Muted);
