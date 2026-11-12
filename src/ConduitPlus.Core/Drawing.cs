@@ -40,7 +40,11 @@ public static class CardMeasure
         !Hits(c, t).Any(h => h.Contains(x, y)) &&
         (!string.IsNullOrEmpty(c.Title) || Grip(c).Contains(x, y));
     public static Size2 Measure(CardSpec c, Theme t) => FormMeasure.Size(c, t, c.Form, TextMetrics.Measurer);
-    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
+    // DataHits remain content/paint bounds. Interaction also includes the visible padding tick.
+    public static double TickLeft(HitRegion row) => Math.Max(0, row.X - 6);
+    private static HitRegion Actionable(CardSpec c, HitRegion row) => c.Kind == CardKind.Line ? row :
+        row with { X = TickLeft(row), W = row.W + row.X - TickLeft(row) };
+    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],
@@ -69,7 +73,7 @@ public static class SlotLayout
         {
             if (c.Kind == CardKind.Title) return c.WiredSlot ?? Slot.Tl;
             var source = CardIdentity.Source(c.Id);
-            if (source == c.Id || !sources.TryGetValue(source, out _)) sources[source] = Resolve(c, n++);
+            if (!sources.ContainsKey(source)) sources[source] = (Slot)(n++ % 6);
             var slot = sources[source];
             return c.WiredSlot ?? slot;
         }).ToArray();

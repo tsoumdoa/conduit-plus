@@ -10,7 +10,7 @@ public sealed class SelectionReadabilityTests
     [Fact]
     public void PaperSelectionIsDistinctFromHoverAndTrack()
     {
-        Assert.Equal("#DCE5FF", Theme.Paper.Highlight);
+        Assert.Equal("#DDEAFB", Theme.Paper.Highlight);
         Assert.Equal("#EEF0F3", Theme.Paper.Track);
     }
 
@@ -25,16 +25,51 @@ public sealed class SelectionReadabilityTests
     }
 
     [Theory]
-    [InlineData(CardKind.Metric)]
-    [InlineData(CardKind.Table)]
-    public void CompactMetricAndTableKeepFullTicksInsideTheHitRegion(CardKind kind)
+    [InlineData(CardKind.Metric, false, false)]
+    [InlineData(CardKind.Metric, true, false)]
+    [InlineData(CardKind.Metric, false, true)]
+    [InlineData(CardKind.Metric, true, true)]
+    [InlineData(CardKind.Bar, false, false)]
+    [InlineData(CardKind.Bar, true, false)]
+    [InlineData(CardKind.Table, false, false)]
+    [InlineData(CardKind.Table, true, false)]
+    [InlineData(CardKind.Legend, false, false)]
+    [InlineData(CardKind.Legend, true, false)]
+    public void SelectionTickIsVisibleInsideCardAndActionable(CardKind kind, bool compact, bool group)
     {
-        var card = new CardSpec { Id = "card", Kind = kind, Value = "42", Keys = kind == CardKind.Metric ? ["a"] : [],
-            Headers = ["Room"], Rows = [new("a", ["Living"])], SelectedKeys = ["a"], Form = new(Compact: true) };
-        var hit = Assert.Single(CardMeasure.DataHits(card, Theme.Paper));
+        var card = new CardSpec { Id = "card", Kind = kind, Value = "42", Width = 350,
+            Keys = kind == CardKind.Table ? [] : ["a"], Labels = ["Living"], Values = [42], Colors = ["#638AD2"],
+            Headers = ["Room"], Rows = [new("a", ["Living"])], SelectedKeys = ["a"], Form = new(Compact: compact) };
+        if (group) card = card with { GroupStates = card.GroupStates.SetItem("a", new(2, 2, 0, false, true)) };
+        var theme = Theme.Paper;
+        var size = CardMeasure.Measure(card, theme);
+        var canvas = new Commands(); CardPainter.Paint(canvas, card, theme);
+        var tick = Assert.Single(canvas.Rects, r => r.Fill == theme.Accent && r.Rect.Width == 3).Rect;
+        Assert.True(tick.X >= 0 && tick.Y >= 0 && tick.X + tick.Width <= size.Width && tick.Y + tick.Height <= size.Height);
+        var x = tick.X + tick.Width / 2; var y = tick.Y + tick.Height / 2;
+        Assert.Equal("a", Assert.Single(CardMeasure.Hits(card, theme), h => h.Contains(x, y)).Key);
+        using var raster = RasterDrawing.Render(card, theme, 2);
+        var margin = RasterDrawing.Margin(theme, 2);
+        var pixel = raster.GetPixel(margin + (int)(x * 2), margin + (int)(y * 2));
+        var accent = ColorRgba.Parse(theme.Accent);
+        Assert.InRange(Math.Abs(pixel.R - accent.R), 0, 2);
+        Assert.InRange(Math.Abs(pixel.G - accent.G), 0, 2);
+        Assert.InRange(Math.Abs(pixel.B - accent.B), 0, 2);
+    }
+
+    [Theory]
+    [InlineData(CardKind.Bar)]
+    [InlineData(CardKind.Table)]
+    [InlineData(CardKind.Legend)]
+    public void PartialGroupTickPaddingIsActionable(CardKind kind)
+    {
+        var card = new CardSpec { Id = "partial", Kind = kind, Keys = kind == CardKind.Table ? [] : ["a"],
+            Labels = ["Living"], Values = [42], Colors = ["#638AD2"], Headers = ["Room"], Rows = [new("a", ["Living"])],
+            SelectedKeys = [] };
+        card = card with { GroupStates = card.GroupStates.SetItem("a", new(2, 1, 0, false, true)) };
         var canvas = new Commands(); CardPainter.Paint(canvas, card, Theme.Paper);
-        Assert.Contains((new Rect2(hit.X, hit.Y, hit.W, hit.H), Theme.Paper.Highlight), canvas.Rects);
-        Assert.Contains((new Rect2(hit.X, hit.Y, 3, hit.H), Theme.Paper.Accent), canvas.Rects);
+        var tick = Assert.Single(canvas.Rects, r => r.Fill == Theme.Paper.Accent && r.Rect.Width == 3).Rect;
+        Assert.Equal("a", Assert.Single(CardMeasure.Hits(card, Theme.Paper), h => h.Contains(tick.X + 1.5, tick.Y + tick.Height / 2)).Key);
     }
 
     [Theory]
@@ -111,13 +146,15 @@ public sealed class SelectionReadabilityTests
     }
 
     [Fact]
-    public void GeometryHighlightKeepsWhiteCasingNeutralWashAndSelectedPrecedence()
+    public void GeometryHighlightKeepsContrastingCasingNeutralWashAndSelectedPrecedence()
     {
         Assert.Equal(new GeometryHighlight(7, 3, .2), GeometryHighlight.Resolve(true, true));
         Assert.Equal(GeometryHighlight.Selected, GeometryHighlight.Resolve(true, false));
         Assert.Equal(new GeometryHighlight(4, 2, 0), GeometryHighlight.Resolve(false, true));
         Assert.Null(GeometryHighlight.Resolve(false, false));
-        Assert.Equal("#FFFFFF", GeometryHighlight.Casing);
+        Assert.Equal("#FFFFFF", GeometryHighlight.Casing(Theme.Paper.Accent));
+        foreach (var theme in new[] { Theme.Night, Theme.Smoke, Theme.Blueprint })
+            Assert.Equal("#000000", GeometryHighlight.Casing(theme.Accent));
     }
 
     [Theory]
@@ -140,15 +177,16 @@ public sealed class SelectionReadabilityTests
         var cards = brush.Project([bar, legend, metric, line]);
         using var selected = RasterDrawing.Render(cards[0], theme, 2);
         var hit = CardMeasure.DataHits(cards[0], theme)[0];
-        var pixel = selected.GetPixel((int)((hit.X + 1.5) * 2), (int)((hit.Y + 11) * 2));
+        var pixel = selected.GetPixel((int)((hit.X - 4.5) * 2), (int)((hit.Y + 11) * 2));
         var accent = ColorRgba.Parse(theme.Accent);
         Assert.InRange(Math.Abs(pixel.R - accent.R), 0, 2); Assert.InRange(Math.Abs(pixel.G - accent.G), 0, 2); Assert.InRange(Math.Abs(pixel.B - accent.B), 0, 2);
         var output = Environment.GetEnvironmentVariable("CONDUITPLUS_PRB_VISUALS");
         if (string.IsNullOrEmpty(output)) return;
         Directory.CreateDirectory(output);
-        using var gallery = new Bitmap(1520, 1580);
+        using var gallery = new Bitmap(1520, 3500);
         using var graphics = Graphics.FromImage(gallery); graphics.Clear(Color.FromArgb(225, 225, 225));
-        graphics.FillRectangle(Brushes.Black, 760, 0, 760, 1580);
+        graphics.FillRectangle(Brushes.Black, 760, 0, 760, 3500);
+        var galleryBottom = 0;
         for (var column = 0; column < 2; column++)
         {
             var background = column == 0 ? new ColorRgba(225, 225, 225) : new ColorRgba(0, 0, 0);
@@ -161,9 +199,21 @@ public sealed class SelectionReadabilityTests
             }
             Draw(new() { Id = "title", Kind = CardKind.Title, Title = name + " · Plain Title", Subtitle = "Full, partial and hover states", Form = new(Width: 360) });
             Draw(cards[0]); Draw(cards[1]); Draw(cards[2]); Draw(cards[3]);
-            Draw(legend with { SelectedKeys = ["bedrooms"], GroupStates = cards[1].GroupStates.SetItem("bedrooms", new(2, 2, 0, false, true)), OwnerHasSelection = true });
+            Draw(metric with { Title = "Compact selected group", Form = new(Compact: true), SelectedKeys = ["bedrooms"],
+                GroupStates = cards[2].GroupStates.SetItem("bedrooms", new(2, 2, 0, false, true)) });
+            Draw(legend with { Title = "Full group · no hover", SelectedKeys = ["bedrooms"], GroupStates = cards[1].GroupStates.SetItem("bedrooms", new(2, 2, 0, false, true)), OwnerHasSelection = true });
+            Draw(new() { Id = "table", Kind = CardKind.Table, Title = "Room labels · selected and hover", Width = 350,
+                Headers = ["Room", "Type", "m²", "Min m²", "Δ m²", "Status"],
+                Rows = [new("a", ["Study 05", "Study", "16", "12", "4", "Over"]), new("b", ["Study 13", "Study", "18", "18", "0", "OK"])],
+                SelectedKeys = ["a"], HoverKey = "b" });
+            Draw(line with { Title = "Selected + direct hover · hollow point", SelectedKeys = ["a"], HoverKey = "b" });
+            Draw(line with { Title = "Group hover · hollow points only", HoveredKeys = ["a", "b", "c", "d", "e"] });
+            Draw(line with { Title = "Missing sample hover · band only", HoverKey = "c" });
+            Draw(metric with { Title = "Direct Metric hover · fill only", HoverKey = "bedrooms" });
+            galleryBottom = Math.Max(galleryBottom, y);
         }
-        gallery.Save(Path.Combine(output, "cards-" + name.ToLowerInvariant() + ".png"), ImageFormat.Png);
+        using var cropped = gallery.Clone(new Rectangle(0, 0, gallery.Width, galleryBottom), gallery.PixelFormat);
+        cropped.Save(Path.Combine(output, "cards-" + name.ToLowerInvariant() + ".png"), ImageFormat.Png);
     }
 
     private sealed class Commands : ICanvas2D

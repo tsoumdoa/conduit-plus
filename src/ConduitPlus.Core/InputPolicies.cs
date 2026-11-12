@@ -35,14 +35,15 @@ public sealed record KeyMatchNotice(bool Warning, string Message);
 /// <summary>Compares local geometry with effective members, ignoring unkeyed and disabled/empty groups.</summary>
 public static class LinkDiagnostics
 {
-    public static KeyMatchNotice[] Compare(IReadOnlyList<CardSpec> cards, IEnumerable<string> linkedKeys, bool linksWired)
+    public static KeyMatchNotice[] Compare(IReadOnlyList<CardSpec> cards, IEnumerable<string> linkedKeys, bool linksWired, MembershipIndex? membership = null)
     {
         if (!linksWired) return [];
         var links = linkedKeys.Distinct(StringComparer.Ordinal).ToArray();
+        if (links.Length == 0) return [];
         var linkSet = links.ToHashSet(StringComparer.Ordinal);
-        var membership = MembershipIndex.Create([new BrushRegistration("diagnostics", cards, links)]);
+        membership ??= MembershipIndex.Create([new BrushRegistration("diagnostics", cards, links)]);
         var keyed = cards.Select(c => (Card: c, Keys: BrushState.Keys(c).SelectMany(k =>
-            c.Groups.ContainsKey(k) ? membership.Groups.TryGetValue(k, out var group) ? group.Members.AsEnumerable() : [] : [k])
+            membership.Resolve(k, c.Groups.ContainsKey(k) ? BrushTargetKind.Group : BrushTargetKind.Member)?.Members.AsEnumerable() ?? [])
             .Distinct(StringComparer.Ordinal).ToArray())).Where(p => p.Keys.Length > 0).ToArray();
         if (keyed.Length == 0) return [];
         var unmatched = keyed.Where(p => !p.Keys.Any(linkSet.Contains)).ToArray();
@@ -50,7 +51,7 @@ public static class LinkDiagnostics
         static string Examples(IEnumerable<string> keys) => string.Join(", ", keys.Take(2).Select(k => $"'{k}'"));
         static string Name(CardSpec card) => $"{card.Kind} \"{(string.IsNullOrWhiteSpace(card.Title) ? "Untitled" : card.Title)}\"";
         if (unmatched.Length == keyed.Length)
-            return [new(true, $"Link keys don't match any card keys, so clicks won't highlight geometry. Link: {Examples(links)}. {Name(keyed[0].Card)}: {Examples(keyed[0].Keys)}. Keys are case-sensitive." + (links.Length == 0 ? " No linked geometry is available." : ""))];
-        return unmatched.Select(p => new KeyMatchNotice(false, $"{Name(p.Card)}: none of its member keys match linked geometry. Card: {Examples(p.Keys)}; Link: {Examples(links)}. Keys are case-sensitive.")).ToArray();
+            return [new(true, $"Link keys don't match any card keys, so clicks won't highlight geometry. Link: {Examples(links)}. {Name(keyed[0].Card)}: {Examples(keyed[0].Keys)}. Keys are case-sensitive. Wire the same keys into Link Keys.")];
+        return unmatched.Select(p => new KeyMatchNotice(false, $"{Name(p.Card)}: none of its member keys match linked geometry. Card: {Examples(p.Keys)}; Link: {Examples(links)}. Keys are case-sensitive. Wire the same keys into Link Keys.")).ToArray();
     }
 }
