@@ -86,7 +86,8 @@ public sealed class BarPresentationTests
             var hits = CardMeasure.DataHits(c, theme);
             Assert.Equal(hits[0].Y, band.Rect.Y);
             Assert.Equal(hits[^1].Y + hits[^1].H - hits[0].Y, band.Rect.Height);
-            Assert.Single(canvas.Lines);
+            Assert.Empty(canvas.Lines);
+            Assert.Equal(2, Assert.Single(canvas.Rects, r => r.Fill == theme.Axis).Rect.Width);
 
         }
     }
@@ -121,6 +122,26 @@ public sealed class BarPresentationTests
     }
 
     [Theory]
+    [InlineData("Paper", 1)] [InlineData("Paper", 2)]
+    [InlineData("Night", 1)] [InlineData("Night", 2)]
+    [InlineData("Smoke", 1)] [InlineData("Smoke", 2)]
+    [InlineData("Blueprint", 1)] [InlineData("Blueprint", 2)]
+    public void WithinAxisHasCrispTwoPixelStripAtBothScales(string name, int scale)
+    {
+        Theme.TryGet(name, out var t);
+        var c = Bar(-7, 0, 9) with { GoodWhen = BarGoodWhen.Within, Threshold = 5, Width = 360 };
+        using var image = RasterDrawing.Render(c, t, scale);
+        var h = CardMeasure.DataHits(c, t)[0]; var layout = BarPresentation.Layout(c, t);
+        var center = Math.Round(h.X + layout.LabelWidth + (h.W - layout.LabelWidth - layout.ValueWidth) / 2 - 1) + 1;
+        var left = (int)((center - 1) * scale); var y = (int)((h.Y + h.H - 2) * scale);
+        var background = image.GetPixel(left - 1, y);
+        var axis = image.GetPixel(left, y);
+        Assert.NotEqual(background, axis);
+        for (var x = left; x < left + 2 * scale; x++) Assert.Equal(axis, image.GetPixel(x, y));
+        Assert.Equal(background, image.GetPixel(left + 2 * scale, y));
+    }
+
+    [Theory]
     [InlineData(-9)] [InlineData(-5)] [InlineData(0)] [InlineData(5)] [InlineData(9)]
     public void WithinSplitsExactlyAtTolerance(double value)
     {
@@ -128,7 +149,7 @@ public sealed class BarPresentationTests
         var t = Theme.Paper; var canvas = new Commands(); CardPainter.Paint(canvas, c, t);
         var h = CardMeasure.DataHits(c, t)[0]; var layout = BarPresentation.Layout(c, t);
         var span = (h.W - layout.LabelWidth - layout.ValueWidth) / 2;
-        var origin = h.X + layout.LabelWidth + span;
+        var origin = Math.Round(h.X + layout.LabelWidth + span - 1) + 1;
         var scale = span / Math.Max(5, Math.Abs(value));
         var inside = Assert.Single(canvas.Rects, r => r.Fill == t.Data);
         Assert.Equal(Math.Min(5, Math.Abs(value)) * scale, inside.Rect.Width, 6);
@@ -156,10 +177,12 @@ public sealed class BarPresentationTests
         Assert.Contains(canvas.Texts, x => x.Text == "+9");
         Assert.Contains(canvas.Texts, x => x.Text == "\u22127");
         Assert.Contains(canvas.Texts, x => x.Text == "0");
-        var center = Assert.Single(canvas.Lines);
-        Assert.Equal(band.X + band.Width / 2, center.From.X, 6);
-        Assert.Equal(band.Y, center.From.Y);
-        Assert.Equal(band.Y + band.Height, center.To.Y);
+        var center = Assert.Single(canvas.Rects, r => r.Fill == t.Axis);
+        Assert.Equal(2, center.Rect.Width);
+        Assert.Equal(band.X + band.Width / 2, center.Rect.X + center.Rect.Width / 2, 6);
+        Assert.Equal(band.Y, center.Rect.Y);
+        Assert.Equal(band.Height, center.Rect.Height);
+        Assert.True(canvas.Rects.IndexOf(center) < canvas.Rects.FindIndex(r => r.Fill == t.Data));
     }
 
     [Fact]
