@@ -1,8 +1,11 @@
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
     [string]$Output = (Join-Path ([IO.Path]::GetTempPath()) ('ConduitPlus/examples-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
-    [ValidateSet('All', 'Structural', 'Rooms', 'Massing')][string]$Example = 'All',
+    [ValidateSet('All', 'Structural', 'Rooms', 'Massing', 'Showcase', 'Hello')][string]$Example = 'All',
+    [string]$Shot = 'paper',
+    [ValidateRange(0.5, 2)][decimal]$PlanScale = 1,
     [switch]$VerifyOnly,
+    [switch]$ReviewCaptureChecks,
     [switch]$CanvasStackChecks,
     [switch]$Exports,
     [switch]$Safe,
@@ -23,7 +26,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Example harness build failed.' }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 # Keep each definition in its own RhinoCore process. Switching GH definitions after a
 # capture can fail natively in RhinoCore even when each fixture passes independently.
-$fixtures = if ($Example -eq 'All') { @('Structural', 'Rooms', 'Massing') } else { @($Example) }
+$fixtures = if ($Example -eq 'All') { @('Structural', 'Rooms', 'Massing', 'Showcase', 'Hello') } else { @($Example) }
 foreach ($fixture in $fixtures) {
     $suffix = if ($Example -eq 'All') { '-' + $fixture.ToLowerInvariant() } else { '' }
     $stdout = Join-Path $destination ("example$suffix.log")
@@ -31,11 +34,14 @@ foreach ($fixture in $fixtures) {
     $assembly = Join-Path $PSScriptRoot "ConduitPlus.Examples/bin/$Configuration/net8.0-windows/ConduitPlus.Examples.dll"
     $arguments = @('"' + $assembly + '"')
     if ($VerifyOnly) { $arguments += '--verify-only' }
+    if ($ReviewCaptureChecks) { $arguments += '--review-capture-checks' }
     if ($CanvasStackChecks) { $arguments += '--canvas-stack-checks' }
     if ($Exports) { $arguments += '--exports' }
     if ($Safe) { $arguments += '--safe' }
     if ($Compact) { $arguments += '--compact' }
     $arguments += @('--example', $fixture.ToLowerInvariant())
+    $arguments += @('--shot', $Shot)
+    $arguments += @('--plan-scale', $PlanScale.ToString([Globalization.CultureInfo]::InvariantCulture))
     $arguments += @('--scale', $Scale)
     $arguments += @('--theme', $Theme)
     $arguments += @('--state', $State.ToLowerInvariant())

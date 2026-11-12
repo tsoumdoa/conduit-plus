@@ -12,6 +12,18 @@ Licensed under MIT. Features include Auto, Paper, Night, Smoke and Blueprint the
 deterministic viewport slots in input order and keyed geometry highlighting.
 A docked Inspector is future work.
 
+## Quick start
+
+1. Open [hello.gh](examples/hello.gh), or start with plain lists from your analysis.
+2. Feed values + names into **Bar**; set **Threshold** and **Good when** for your check.
+3. Feed types into **Colour Categories** (Programme style); send its colours to native
+   **Custom Preview** with your geometry, and its **Legend** to the display.
+   Wire matching names into Colour Categories **Keys** to enable legend selection.
+4. Wire geometry into Link **Geometry**, the same names into Link **Keys**, and Link into Overlay **Links**.
+   Send cards into Overlay **Cards**; Bar and Table use their names as keys by default.
+   Wire **Scope** into both displays’ **Scope** inputs to share the selection.
+5. Send Metric + Bar + Table cards into one **Canvas Card** to keep the review on the canvas.
+
 ## Requirements
 
 - Windows and Rhino **8.20+**, running **.NET 8** (use Rhino's `SetDotNetRuntime`
@@ -76,6 +88,15 @@ review sheet with every component icon.
 
 ## Examples
 
+Start with [hello.gh](examples/hello.gh): six native room faces, plain lists,
+programme colours and a linked area check. [showcase.gh](examples/showcase.gh)
+reviews a room schedule using matching programme/area plans, a worst-first minimum
+check and a separate ±2 m² allowance study on the canvas. Its structure and
+massing reference stacks demonstrate the remaining card kinds. These are
+illustrative studies, not regulatory or engineering checks.
+
+Regenerate the review images with `./tools/examples/Review-Examples.ps1`.
+
 Open [examples/structural-dashboard.gh](examples/structural-dashboard.gh) in
 Grasshopper with Conduit+ loaded. Change the **Span** and **Load** sliders, click
 a utilisation bar or truss member, and sort or scroll the member table. Use a large
@@ -103,6 +124,14 @@ include failures. Their limits are fictitious, not regulatory checks:
   limit), with raw heights, limits, floor counts and GFA in the sortable table.
   A second bar totals GFA by use.
 
+[Showcase](examples/showcase.gh) uses every component: a nine-card room dashboard on the
+viewport (linked geometry, Scope shared with a Canvas Card), every card kind as a Canvas Card from
+the truss demo, and a massing strip. The Colour Palette + Key Legend reference stays on the
+canvas in group 4; Colour Categories supplies the viewport programme legend.
+Use a Top view of a metre-unit document. Regenerate it with
+`./tools/examples/Build-Examples.ps1 -Example Showcase`, which also writes review screenshots
+(viewport, single cards and the GH canvas) and a readable definition dump under `-Output`.
+
 Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even
@@ -120,7 +149,7 @@ Regenerate and reopen/solve all definitions without installing the plugin:
 ./tools/examples/Build-Examples.ps1
 ```
 
-Use `-Example Rooms`, `-Example Massing` or `-Example Structural` to regenerate
+Use `-Example Hello`, `-Example Showcase`, `-Example Rooms`, `-Example Massing` or `-Example Structural` to regenerate
 just one definition; `-VerifyOnly` reopens the existing file. Add `-Exports -Safe`
 for 1× PNG region, layout and architectural selected-face checks (Safe skips
 PDF); `-Exports` also attempts the experimental PDF. For group-state PNGs, use

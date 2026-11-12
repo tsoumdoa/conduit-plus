@@ -9,6 +9,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "ConduitPlus.sln"))) root = root.Parent;
         if (root is null) throw new InvalidOperationException("Repository not found.");
@@ -44,7 +45,9 @@ internal static class Program
             return 0;
         }
         var doc = Rhino.RhinoDoc.ActiveDoc ?? Rhino.RhinoDoc.Create(null);
-        var bounds = args.Contains("--compact") ? new System.Drawing.Rectangle(0, 0, 500, 400) : new System.Drawing.Rectangle(0, 0, 1900, 1800);
+        var review = args.Contains("showcase") || args.Contains("hello");
+        var bounds = args.Contains("--compact") ? new System.Drawing.Rectangle(0, 0, 500, 400)
+            : review ? new System.Drawing.Rectangle(0, 0, 2100, 1300) : new System.Drawing.Rectangle(0, 0, 1900, 1800);
         var view = doc.Views.Add("Conduit+ structural dashboard", Rhino.Display.DefinedViewportProjection.Perspective, bounds, true)
             ?? throw new InvalidOperationException("Could not create viewport.");
         doc.Views.ActiveView = view;
