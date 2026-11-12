@@ -17,6 +17,9 @@ public sealed partial class Link
     private readonly DisplayMaterial _selectedWash = new(Color.White, 1 - GeometryHighlight.Selected.WhiteWashOpacity);
     public IReadOnlyList<string> Keys { get; }
     public BoundingBox Bounds { get; }
+    private readonly int _objectCount;
+    public IEnumerable<string> LinkedGeometryKeys => _wires.Keys;
+    public override string ToString() => $"Link · {Keys.Count} keys · {_objectCount} objects";
     /// <summary>Draw secondary linked wires (for commands without a Grasshopper preview, e.g. the demo).</summary>
     public bool ShowBase { get; init; }
     internal IEnumerable<string> LinkedKeys => _wires.Keys;
@@ -51,6 +54,7 @@ public sealed partial class Link
                 }
                 catch (ArgumentException e) { throw new ArgumentException($"{location}: {e.Message}", e); }
             }
+            _objectCount = wires.Count;
             _geometry = geometry.ToArray();
             _wires = wires.GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Select(p => p.Wire).ToArray(), StringComparer.Ordinal);
             // Reuse privately owned pick meshes; no meshing/material allocation during a frame.

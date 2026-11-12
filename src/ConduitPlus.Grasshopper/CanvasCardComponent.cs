@@ -31,6 +31,7 @@ public sealed class CanvasCardComponent : GH_Component
     internal string Placeholder { get; private set; } = "Connect one Conduit+ Card";
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private string? _inputError;
+    private bool _upstreamError;
     private MembershipIndex? _membership;
     private ScopeBinding? _scope;
     private bool _scopeValid = true;
@@ -65,13 +66,18 @@ public sealed class CanvasCardComponent : GH_Component
     protected override void SolveInstance(IGH_DataAccess da)
     {
         CardSpec? spec = null; string? error = null;
+        var upstreamError = false;
         if (da.GetDataTree(0, out GH_Structure<IGH_Goo> tree) && tree.DataCount > 0)
         {
             if (tree.DataCount != 1) error = "Canvas Card requires exactly one valid Card across the entire input tree.";
             else
             {
                 spec = tree.AllData(true).SingleOrDefault()?.ScriptVariable() as CardSpec;
-                if (spec is null) error = "Input must be a Conduit+ Card.";
+                if (spec is null)
+                {
+                    upstreamError = tree.AllData(true).SingleOrDefault()?.ScriptVariable() is null;
+                    error = upstreamError ? "Card has an error upstream" : "Input must be a Conduit+ Card.";
+                }
                 else
                 {
                     try
@@ -88,7 +94,9 @@ public sealed class CanvasCardComponent : GH_Component
                 }
             }
         }
-        if (error is not null) AddRuntimeMessage(GH_RuntimeMessageLevel.Error, error);
+        if (spec is null && error is null && Params.Input[0].SourceCount > 0)
+        { upstreamError = true; error = "Card has an error upstream"; }
+        if (error is not null) AddRuntimeMessage(upstreamError ? GH_RuntimeMessageLevel.Warning : GH_RuntimeMessageLevel.Error, error);
         WarnTheme();
         var token = ScopeInput.Read(this, da, 1, out _scopeValid);
         if (_scope?.Lease.Token != token || _scope?.IsValid == false)
@@ -109,6 +117,7 @@ public sealed class CanvasCardComponent : GH_Component
         var oldSize = BodySize;
         State.Replace(snapshot);
         _inputError = error;
+        _upstreamError = upstreamError;
         if (_scope is { } scope)
         {
             scope.Publish(snapshot is null ? [] : [snapshot], []);
@@ -121,7 +130,7 @@ public sealed class CanvasCardComponent : GH_Component
             _privateRefresh.RecordOutputs(_privateLease, State.Current);
         }
         MeasureBody();
-        Placeholder = error is null ? "Connect one Conduit+ Card" : "Invalid Card input";
+        Placeholder = upstreamError ? "Card has an error upstream" : error is null ? "Connect one Conduit+ Card" : "Invalid Card input";
         if (snapshot is null) attributes?.ReleaseFrame();
         if (oldSize != BodySize) attributes?.ExpireLayout();
         attributes?.RequestDisplay();
@@ -217,7 +226,7 @@ public sealed class CanvasCardComponent : GH_Component
         var size = BodySize;
         (Attributes as CanvasCardAttributes)?.CancelGesture();
         _themeName = name; ClearRuntimeMessages(); WarnTheme();
-        if (_inputError is not null) AddRuntimeMessage(GH_RuntimeMessageLevel.Error, _inputError);
+        if (_inputError is not null) AddRuntimeMessage(_upstreamError ? GH_RuntimeMessageLevel.Warning : GH_RuntimeMessageLevel.Error, _inputError);
         MeasureBody();
         if (size != BodySize) Attributes.ExpireLayout();
         (Attributes as CanvasCardAttributes)?.RequestDisplay();

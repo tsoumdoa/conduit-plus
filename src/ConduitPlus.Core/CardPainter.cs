@@ -68,7 +68,7 @@ public static class CardPainter
             return;
         }
         var hits = CardMeasure.DataHits(c, t);
-        var max = Math.Max(1e-9, Math.Max(c.Threshold, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max()));
+        var max = Math.Max(1e-9, Math.Max(c.HasThreshold ? c.Threshold : 0, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max()));
         if (c.Kind == CardKind.Bar)
         {
             var labelWidth = Math.Min((c.Width - 2 * t.Padding - 55) * .55,
@@ -84,8 +84,8 @@ public static class CardPainter
                 var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var signed = c.Values.Any(v => v < 0); var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
-                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > dataIndex ? c.Colors[dataIndex] : value > c.Threshold ? t.Bad : t.Good);
-                canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
+                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > dataIndex ? c.Colors[dataIndex] : !c.HasThreshold ? t.Accent : value > c.Threshold ? t.Bad : t.Good);
+                if (c.HasThreshold) canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
                 canvas.Text(value?.ToString("0.00", CultureInfo.InvariantCulture) ?? "—", new(h.X + h.W - 43, h.Y + 2), t.FontSize, t.Ink, t.Font);
             }
             if (TableScroll.Bar(c, t) is { } bar)

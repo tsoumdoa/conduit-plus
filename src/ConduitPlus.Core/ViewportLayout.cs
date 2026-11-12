@@ -50,7 +50,8 @@ public static class ViewportLayout
         var o = r.Options;
         if (!double.IsFinite(r.Dpi) || r.Dpi <= 0 || r.Viewport.Width < 0 || r.Viewport.Height < 0 || o.ZoomStep <= 0 || o.MinZoom <= 0 || o.MaxZoom < o.MinZoom) throw new ArgumentException("Invalid layout dimensions or scale.");
         var owners = r.Participants.OrderBy(p => p.Owner.ToString("N"), StringComparer.Ordinal).ToArray();
-        var items = owners.SelectMany(p => p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => new Item(p, x.c, i, x.slot))).ToArray();
+        var items = owners.SelectMany(p => p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => new Item(p, x.c, i, x.slot))
+            .GroupBy(x => CardIdentity.Source(x.C.Id), StringComparer.Ordinal).SelectMany(g => g)).ToArray();
         double Snap(double z) => Math.Round(z / o.ZoomStep, MidpointRounding.AwayFromZero) * o.ZoomStep;
         var basis = Math.Min(r.Viewport.Width / r.Dpi / o.RefWidth, r.Viewport.Height / r.Dpi / o.RefHeight);
         var initial = owners.ToDictionary(p => p.Owner, p => Math.Clamp(Snap(Math.Clamp(basis * p.Size, o.MinZoom, o.MaxZoom)), o.MinZoom, o.MaxZoom));

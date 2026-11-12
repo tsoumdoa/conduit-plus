@@ -107,7 +107,7 @@ Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even
 when sorted. Click a row/bar to highlight the matching geometry with a neutral white wash
-and cased accent x-ray outlines; click again or **Clear** to deselect. Wheel-scroll the room
+and cased accent x-ray outlines; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
 table and select **Hall / R17** from the model or bar to test reveal. Select **Bedroom** in the room-type legend
 or **Residential** in the GFA-by-use
 bar/legend to select every member of that category. The **Rooms below minimum**
@@ -154,18 +154,18 @@ to **Overlay**, or one card output to **Canvas Card**.
 
 | Component | Inputs and behavior |
 |---|---|
-| Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group. |
-| Bar | Values, optional labels and stable keys, title, threshold and slot; signed values and missing values are supported. Appended optional Colors override per-bar status; zero threshold supports deltas. Appended Members supplies one branch per entry and requires explicit Keys. |
-| Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title, optional threshold and slot. A positive wired threshold shows a band. |
-| Title | Optional Title, Subtitle and multiline Description (at least one required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
+| Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves text, nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group and requires a single Value. A Value list makes one card per item using native GH matching for Title/Unit/Key. |
+| Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the theme accent with no marker; a set threshold enables good/bad colouring, including zero for deltas. Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. |
+| Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title (default “Line”), optional threshold and slot. A positive threshold, typed or wired, shows a band. Repeated labels with no Keys use 1…n with a Remark. |
+| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
-| Legend | Colors and labels for categorical swatches; wire both Min and Max for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. |
+| Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
-| Table | Headers, one data-tree branch per row, optional row keys, title, slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
-| Link | Geometry tree and required Keys list: one key per branch (preferred), otherwise per flattened item. Repeated keys combine geometry. |
+| Table | Headers, one data-tree branch per row, optional row keys, title (default “Table”), slot and visible-row count (default 8) and appended Width (default 380 CSS px). |
+| Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
-| Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
-| Canvas Card | Exactly one Card across the whole input tree; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Appended optional Scope input and Selection output. Right-click → Theme. |
+| Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Empty items warn and are skipped; foreign items and duplicate card IDs report their index, while valid siblings still draw. Publication failures appear as runtime errors. With Links wired, zero key overlap warns with examples; individual unmatched cards get Remarks when others match. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
+| Canvas Card | Exactly one Card across the whole input tree; connected-empty inputs warn and show “Card has an error upstream”; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Appended optional Scope input and Selection output. Right-click → Theme. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
@@ -187,17 +187,22 @@ Component and plugin GUIDs are stable. Legend colors are stored as `#RRGGBB`
 strings; Grasshopper color inputs are converted automatically (alpha is ignored).
 
 Connect **Link** to **Overlay → Links**, and give the cards and linked geometry
-the same explicit keys. Bar keys default to labels; Table keys default to branch
-paths, so they do **not** auto-match. Keys are case-sensitive. Link supports points,
+the same keys. With no label/key wires, new Bar and Line cards use 1…n and
+Link generates matching keys. Table keys still default to branch paths; use
+explicit keys to match them. Keys are case-sensitive. Link supports points,
 lines, polylines, curves, breps, surfaces, meshes and extrusions; it duplicates
 geometry and caches its wires and shared pick/highlight meshes when solved.
 
 Right-click a card's **Slot** input to pick Automatic or a viewport position,
 Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pick
 0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
-connected wire always takes priority.
+connected wire always takes priority. Unknown Slot text warns; use tl, tr, bl, br, lc or rc.
+Card and Link outputs have readable one-line summaries in Panels. Metric lists,
+including grafted lists, show one card per value.
+If Values has many
+one-item branches, Bar/Line warns to flatten it for one chart.
 
-Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise cards use input index % 6. Cards stack in input order within each slot.
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
 
 ## Cards on the Grasshopper canvas
 
@@ -281,13 +286,15 @@ for lifecycle evidence, feedback details and 1× PNGs.
 | Command | Behavior |
 |---|---|
 | `ConduitPlusDemo` | Shows metrics, bars, a table, a line chart, legends and a design note, with linked frame members M01–M20 visible on hover/selection. |
-| `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. |
+| `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. Interactive filenames are `<view>-<yyyyMMdd-HHmmss>-<n>x.png`; automated fixtures retain `raster-<n>x.png`. |
 | `ConduitPlusPdf` | **Experimental** vector PDF export; searchable card text, page size and coordinate alignment checked in RhinoCore 8.36. See [verification and limitations](docs/verification/capture-pdf.md). |
 | `ConduitPlusBench` | Measures Raster metric-update, compact-bar hover and model-pick latency, checks cache lifecycle and runs per-card raster benchmarks. |
 
 Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).
 Set `CONDUITPLUS_RESULTS` to override it. Benchmark results are not written to
-the repository by default.
+the repository by default. PNG and PDF commands cancel without writing files or
+inserting demo cards when the active view has no visible Conduit+ cards. Click
+the viewport showing your cards and run the command again.
 
 ## Group members
 
@@ -304,8 +311,10 @@ member keys; nesting is unsupported. Repeated group definitions must have equal
 member sets. Conflicts warn on the display and disable affected group targets.
 An empty group stays inert and reports “0 members.”
 
-Click a partial group to select all its members; click a full group to remove
-all its members. Other selected members remain selected. Selection outputs are
+Plain-click a member or group to **Replace** the selection with its members.
+**Shift** adds, **Ctrl** removes, and **Ctrl+Shift** toggles those members.
+Repeating a plain click keeps that selection. **Clear** empties the domain.
+Escape cancels gestures or closes overflow UI; it does not clear selection. Selection outputs are
 sorted unique member keys, never group tokens. Partial groups show a half-height accent
 tick in the card's left padding; full groups and selected rows get a full tick and
 selection fill. Row hover outlines effective members and related groups; only
@@ -412,3 +421,13 @@ is recoverable at tag `spike-renderer-feasibility`. `docs/PLAN.md` and
 `docs/IDEAS.md` retain the original planning context.
 See [how charts are drawn](docs/design/rendering.md) for diagrams of the current
 raster pipeline, the former HTML/JS path and maintainability options.
+
+## Behaviour changes
+
+- Typed/internalised Line Threshold and Legend Min/Max now apply. A single Legend bound warns and keeps matching swatches.
+- Overlay publishes valid siblings despite empty, foreign or duplicate inputs; Canvas Card explains upstream errors. Linked-key mismatch diagnostics expand groups and use case-sensitive matching.
+- Lists into Metric create distinct cards with native GH data matching; grouped Metric requires one Value. Branched Bar/Line inputs warn when flattening would make one chart.
+- Repeated labels without explicit Keys use 1…n; repeated supplied Keys error. Link Keys are optional, with numbered defaults.
+- New Bar/Line/Table titles are neutral; fresh Title starts with “Title”. New Bars generate 1…n labels and have no threshold. Saved persistent values and legacy M01… defaults are retained.
+- Unknown Slot text warns. Card and Link outputs display readable summaries.
+- PNG/PDF exports no longer insert demo cards into empty views; interactive PNG names include the view and timestamp.

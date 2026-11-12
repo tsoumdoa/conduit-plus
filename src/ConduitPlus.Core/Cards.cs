@@ -39,6 +39,8 @@ public sealed record CardSpec
     public ImmutableArray<string> HoveredKeys { get; init; } = [];
     public ImmutableDictionary<string, GroupProjection> GroupStates { get; init; } = ImmutableDictionary<string, GroupProjection>.Empty.WithComparers(StringComparer.Ordinal);
     public double Threshold { get; init; } = 1;
+    /// <summary>False for a Bar with no supplied threshold; legacy specs retain their threshold.</summary>
+    public bool HasThreshold { get; init; } = true;
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
     public Slot? WiredSlot { get; init; }
@@ -55,6 +57,14 @@ public sealed record CardSpec
     /// <summary>Table only: session-owned display sort; null preserves the incoming row order.</summary>
     public int? SortColumn { get; init; }
     public bool SortDescending { get; init; }
+
+    public override string ToString()
+    {
+        var title = string.IsNullOrWhiteSpace(Title) ? "Untitled" : Title;
+        var count = Kind switch { CardKind.Bar => $"{Values.Length} bars", CardKind.Line => $"{Values.Length} samples", CardKind.Table => $"{Rows.Length} rows", CardKind.Legend => $"{Colors.Length} colours", _ => null };
+        var slot = WiredSlot switch { Slot.Tl => "top left", Slot.Tr => "top right", Slot.Bl => "bottom left", Slot.Br => "bottom right", Slot.Lc => "left centre", Slot.Rc => "right centre", Slot.Tc => "top centre", Slot.Bc => "bottom centre", _ => "auto" };
+        return string.Join(" · ", new[] { Kind.ToString(), title, count, slot }.Where(v => v is not null));
+    }
 
     public void Validate()
     {
@@ -87,6 +97,7 @@ public sealed record CardSpec
             else if (Labels.Length != Colors.Length || (Keys.Length != 0 && Keys.Length != Colors.Length)) throw new ArgumentException("Categorical colors, labels and optional keys must match.");
         }
         var keys = Kind == CardKind.Table ? Rows.Select(r => r.Key).ToArray() : Keys;
+        if (InputKeys.Repeated(keys) is { } repeated) throw new ArgumentException(repeated);
         if (keys.Any(k => string.IsNullOrWhiteSpace(k) || CardMeasure.IsReserved(k)) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
         GroupDefinition.Validate(this);

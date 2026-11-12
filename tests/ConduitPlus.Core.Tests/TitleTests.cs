@@ -23,8 +23,8 @@ public sealed class TitleTests
     [Fact] public void SlotsRemainStable()
     {
         CardSpec m = new() { Id = "m" };
-        Assert.Equal(new[] { Slot.Tl, Slot.Tl, Slot.Tr, Slot.Br, Slot.Bl }, SlotLayout.ResolveAll([Title, m, m, Title with { WiredSlot = Slot.Br }, m]));
-        Assert.Equal(new[] { Slot.Br, Slot.Tr }, SlotLayout.ResolveAll([m with { WiredSlot = Slot.Br }, m]));
+        Assert.Equal(new[] { Slot.Tl, Slot.Tl, Slot.Tr, Slot.Br, Slot.Bl }, SlotLayout.ResolveAll([Title, m, m with { Id = "m2" }, Title with { WiredSlot = Slot.Br }, m with { Id = "m3" }]));
+        Assert.Equal(new[] { Slot.Br, Slot.Tr }, SlotLayout.ResolveAll([m with { WiredSlot = Slot.Br }, m with { Id = "m2" }]));
     }
     private sealed class TextCanvas : ICanvas2D
     {
