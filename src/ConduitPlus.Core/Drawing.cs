@@ -64,7 +64,15 @@ public static class SlotLayout
     public static Slot[] ResolveAll(IReadOnlyList<CardSpec> cards)
     {
         var n = 0;
-        return cards.Select(c => c.Kind == CardKind.Title ? c.WiredSlot ?? Slot.Tl : Resolve(c, n++)).ToArray();
+        var sources = new Dictionary<string, Slot>(StringComparer.Ordinal);
+        return cards.Select(c =>
+        {
+            if (c.Kind == CardKind.Title) return c.WiredSlot ?? Slot.Tl;
+            var source = CardIdentity.Source(c.Id);
+            if (!sources.ContainsKey(source)) sources[source] = (Slot)(n++ % 6);
+            var slot = sources[source];
+            return c.WiredSlot ?? slot;
+        }).ToArray();
     }
     public static Slot Resolve(CardSpec c, int index) => c.WiredSlot ?? (c.Kind == CardKind.Title ? Slot.Tl : (Slot)(index % 6));
 }

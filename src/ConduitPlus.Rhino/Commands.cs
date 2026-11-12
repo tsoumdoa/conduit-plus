@@ -17,6 +17,13 @@ internal static class OutputPaths
 
 internal static class CommandRunner
 {
+    internal const string EmptyViewMessage = "No Conduit+ cards in the active viewport. Click the viewport that shows them and run the command again.";
+    internal static bool HasCards(RhinoDoc doc, RhinoView view)
+    {
+        if (OverlayManager.InView(doc, view).Any(s => s.Visible && s.Cards.Length > 0)) return true;
+        RhinoApp.WriteLine(EmptyViewMessage);
+        return false;
+    }
     public static Result Run(Action action)
     {
         if (OverlayManager.Busy) { RhinoApp.WriteLine("Conduit+ is already preparing cards."); return Result.Cancel; }
@@ -60,13 +67,14 @@ public sealed class ConduitPlusCapture : Command
     public override string EnglishName => "ConduitPlusCapture";
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var view = doc.Views.ActiveView;
+        if (view is null) return Result.Failure;
+        if (!CommandRunner.HasCards(doc, view)) return Result.Cancel;
         double multiplier = 2;
         var result = RhinoGet.GetNumber("Capture scale (1, 2 or 4)", true, ref multiplier, 1, 4);
         if (result != Result.Success) return result;
         if (multiplier is not (1 or 2 or 4)) return Result.Failure;
-        var view = doc.Views.ActiveView;
-        if (view is null) return Result.Failure;
-        return CommandRunner.Run(() => Capture(doc, view, (int)multiplier));
+        return CommandRunner.Run(() => CaptureToFile(doc, view, (int)multiplier, true));
     }
 
     public static void RunAutomated(RhinoDoc doc, RhinoView view, int scale, bool compact = false)
@@ -79,17 +87,15 @@ public sealed class ConduitPlusCapture : Command
         Capture(doc, view, scale);
     }
 
-    private static void Capture(RhinoDoc doc, RhinoView view, int multiplier)
+    private static void Capture(RhinoDoc doc, RhinoView view, int multiplier) => CaptureToFile(doc, view, multiplier, false);
+
+    private static void CaptureToFile(RhinoDoc doc, RhinoView view, int multiplier, bool interactive)
     {
         UiContext.Ensure();
         OverlayManager.Start();
         if (multiplier is not (1 or 2 or 4)) throw new ArgumentOutOfRangeException(nameof(multiplier));
         var sessions = OverlayManager.InView(doc, view);
-        if (sessions.Length == 0)
-        {
-            OverlayManager.Set(doc, view, Guid.Empty, StructuralDemo.Create());
-            sessions = OverlayManager.InView(doc, view);
-        }
+        if (!CommandRunner.HasCards(doc, view)) return;
         var size = view.ActiveViewport.Size;
         var visible = sessions.Where(s => s.Visible).ToArray();
         var before = visible.Select(s => s.FrameCount).ToArray();
@@ -106,7 +112,9 @@ public sealed class ConduitPlusCapture : Command
             using var image = capture.CaptureToBitmap(view) ?? throw new InvalidOperationException("Rhino ViewCapture returned no bitmap.");
             if (visible.Where((s, i) => s.FrameCount == before[i]).Any())
                 throw new InvalidOperationException("ViewCapture did not draw the overlay; refusing to save a blank PNG.");
-            var path = Path.Combine(OutputPaths.Captures, $"raster-{multiplier}x.png");
+            var viewName = string.Concat(view.ActiveViewport.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+            var filename = interactive ? $"{viewName}-{DateTime.Now:yyyyMMdd-HHmmss}-{multiplier}x.png" : $"raster-{multiplier}x.png";
+            var path = Path.Combine(OutputPaths.Captures, filename);
             image.Save(path, ImageFormat.Png);
             File.WriteAllText(Path.ChangeExtension(path, ".json"), CardJson.Serialize(new
             {
