@@ -79,12 +79,14 @@ internal sealed class ReviewDefinition
     {
         GH_Component? rooms = null;
         IGH_Param geometry, names, types, values, keys;
+        IGH_Param? minimum = null;
         IGH_Param? checkedDeltas = null, checkedNames = null, checkedKeys = null;
         if (hello)
         {
             names = Panel("Room names", ["Studio 01", "Studio 02", "Meeting 01", "Meeting 02", "Store 01", "Store 02"], top);
             types = Panel("Programme", ["Studio", "Studio", "Meeting", "Meeting", "Store", "Store"], top + 185);
             values = Panel("Area (m²)", ["12", "18", "15", "24", "9", "12"], top + 370);
+            minimum = Panel("Minimum area (m²)", ["15"], top + 760);
             var rects = Add(new Param_Rectangle { NickName = "Six room faces · metres", Hidden = true }, 70, top + 590);
             double[] widths = [4, 6, 5, 8, 3, 4];
             for (var i = 0; i < widths.Length; i++) rects.PersistentData.Append(new GH_Rectangle(new Rectangle3d(
@@ -154,16 +156,16 @@ internal sealed class ReviewDefinition
         {
             // Native summaries stay live when the Area panel changes. Merge preserves KPI order.
             var total = Native("Mass Addition", 380, top, "74d95062-0bec-4a4e-9026-5141fca954a6"); Wire(total, 0, values);
-            var below = Native("Smaller Than", 380, top + 160); Wire(below, 0, values); Number(below, 1, 15);
+            var below = Native("Smaller Than", 380, top + 160); Wire(below, 0, values); Wire(below, 1, minimum!);
             var cull = Native("Cull Pattern", 530, top + 160); Wire(cull, 0, values); Wire(cull, 1, below.Params.Output[0]);
             var count = Native("List Length", 680, top + 160); Wire(count, 0, cull.Params.Output[0]);
             var summaries = Native("Merge", 850, top); Wire(summaries, 0, total.Params.Output[0]); Wire(summaries, 1, count.Params.Output[0]);
-            var metric = Card(new MetricComponent()); metric.Attributes.Pivot = new(1040, top); Wire(metric, 0, summaries.Params.Output[0]); Text(metric, 1, "Total area", "Rooms below 15 m²"); Text(metric, 2, "m²", ""); Integer(metric, 4, 0); Text(metric, 3, "tl");
+            var metric = Card(new MetricComponent()); metric.Attributes.Pivot = new(1040, top); Wire(metric, 0, summaries.Params.Output[0]); Text(metric, 1, "Total area", "Rooms below minimum"); Text(metric, 2, "m²", ""); Integer(metric, 4, 0); Text(metric, 3, "tl");
         }
         var bar = Card(new BarComponent()); Wire(bar, 0, hello ? values : checkedDeltas!); Wire(bar, 1, hello ? names : checkedNames!);
         if (!hello) Wire(bar, 2, checkedKeys!);
         if (hello) bar.Attributes.Pivot = new(1040, top + 400);
-        Text(bar, 3, hello ? "Area ≥ 15 m²" : "Area − minimum (m²)"); Number(bar, 4, hello ? 15 : 0); Text(bar, 8, "Above"); Text(bar, 9, "Worst first"); Integer(bar, 10, 12); Text(bar, 5, "tl");
+        Text(bar, 3, hello ? "Area ≥ minimum (m²)" : "Area − minimum (m²)"); if (hello) Wire(bar, 4, minimum!); else Number(bar, 4, 0); Text(bar, 8, "Above"); Text(bar, 9, "Worst first"); Integer(bar, 10, 12); Text(bar, 5, "tl");
         var table = Card(new TableComponent()); Text(table, 0, hello ? ["Room", "Type", "Area m²"] : ["Room", "Type", "Area m²", "Min m²", "Δ m²", "Status"]);
         if (hello)
         {
@@ -199,7 +201,7 @@ internal sealed class ReviewDefinition
         {
             // Viewport-only note: keep the main Bar/Table at their full visible row counts.
             var note = Add(new TextComponent(), 740, row + 600); Text(note, 0, "Reading the review");
-            Text(note, 1, "Plans: programme / area.\nClick selects; Shift adds; Ctrl removes.\nIllustrative data; not a regulatory check.");
+            Text(note, 1, "Plans: programme / area.\nArea − minimum excludes Hall.\nClick selects; Shift adds; Ctrl removes.\nIllustrative data; not a regulatory check.");
             DisplayCard(overlay, note.Params.Output[0]);
         }
         Finish(hello ? "3  Show it · Overlay + stacked Canvas Card" : "3  Room review · stacked cards, shared Scope + Overlay");

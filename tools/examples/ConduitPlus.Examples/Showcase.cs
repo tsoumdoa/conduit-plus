@@ -89,7 +89,7 @@ internal static class Showcase
             if (hello)
             {
                 var metrics = cards.Where(c => c.Kind == CardKind.Metric).ToArray();
-                Require(metrics.Select(c => (c.Title, c.Value ?? "", c.Unit)).SequenceEqual(new[] { ("Total area", "90", "m²"), ("Rooms below 15 m²", "3", "") }),
+                Require(metrics.Select(c => (c.Title, c.Value ?? "", c.Unit)).SequenceEqual(new[] { ("Total area", "90", "m²"), ("Rooms below minimum", "3", "") }),
                     "Hello must show the two summary KPIs in Metric list order.");
             }
             else
@@ -187,12 +187,30 @@ internal static class Showcase
             panel.UserText = original.Replace("9", "16", StringComparison.Ordinal); panel.ExpireSolution(false); gh.NewSolution(false);
             RequireClean(gh);
             var cards = ComponentCards(gh);
-            Require(cards.Where(c => c.Kind == CardKind.Metric).Select(c => (c.Title, c.Value ?? "")).SequenceEqual(new[] { ("Total area", "97"), ("Rooms below 15 m²", "2") }),
+            Require(cards.Where(c => c.Kind == CardKind.Metric).Select(c => (c.Title, c.Value ?? "")).SequenceEqual(new[] { ("Total area", "97"), ("Rooms below minimum", "2") }),
                 "Editing Store 01 from 9 to 16 must update Hello Metrics to 97 and 2.");
             Require(cards.Single(c => c.Kind == CardKind.Bar).Values.Contains(16), "Hello Bar must update with the edited area.");
             Require(cards.Single(c => c.Kind == CardKind.Table).Rows.Any(r => r.Cells.Contains("Store 01") && r.Cells.Contains("16")), "Hello Table must update with the edited area.");
         }
         finally { panel.UserText = original; panel.ExpireSolution(false); gh.NewSolution(false); }
+        var minimum = gh.Objects.OfType<GH_Panel>().Single(p => p.NickName == "Minimum area (m²)");
+        var originalMinimum = minimum.UserText;
+        var bar = gh.Objects.OfType<ConduitPlus.Grasshopper.BarComponent>().Single();
+        var below = gh.Objects.OfType<GH_Component>().Single(c => c.Name == "Smaller Than");
+        Require(bar.Params.Input[4].Sources.Single() == minimum && below.Params.Input[1].Sources.Single() == minimum,
+            "Hello count and Bar must share the Minimum area panel.");
+        try
+        {
+            minimum.UserText = "12"; minimum.ExpireSolution(false); gh.NewSolution(false);
+            RequireClean(gh);
+            var cards = ComponentCards(gh);
+            Require(cards.Single(c => c.Kind == CardKind.Metric && c.Title == "Rooms below minimum").Value == "1",
+                "Changing minimum from 15 to 12 must update the below-minimum count to 1.");
+            Require(cards.Single(c => c.Kind == CardKind.Bar).Threshold == 12,
+                "Changing minimum from 15 to 12 must update the Bar threshold to 12.");
+        }
+        finally { minimum.UserText = originalMinimum; minimum.ExpireSolution(false); gh.NewSolution(false); }
+        Console.WriteLine("Hello minimum edit check passed: 15 → 12 updates count to 1 and Bar threshold to 12; restored.");
         Console.WriteLine("Hello edit check passed: Store 01 9 → 16 updates Metric 97 m² / 2, Bar and Table; original data restored.");
     }
 
