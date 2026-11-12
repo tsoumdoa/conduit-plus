@@ -150,7 +150,7 @@ Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns th
 ## Grasshopper components
 
 All components are in the **Conduit+** category. Connect one or more card outputs
-to **Overlay**, or one card output to **Canvas Card**.
+to **Overlay**, or card outputs to **Canvas Card**.
 
 | Component | Inputs and behavior |
 |---|---|
@@ -165,7 +165,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
 | Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Empty items warn and are skipped; foreign items and duplicate card IDs report their index, while valid siblings still draw. Publication failures appear as runtime errors. With Links wired, zero key overlap warns with examples; individual unmatched cards get Remarks when others match. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
-| Canvas Card | Exactly one Card across the whole input tree; connected-empty inputs warn and show “Card has an error upstream”; draws the measured card inside its canvas body, with local sort, scrollbar, selection/Clear and GH hover tooltips. Appended optional Scope input and Selection output. Right-click → Theme. |
+| Canvas Card | Cards in input tree order, up to 12 unique cards in a left-aligned stack; empty items warn, duplicates show once. Each card keeps its width, sort, scrollbar and GH hover tooltips. One shared selection/Clear domain; optional Scope input and Selection union output. Right-click → Theme. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
@@ -225,6 +225,7 @@ warning; duplicate card IDs show once with a warning. Up to 12 unique valid card
 are shown; a warning reports any remainder. Unconnected input shows a placeholder;
 invalid items report errors while valid siblings still display. Use another Canvas
 Card for the rest, or Grasshopper's normal layout and groups to arrange columns.
+Give cards the same Width for a flush column.
 
 Drag/select the component by its **Canvas Card** title strip, margins or inactive
 body areas. Plain left-click on a keyed Metric body, row/bar/sample/swatch replaces
@@ -426,6 +427,7 @@ raster pipeline, the former HTML/JS path and maintainability options.
 
 ## Behaviour changes
 
+- Canvas Card now accepts a stack of up to 12 unique cards in tree order, with one shared selection domain. Cards keep their own widths, sort, scroll and raster density.
 - Bar now shows 12 rows by default, including saved files whose archive predates Visible rows. Use 0 for all rows. Remaining rows scroll with the wheel over the viewport card or its scrollbar; Canvas Card uses the scrollbar (the canvas wheel still zooms). A newly selected row is revealed; manual scrolling and hover do not snap back. Scale always uses all values. Bar and Table share a row-range/scroll footer.
 - Bar Good when defaults to Below; Above makes values at or above the threshold good. Equality is good in both directions. No threshold means plain accent bars; explicit Colors still override status. Sorting changes display order only, preserving selection, hover and group identity by key.
 - Bar values use automatic precision up to two decimals, omit trailing zeros and use the true minus (−); Metric numeric text uses the same minus and suppresses rounded negative zero.

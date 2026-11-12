@@ -120,9 +120,15 @@ sort/scroll clamping. All six card kinds are rendered through the bounded plan.
 ## Scope and integration
 
 The theme resolver uses the shared Core presets, with Rhino mode detection in host
-code. Cache pressure shares raster capacity across visible cards
-with room for one atomic replacement, then evicts least-recently-visible frames
-as needed. The existing GDI measurer now caches managed measurement values rather
+code. Each card in a stack has an independent raster bounded to 16 MiB and 4096 px
+per dimension, including shadow margins. Tall siblings never reduce another card's
+density. Each component retains at most 32 MiB, prioritizing visible cards and
+leaving room for atomic replacement within the 64 MiB document budget. Cache
+pressure evicts least-recently-visible frames or leaves offscreen surfaces uncached;
+it does not lower raster density. Any visible surface that cannot be retained is
+painted as a budgeted temporary. GH export paints and disposes cards sequentially
+at the export scale, subject only to each card's own bitmap bounds. The existing
+GDI measurer caches managed measurement values rather
 than retaining an undisposable thread-static Graphics/bitmap/font cache.
 
 No boards, resizing, wheel interception, cross-host linking or outputs are added.

@@ -5,8 +5,11 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
-public sealed class CanvasStackTests
+public sealed class CanvasStackTests : IDisposable
 {
+    private readonly Func<string, double, string, Size2> _original = TextMetrics.Measurer;
+    public void Dispose() => TextMetrics.Measurer = _original;
+
     private static CardSpec Table(string id, double width = 280) => new()
     {
         Id = id, Kind = CardKind.Table, Width = width, MaxRows = 2, Headers = ["Name", "Value"],
@@ -100,19 +103,55 @@ public sealed class CanvasStackTests
     }
 
     [Fact]
-    public void WholeStackDensityBoundsActualBitmapIncludingRoundedShadowMargins()
+    public void TallSiblingsKeepSmallCardsAtFullDensityAndEachBitmapWithinBounds()
     {
         GdiCanvas.RegisterTextMetrics();
-        var cards = Enumerable.Range(0, 12).Select(i => Table(i.ToString(), 1200) with { MaxRows = 200, Rows = Enumerable.Range(0, 200).Select(j => new TableRow(j.ToString(), ["Room", "42"])).ToArray() }).ToArray();
+        var metric = new CardSpec { Id = "metric", Kind = CardKind.Metric, Title = "Floor area", Value = "320", Unit = "m²", Width = 240 };
+        CardSpec[] cards = [metric, .. Enumerable.Range(0, 11).Select(i => Table(i.ToString(), 420) with
+        { MaxRows = 200, Rows = Enumerable.Range(0, 200).Select(j => new TableRow(j.ToString(), ["Room", "42"])).ToArray() })];
         foreach (var theme in Theme.Presets.Select(t => t.Resolve(false)))
         {
             var layout = new CanvasStackLayout(cards, theme);
-            var plan = CanvasRasterPlan.Create(layout.Size, 8, 1024 * 1024, theme.Shadow ? theme.ShadowExtent + 1 : 0);
-            using var image = RasterDrawing.RenderStack(cards, theme, plan.Scale);
-            Assert.Equal(plan.Width, image.Width); Assert.Equal(plan.Height, image.Height);
-            Assert.InRange((long)image.Width * image.Height * 4, 4, 1024 * 1024);
-            Assert.InRange(image.Height, 1, 4096); Assert.InRange(image.Width, 1, 4096);
+            var plans = CanvasStackRaster.Plan(layout, theme, 2);
+            Assert.Equal(2, plans[0].Scale);
+            var retained = CanvasStackRaster.RetainedCards(plans, 1, CanvasRasterPlan.DocumentBudget / 2);
+            Assert.Contains(0, retained);
+            Assert.True(retained.Sum(i => plans[i].Bytes) <= CanvasRasterPlan.DocumentBudget / 2);
+            using var baseline = RasterDrawing.Render(metric, theme, 2);
+            using var small = RasterDrawing.Render(cards[0], theme, plans[0].Scale);
+            AssertPixelsEqual(baseline, small);
+            for (var i = 0; i < cards.Length; i++)
+            {
+                var plan = plans[i];
+                // Even under document pressure, siblings do not affect a card's individual limit.
+                Assert.Equal(CanvasRasterPlan.Create(new(layout.Cards[i].W, layout.Cards[i].H), 2,
+                    margin: theme.Shadow ? theme.ShadowExtent + 1 : 0), plan);
+                using var image = RasterDrawing.Render(cards[i], theme, plan.Scale);
+                Assert.Equal(plan.Width, image.Width); Assert.Equal(plan.Height, image.Height);
+                Assert.InRange(plan.Bytes, 4, CanvasRasterPlan.BitmapBudget);
+                Assert.InRange(image.Height, 1, 4096); Assert.InRange(image.Width, 1, 4096);
+            }
         }
+    }
+
+    [Fact]
+    public void DocumentPressureChangesRetentionNotDensityAndReservesAtomicReplacement()
+    {
+        var cards = Enumerable.Range(0, 12).Select(i => Table(i.ToString(), i == 0 ? 180 : 1200) with
+        { MaxRows = i == 0 ? 2 : 200, Rows = Enumerable.Range(0, 200).Select(j => new TableRow(j.ToString(), ["Room", "42"])).ToArray() }).ToArray();
+        const long budget = 20 * 1024 * 1024;
+        var plans = CanvasStackRaster.Plan(new(cards, Theme.Paper), Theme.Paper, 2);
+        Assert.Equal(2, plans[0].Scale);
+        var retained = CanvasStackRaster.RetainedCards(plans, 1 | (1 << 11), budget);
+        Assert.Contains(0, retained); Assert.Contains(11, retained);
+        Assert.DoesNotContain(1, retained);
+        Assert.True(retained.Sum(i => plans[i].Bytes) <= budget);
+        var alone = CanvasRasterPlan.Create(CardMeasure.Measure(cards[11], Theme.Paper), 2);
+        Assert.Equal(alone, plans[11]);
+        // A multi-surface frame can exceed the single-bitmap limit; reserve its complete allocation.
+        Assert.Empty(CanvasCacheBudget.Evictions([new("owner", budget, 0)], "owner", CanvasRasterPlan.DocumentBudget / 2));
+        Assert.Throws<InvalidOperationException>(() => CanvasCacheBudget.Evictions(
+            [new("owner", CanvasRasterPlan.DocumentBudget / 2 + 4, 0)], "owner", CanvasRasterPlan.DocumentBudget / 2));
     }
 
     private static void AssertPixelsEqual(Bitmap a, Bitmap b)

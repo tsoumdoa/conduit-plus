@@ -14,6 +14,7 @@ namespace ConduitPlus.Grasshopper;
 
 public sealed class CanvasCardComponent : GH_Component
 {
+    private const string CardsDescription = "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards in tree order; up to 12 unique cards";
     private string _themeName = Theme.NewComponentDefault.Name;
     private Bitmap? _icon;
     private bool _active;
@@ -28,7 +29,7 @@ public sealed class CanvasCardComponent : GH_Component
             { PlainTitleInk = TitleMetrics.InkForBackground(new(background.R, background.G, background.B)) };
         }
     }
-    internal string Placeholder { get; private set; } = "Connect one Conduit+ Card";
+    internal string Placeholder { get; private set; } = "Connect Conduit+ Cards";
     internal Size2 BodySize { get; private set; } = new(280, 92);
     private readonly List<(GH_RuntimeMessageLevel Level, string Message)> _inputMessages = [];
     private MembershipIndex? _membership;
@@ -56,7 +57,7 @@ public sealed class CanvasCardComponent : GH_Component
     public override void CreateAttributes() => m_attributes = new CanvasCardAttributes(this);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards in tree order; up to 12 unique cards", GH_ParamAccess.tree);
+        p.AddGenericParameter("Cards", "C", CardsDescription, GH_ParamAccess.tree);
         p[0].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree);
         p[1].Optional = true;
@@ -70,6 +71,7 @@ public sealed class CanvasCardComponent : GH_Component
         void Notice(GH_RuntimeMessageLevel level, string message)
         { _inputMessages.Add((level, message)); AddRuntimeMessage(level, message); }
         var empty = 0;
+        var itemCount = 0;
         if (da.GetDataTree(0, out GH_Structure<IGH_Goo> tree))
         {
             var index = 0;
@@ -78,14 +80,17 @@ public sealed class CanvasCardComponent : GH_Component
                 var value = goo?.ScriptVariable();
                 if (value is null) empty++;
                 else if (value is not CardSpec spec)
-                    Notice(GH_RuntimeMessageLevel.Error, $"Cards item [{index}] is {goo!.TypeName}; expected a Conduit+ Card.");
+                {
+                    var type = value switch { string => "text", double or float or int or long or decimal => "a number", bool => "a boolean", _ => goo!.TypeName };
+                    Notice(GH_RuntimeMessageLevel.Error, $"Cards item {index} is {type}, not a Conduit+ card.");
+                }
                 else
                 {
                     try
                     {
                         spec.Validate();
                         if (!Enum.IsDefined(spec.Kind)) throw new ArgumentException("Unsupported card kind.");
-                        if (!ids.Add(spec.Id)) Notice(GH_RuntimeMessageLevel.Warning, $"Duplicate card ID at Cards item [{index}]. Connect each card once.");
+                        if (!ids.Add(spec.Id)) Notice(GH_RuntimeMessageLevel.Warning, $"Card '{spec.Title}' is connected twice; showing it once.");
                         else if (cards.Count < CanvasStackLayout.Limit)
                             cards.Add(spec.Kind == CardKind.Title ? spec with { Background = TitleBackground.Card } : spec);
                     }
@@ -94,15 +99,24 @@ public sealed class CanvasCardComponent : GH_Component
                 }
                 index++;
             }
+            itemCount = index;
         }
-        if (empty > 0) Notice(GH_RuntimeMessageLevel.Warning, $"Skipped {empty} empty Card items; showing {cards.Count}. Check upstream components.");
-        else if (cards.Count == 0 && Params.Input[0].SourceCount > 0)
-            Notice(GH_RuntimeMessageLevel.Warning, "No cards received. Check upstream components.");
+        var emptySources = Params.Input[0].Sources.Where(p => p.VolatileData.DataCount == 0).ToArray();
+        empty += emptySources.Length;
+        if (empty > 0)
+        {
+            var names = Params.Input[0].Sources.Where(p => p.VolatileData.DataCount == 0 || p.VolatileData.AllData(false).Any(g => g?.ScriptVariable() is null))
+                .Select(p => p.Attributes?.GetTopLevel.DocObject as GH_Component
+                    ?? OnPingDocument()?.Objects.OfType<GH_Component>().FirstOrDefault(c => c.Params.Output.Contains(p)))
+                .OfType<GH_Component>().Select(p => p.Name).Distinct().ToArray();
+            Notice(GH_RuntimeMessageLevel.Warning,
+                $"Showing {cards.Count} of {itemCount + emptySources.Length} cards. {empty} {(empty == 1 ? "is empty because its component has an error" : "are empty because their components have errors")}{(names.Length > 0 ? " (" + string.Join(", ", names) + ")" : "")}.");
+        }
         if (ids.Count > CanvasStackLayout.Limit)
             Notice(GH_RuntimeMessageLevel.Warning, $"Showing 12 of {ids.Count} cards; use another Canvas Card for the rest.");
         _membership = MembershipIndex.Create([new BrushRegistration("canvas", cards, [])], _membership);
         foreach (var diagnostic in _membership.Diagnostics)
-            Notice(GH_RuntimeMessageLevel.Warning, $"Key '{diagnostic.Key}': {diagnostic.Message}");
+            Notice(GH_RuntimeMessageLevel.Warning, $"Card '{cards.First(c => c.Id == diagnostic.CardId).Title}', key '{diagnostic.Key}': {diagnostic.Message}");
         WarnTheme();
         var token = ScopeInput.Read(this, da, 1, out _scopeValid);
         if (_scope?.Lease.Token != token || _scope?.IsValid == false)
@@ -122,7 +136,7 @@ public sealed class CanvasCardComponent : GH_Component
         State.ReplaceCards(cards);
         if (_scope is { } scope)
         {
-            scope.Publish(State.Specs, []);
+            scope.Publish(cards.ToArray(), []);
             da.SetDataList(0, scope.Current.SelectedKeys);
             scope.RecordOutputs(); scope.ReportDiagnostics();
         }
@@ -132,7 +146,8 @@ public sealed class CanvasCardComponent : GH_Component
             _privateRefresh.RecordOutputs(_privateLease, State.Current);
         }
         MeasureBody();
-        Placeholder = _inputMessages.Count == 0 ? "Connect one Conduit+ Card" : "No card received. Check upstream components.";
+        Placeholder = _inputMessages.FirstOrDefault(m => m.Level == GH_RuntimeMessageLevel.Error).Message
+            ?? (_inputMessages.Count == 0 ? "Connect Conduit+ Cards" : "No card received. Check upstream components.");
         if (cards.Count == 0) attributes?.ReleaseFrame();
         if (oldSize != BodySize) attributes?.ExpireLayout();
         attributes?.RequestDisplay();
@@ -202,7 +217,7 @@ public sealed class CanvasCardComponent : GH_Component
         var size = BodySize;
         var result = base.Read(reader);
         Params.Input[0].Name = "Cards";
-        Params.Input[0].Description = "Conduit+ cards in tree order; up to 12 unique cards";
+        Params.Input[0].Description = CardsDescription;
         var savedName = "";
         var found = reader.TryGetString("ConduitPlus.CanvasTheme", ref savedName);
         _themeName = found ? savedName : Theme.ReadSelection(null).Name;

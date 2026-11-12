@@ -31,7 +31,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private double _grab;
     private int _originalOffset;
     private PointF? _hoverPoint;
-    private CanvasFrameKey? _failed;
+    private CanvasStackFrameKey? _failed;
     private bool _tooltipOwned;
     private const string TrackKey = "\u0001canvas-scroll-track";
     private int _pageOffset;
@@ -78,7 +78,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         CanvasCardCache.Register(this);
     }
     private void DocumentChanged(GH_Canvas sender, GH_CanvasDocumentChangedEventArgs e) { CancelGesture(); ClearHover(); Pending = false; }
-    private void ViewportChanged(object? sender, GH_CanvasViewportChangedEventArgs e) { CancelGesture(); ClearHover(); }
+    private void ViewportChanged(object? sender, GH_CanvasViewportChangedEventArgs e) { CancelGesture(); ClearHover(); RequestDisplay(); }
     private void CaptureChanged(object? sender, EventArgs e) { if (_canvas?.Capture != true) CancelGesture(); }
     private void MouseLeft(object? sender, EventArgs e) { ClearHover(); }
     private void CanvasDisposed(object? sender, EventArgs e) => Detach();
@@ -158,10 +158,15 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
                 {
                     specs = specs.Select(spec => BrushPresentation.WithoutHover(spec) with
                     { ScrollOffset = _dragScroll && spec.Id == _pressedCard ? _originalOffset : spec.ScrollOffset }).ToArray();
-                    var size = new CanvasStackLayout(specs, theme).Size;
-                    var plan = Plan(size, theme, scale);
-                    using var image = RasterDrawing.RenderStack(specs, theme, plan.Scale);
-                    graphics.DrawImage(image, WithMargin(new RectangleF(_body.X, _body.Y, (float)size.Width, (float)size.Height), theme, plan.Scale));
+                    var layout = new CanvasStackLayout(specs, theme);
+                    for (var i = 0; i < specs.Length; i++)
+                    {
+                        var card = layout.Cards[i];
+                        var plan = Plan(new(card.W, card.H), theme, scale);
+                        CanvasCardCache.Reserve(this, plan.Bytes);
+                        using var image = RasterDrawing.Render(specs[i], theme, plan.Scale);
+                        graphics.DrawImage(image, WithMargin(CardBody(card), theme, plan.Scale));
+                    }
                 }
                 else DrawPlaceholder(graphics);
                 return;
@@ -176,12 +181,33 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             {
                 graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 // A failed data/size replacement keeps the old frame's geometry and hit map together.
-                graphics.DrawImage(frame.Bitmap, WithMargin(new RectangleF(_body.X, _body.Y, (float)frame.Key.Size.Width, (float)frame.Key.Size.Height), frame.Theme, frame.Key.Raster.Scale));
+                for (var i = 0; i < frame.Bitmaps.Length; i++)
+                {
+                    var target = WithMargin(CardBody(frame.Layout.Cards[i]), frame.Theme, frame.Rasters[i].Scale);
+                    if (frame.Bitmaps[i] is { } bitmap) graphics.DrawImage(bitmap, target);
+                    else if (_failed != frame.Key && canvas.Viewport.IsVisible(ref target))
+                    {
+                        // An unusually large viewport can expose more surfaces than can be retained.
+                        // Paint those sequentially at the same density, accounting for the temporary too.
+                        try
+                        {
+                            CanvasCardCache.Reserve(this, frame.Rasters[i].Bytes);
+                            using var temporary = RasterDrawing.Render(frame.Specs[i], frame.Theme, frame.Rasters[i].Scale);
+                            graphics.DrawImage(temporary, target);
+                        }
+                        catch (Exception e) when (e is ArgumentException or InvalidOperationException or OutOfMemoryException or System.Runtime.InteropServices.ExternalException)
+                        {
+                            _failed = frame.Key;
+                            Component.AddRuntimeMessage(global::Grasshopper.Kernel.GH_RuntimeMessageLevel.Warning, "Canvas Card render failed: " + e.Message);
+                        }
+                    }
+                }
             }
             else DrawPlaceholder(graphics);
         }
         finally { graphics.Restore(saved); }
     }
+    private RectangleF CardBody(CardLayout card) => new(_body.X + (float)card.X, _body.Y + (float)card.Y, (float)card.W, (float)card.H);
     // Themed bitmaps carry a shadow margin on every side; grow the target so the card body keeps its measured size.
     private static RectangleF WithMargin(RectangleF body, Theme theme, double scale)
     {
@@ -196,9 +222,20 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     }
     private static CanvasRasterPlan Plan(Size2 size, Theme theme, double scale, long budget = CanvasRasterPlan.BitmapBudget)
         => CanvasRasterPlan.Create(size, scale, budget, theme.Shadow ? theme.ShadowExtent + 1 : 0);
-    private CanvasFrameKey? DesiredKey() => Component.State.Specs.Length > 0
-        ? new(Component.InstanceGuid.ToString("N"), Component.State.Revision, Component.CardTheme, Component.BodySize,
-            Plan(Component.BodySize, Component.CardTheme, _scale, CanvasCardCache.BitmapBudget(this))) : null;
+    private CanvasStackFrameKey? DesiredKey()
+    {
+        if (Component.State.Specs.Length == 0) return null;
+        var theme = Component.CardTheme;
+        var layout = new CanvasStackLayout(Component.State.Specs, theme);
+        var visible = 0;
+        for (var i = 0; i < layout.Cards.Length; i++)
+        {
+            var bounds = CardBody(layout.Cards[i]);
+            bounds.Inflate((float)(theme.ShadowExtent + 1), (float)(theme.ShadowExtent + 1));
+            if (_canvas is null || _canvas.Viewport.IsVisible(ref bounds)) visible |= 1 << i;
+        }
+        return new(Component.State.Revision, theme, Component.BodySize, _scale, visible);
+    }
     internal void Regenerate()
     {
         ConduitPlus.Rhino.OverlayManager.Start();
@@ -206,11 +243,11 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         if (Disabled || Component.State.Specs.Length == 0 || DesiredKey() is not { } key || key == _failed || Frame?.Key == key) return;
         try
         {
-            CanvasCardCache.Reserve(this, key.Raster.Bytes);
-            var bitmap = RasterDrawing.RenderStack(Component.State.Specs, key.Theme, key.Raster.Scale);
-            CanvasCardFrame next;
-            try { next = new(bitmap, Component.State.Specs, key.Theme, key); }
-            catch { bitmap.Dispose(); throw; }
+            var layout = new CanvasStackLayout(Component.State.Specs, key.Theme);
+            var plans = CanvasStackRaster.Plan(layout, key.Theme, key.Scale);
+            var retained = CanvasStackRaster.RetainedCards(plans, key.VisibleCards, CanvasRasterPlan.DocumentBudget / 2);
+            CanvasCardCache.Reserve(this, retained.Sum(i => plans[i].Bytes));
+            var next = new CanvasCardFrame(Component.State.Specs, key);
             HideTooltip();
             var old = Frame; Frame = next;
             if ((old?.Key.Size ?? Component.BodySize) != next.Key.Size) ExpireLayout();

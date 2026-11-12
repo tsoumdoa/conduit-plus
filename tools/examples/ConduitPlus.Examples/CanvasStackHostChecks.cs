@@ -45,7 +45,7 @@ internal static class CanvasStackHostChecks
         Call(canvas.Attributes, "Regenerate");
         var frame = Get(canvas.Attributes, "Frame");
         using (var expected = RasterDrawing.Render(state.Spec!, Theme.Paper, 1))
-            PixelsEqual(expected, (Bitmap)Get(frame, "Bitmap"));
+            PixelsEqual(expected, ((Bitmap?[])Get(frame, "Bitmaps"))[0]!);
         state.Activate("area"); gh.NewSolution(false);
         Require(Output(canvas).SequenceEqual(["area"]), "Single card selection changed.");
         Export("canvas-single-1x.png");
@@ -65,7 +65,7 @@ internal static class CanvasStackHostChecks
             reopened.Enabled = true; reopened.NewSolution(false);
             var restored = reopened.Objects.OfType<CanvasCardComponent>().Single();
             var restoredState = (CanvasCardState)Get(restored, "State");
-            Require(restored.Params.Input[0].Name == "Cards" && restored.Params.Input[0].InstanceGuid == inputId &&
+            Require(restored.Params.Input[0].Description == canvas.Params.Input[0].Description && restored.Params.Input[0].Name == "Cards" && restored.Params.Input[0].InstanceGuid == inputId &&
                 restored.Params.Input[0].Sources.Single().InstanceGuid == producer.Params.Output[0].InstanceGuid && restoredState.Spec?.Value == "42",
                 "Old Canvas archive lost input identity, wire or card.");
         }
@@ -102,11 +102,37 @@ internal static class CanvasStackHostChecks
         Export("canvas-stack-3cards-2x.png", 2);
         completed.Add("Three-card stack: tree order, own widths, selection union, per-ID sort/scroll, lower-card hit routing/drag cancellation and real GH 1x/2x exports");
 
+        state.Activate(metric.Id, CardMeasure.ClearKey);
+        Set(new GH_ObjectWrapper(metric));
+        Export("canvas-metric-alone-2x.png", 2, true);
+        var tall = table with { MaxRows = 200, Rows = Enumerable.Range(0, 200).Select(i => new TableRow("tall" + i, ["Room " + i, "42"])).ToArray() };
+        Set([new GH_ObjectWrapper(metric), .. Enumerable.Range(0, 11).Select(i => (IGH_Goo)new GH_ObjectWrapper(tall with { Id = "tall" + i }))]);
+        canvas.Attributes.GetType().GetField("_scale", Internal)!.SetValue(canvas.Attributes, 2d);
+        Call(canvas.Attributes, "Regenerate");
+        frame = Get(canvas.Attributes, "Frame");
+        var bitmaps = (Bitmap?[])Get(frame, "Bitmaps");
+        var rasters = (CanvasRasterPlan[])Get(frame, "Rasters");
+        Require(bitmaps.Length == 12 && rasters[0].Scale == 2, "Tall siblings reduced small card density at zoom 2.");
+        using (var expected = RasterDrawing.Render(state.Specs[0], Theme.Paper, 2)) PixelsEqual(expected, bitmaps[0]!);
+        Require(bitmaps.OfType<Bitmap>().All(b => b.Width <= 4096 && b.Height <= 4096 && (long)b.Width * b.Height * 4 <= CanvasRasterPlan.BitmapBudget) &&
+            (long)Get(frame, "Bytes") == bitmaps.OfType<Bitmap>().Sum(b => (long)b.Width * b.Height * 4) && (long)Get(frame, "Bytes") <= CanvasRasterPlan.DocumentBudget / 2,
+            "Per-card surfaces or document accounting exceed bounds.");
+        Export("canvas-tall-stack-metric-1x.png", 1, true);
+        Export("canvas-tall-stack-metric-2x.png", 2, true);
+        // Rounded transparent corners reveal different component capsule sizes; compare the painted content.
+        using (var alone = new Bitmap(Path.Combine(output, "canvas-metric-alone-2x.png")))
+        using (var stacked = new Bitmap(Path.Combine(output, "canvas-tall-stack-metric-2x.png")))
+            PixelsEqual(alone, stacked, 8);
+        completed.Add("12-card tall stack at zoom 2: independent bounded bitmaps, actual byte accounting, full-density Metric pixels; real GH 2x Metric export content equals standalone export");
+
         Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(bar), new GH_ObjectWrapper(bar));
-        Require(state.Specs.Length == 2 && Messages(GH_RuntimeMessageLevel.Warning).Any(m => m.Contains("Duplicate card ID", StringComparison.Ordinal)), "Duplicate must warn and show once.");
+        Require(state.Specs.Length == 2 && Messages(GH_RuntimeMessageLevel.Warning).Contains("Card 'Utilisation' is connected twice; showing it once."), "Duplicate must warn and show once.");
         Set(new GH_ObjectWrapper(metric), new GH_ObjectWrapper(null), new GH_ObjectWrapper(table));
-        Require(state.Specs.Select(c => c.Id).SequenceEqual(["metric", "table"]) && Messages(GH_RuntimeMessageLevel.Warning).Contains("Skipped 1 empty Card items; showing 2. Check upstream components."), "Null must warn and keep valid siblings.");
+        Require(state.Specs.Select(c => c.Id).SequenceEqual(["metric", "table"]) && Messages(GH_RuntimeMessageLevel.Warning).Contains("Showing 2 of 3 cards. 1 is empty because its component has an error."), "Null must warn and keep valid siblings.");
         Set(new GH_ObjectWrapper(null)); Require(state.Specs.Length == 0 && Messages(GH_RuntimeMessageLevel.Warning).Length > 0, "All-null input retained stale content.");
+        Set(new GH_String("foreign"));
+        Require(Messages(GH_RuntimeMessageLevel.Error).Contains("Cards item 0 is text, not a Conduit+ card.") &&
+            (string)Get(canvas, "Placeholder") == "Cards item 0 is text, not a Conduit+ card.", "Wrong-type placeholder must match the error.");
         Set(new GH_ObjectWrapper(metric), new GH_String("foreign"), new GH_ObjectWrapper(table));
         Require(state.Specs.Length == 2 && Messages(GH_RuntimeMessageLevel.Error).Length == 1, "Foreign item must error and keep valid siblings.");
         Set(Enumerable.Range(0, 15).Select(i => (IGH_Goo)new GH_ObjectWrapper(metric with { Id = "metric" + i, Title = "Metric " + i })).ToArray());
@@ -127,13 +153,19 @@ internal static class CanvasStackHostChecks
         Console.WriteLine(string.Join(Environment.NewLine, completed));
         Console.WriteLine("PR F Canvas stack host checks passed.");
 
-        void Export(string name, int scale = 1)
+        void Export(string name, int scale = 1, bool metricOnly = false)
         {
             using var control = new GH_Canvas(); control.Document = gh;
             try
             {
                 canvas.Attributes.ExpireLayout(); canvas.Attributes.PerformLayout();
                 var bounds = Rectangle.Ceiling(canvas.Attributes.Bounds); bounds.Inflate(40, 40);
+                if (metricOnly)
+                {
+                    var body = (RectangleF)canvas.Attributes.GetType().GetField("_body", Internal)!.GetValue(canvas.Attributes)!;
+                    var size = CardMeasure.Measure(metric, Theme.Paper);
+                    bounds = Rectangle.Ceiling(new RectangleF(body.X, body.Y, (float)size.Width, (float)size.Height));
+                }
                 var viewport = new GH_Viewport(control.Viewport) { Width = bounds.Width * scale, Height = bounds.Height * scale, Zoom = scale, Tx = -bounds.X * scale, Ty = -bounds.Y * scale };
                 using var image = control.GenerateHiResImageTile(viewport, Color.White);
                 image.Save(Path.Combine(output, name), ImageFormat.Png);
@@ -145,10 +177,10 @@ internal static class CanvasStackHostChecks
     private static object Get(object obj, string name) => obj.GetType().GetProperty(name, Internal)?.GetValue(obj) ?? throw new InvalidOperationException("Missing " + name);
     private static object? Call(object obj, string name, params object?[] args) => obj.GetType().GetMethod(name, Internal)!.Invoke(obj, args);
     private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-    private static void PixelsEqual(Bitmap a, Bitmap b)
+    private static void PixelsEqual(Bitmap a, Bitmap b, int inset = 0)
     {
         Require(a.Size == b.Size, "Single-card bitmap size changed.");
-        for (var y = 0; y < a.Height; y++)
-            for (var x = 0; x < a.Width; x++) Require(a.GetPixel(x, y) == b.GetPixel(x, y), "Single-card pixels changed.");
+        for (var y = inset; y < a.Height - inset; y++)
+            for (var x = inset; x < a.Width - inset; x++) Require(a.GetPixel(x, y) == b.GetPixel(x, y), "Card pixels changed.");
     }
 }

@@ -157,7 +157,7 @@ public sealed class GroupPresentationTests
         state.Hover("R1"); Assert.Equal(1, state.Spec!.GroupStates["bedrooms"].HoveredMemberCount);
         state.Activate("R1"); Assert.True(state.Spec!.GroupStates["bedrooms"].IsPartiallySelected);
         state.Activate("bedrooms"); Assert.True(state.Spec!.GroupStates["bedrooms"].IsFullySelected);
-        Assert.Contains("2 of 2 selected", state.TooltipFor("bedrooms")!);
+        Assert.Contains("2 of 2 selected", Tooltip.For(state.Spec!, "bedrooms", state.Membership)!);
         state.Activate(CardMeasure.ClearKey); Assert.False(state.Spec!.OwnerHasSelection);
         var brush = new BrushState(); brush.Prune([Group(CardKind.Legend)], []);
         Assert.Equal(new[] { "R1", "Group: Bedrooms" }, Tooltip.WithMemberGroups(["R1"], brush.Current.Membership, "R1"));

@@ -41,18 +41,36 @@ public readonly record struct CanvasRasterPlan(double Scale, int Width, int Heig
     }
 }
 
-public sealed record CanvasFrameKey(string Id, long Revision, Theme Theme, Size2 Size, CanvasRasterPlan Raster);
+public sealed record CanvasStackFrameKey(long Revision, Theme Theme, Size2 Size, double Scale, int VisibleCards);
+
+/// <summary>Each card has its own bounds. Document pressure changes retention, never raster density.</summary>
+public static class CanvasStackRaster
+{
+    public static CanvasRasterPlan[] Plan(CanvasStackLayout layout, Theme theme, double scale) => layout.Cards
+        .Select(card => CanvasRasterPlan.Create(new(card.W, card.H), scale,
+            margin: theme.Shadow ? theme.ShadowExtent + 1 : 0)).ToArray();
+
+    public static int[] RetainedCards(IReadOnlyList<CanvasRasterPlan> plans, int visibleCards, long budget)
+    {
+        if (budget < 0 || budget > CanvasRasterPlan.DocumentBudget / 2) throw new ArgumentOutOfRangeException(nameof(budget));
+        var retained = new List<int>();
+        // Visible cards first; spare capacity may retain offscreen neighbours for smooth navigation.
+        foreach (var i in Enumerable.Range(0, plans.Count).OrderByDescending(i => (visibleCards & (1 << i)) != 0))
+        {
+            if (plans[i].Bytes > budget) continue;
+            budget -= plans[i].Bytes; retained.Add(i);
+        }
+        return retained.ToArray();
+    }
+}
 
 public sealed record CanvasCacheEntry(string Id, long Bytes, long LastVisible);
 public static class CanvasCacheBudget
 {
-    /// <summary>Share capacity among visible cards, leaving space for one atomic replacement.</summary>
-    public static long PerVisibleCard(int count) => Math.Min(CanvasRasterPlan.BitmapBudget,
-        CanvasRasterPlan.DocumentBudget / (Math.Max(1L, count) + 1));
     /// <summary>Account for both the old frame and its replacement until atomic publication succeeds.</summary>
     public static string[] Evictions(IReadOnlyList<CanvasCacheEntry> entries, string owner, long allocation)
     {
-        if (allocation < 0 || allocation > CanvasRasterPlan.BitmapBudget) throw new ArgumentOutOfRangeException(nameof(allocation));
+        if (allocation < 0 || allocation > CanvasRasterPlan.DocumentBudget / 2) throw new ArgumentOutOfRangeException(nameof(allocation));
         var total = entries.Sum(e => e.Bytes);
         var evictions = new List<string>();
         foreach (var entry in entries.Where(e => e.Id != owner).OrderBy(e => e.LastVisible))
@@ -131,7 +149,6 @@ public sealed class CanvasCardState
     // Single-card API retained for existing adapters and fixtures.
     public CardSpec? Spec => Specs.FirstOrDefault();
     public MembershipIndex Membership => Current.Membership;
-    public string[]? TooltipFor(string key) => Spec is null ? null : Tooltip.For(Spec, key, Membership);
     public void Replace(CardSpec? source) => ReplaceCards(source is null ? [] : [source]);
     public void ReplaceCards(IReadOnlyList<CardSpec> sources)
     {

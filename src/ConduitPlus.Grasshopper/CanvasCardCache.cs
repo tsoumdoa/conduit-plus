@@ -42,19 +42,15 @@ internal static class CanvasCardCache
             if (!entry.Pending) continue;
             if (!entry.Visible) { entry.Pending = false; continue; }
             if (now < entry.SettleAt) { Queued.Add(entry, QueueEntries.AddLast(entry)); continue; }
-            // One card per tick bounds repaint work without starving the UI during large documents.
+            // One component per tick bounds repaint work without starving the UI during large documents.
             entry.Regenerate();
             return;
         }
         if (QueueEntries.Count == 0 && !Entries.Any(e => e.HasGesture)) _timer?.Stop();
     }
-    internal static long BitmapBudget(CanvasCardAttributes owner)
-    {
-        var document = owner.Component.OnPingDocument();
-        return CanvasCacheBudget.PerVisibleCard(Entries.Count(e => ReferenceEquals(e.Component.OnPingDocument(), document) && e.Visible));
-    }
     internal static void Reserve(CanvasCardAttributes owner, long bytes)
     {
+        Register(owner);
         var document = owner.Component.OnPingDocument();
         var entries = Entries.Where(e => ReferenceEquals(e.Component.OnPingDocument(), document)).ToArray();
         var evict = CanvasCacheBudget.Evictions(entries.Where(e => e.Frame is not null).Select(e =>
@@ -63,13 +59,26 @@ internal static class CanvasCardCache
     }
 }
 
-internal sealed class CanvasCardFrame(Bitmap bitmap, CardSpec[] specs, Theme theme, CanvasFrameKey key) : IDisposable
+internal sealed class CanvasCardFrame : IDisposable
 {
-    internal Bitmap Bitmap { get; } = bitmap;
-    internal CardSpec[] Specs { get; } = specs;
-    internal CanvasStackLayout Layout { get; } = new(specs, theme);
-    internal Theme Theme { get; } = theme;
-    internal CanvasFrameKey Key { get; } = key;
-    internal long Bytes => (long)Bitmap.Width * Bitmap.Height * 4;
-    public void Dispose() => Bitmap.Dispose();
+    internal Bitmap?[] Bitmaps { get; }
+    internal CanvasRasterPlan[] Rasters { get; }
+    internal CardSpec[] Specs { get; }
+    internal CanvasStackLayout Layout { get; }
+    internal Theme Theme => Key.Theme;
+    internal CanvasStackFrameKey Key { get; }
+    internal long Bytes => Bitmaps.Sum(b => b is null ? 0 : (long)b.Width * b.Height * 4);
+    internal CanvasCardFrame(CardSpec[] specs, CanvasStackFrameKey key)
+    {
+        Specs = specs; Key = key; Layout = new(specs, key.Theme);
+        Rasters = CanvasStackRaster.Plan(Layout, key.Theme, key.Scale);
+        Bitmaps = new Bitmap?[specs.Length];
+        try
+        {
+            foreach (var i in CanvasStackRaster.RetainedCards(Rasters, key.VisibleCards, CanvasRasterPlan.DocumentBudget / 2))
+                Bitmaps[i] = ConduitPlus.Rendering.RasterDrawing.Render(specs[i], key.Theme, Rasters[i].Scale);
+        }
+        catch { Dispose(); throw; }
+    }
+    public void Dispose() { foreach (var bitmap in Bitmaps) bitmap?.Dispose(); }
 }
