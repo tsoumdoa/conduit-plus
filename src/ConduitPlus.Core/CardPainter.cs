@@ -75,16 +75,19 @@ public static class CardPainter
             var hasThreshold = BarPresentation.UsesThreshold(c);
             var within = hasThreshold && c.GoodWhen == BarGoodWhen.Within;
             var signed = within || c.Values.Any(v => v < 0);
+            const int axisWidth = 2;
+            // Integer strip edges remain crisp at 1x/2x; bars share the snapped centre.
+            double AxisCenter(double x) => Math.Round(x - axisWidth / 2.0) + axisWidth / 2.0;
             if (within && hits.Length > 0)
             {
                 foreach (var hit in hits) Highlight(canvas, c, t, hit);
                 var first = hits[0]; var last = hits[^1];
                 var axis = first.X + labelWidth;
                 var spanWidth = (first.W - labelWidth - layout.ValueWidth) / 2;
-                var center = axis + spanWidth;
+                var center = AxisCenter(axis + spanWidth);
                 var tolerance = c.Threshold / max * spanWidth;
                 canvas.Rect(new(center - tolerance, first.Y, 2 * tolerance, last.Y + last.H - first.Y), t.ToleranceBand);
-                canvas.Line(new(center, first.Y), new(center, last.Y + last.H), t.ToleranceCenterLine ?? t.Line);
+                canvas.Rect(new(center - axisWidth / 2.0, first.Y, axisWidth, last.Y + last.H - first.Y), t.Axis);
             }
             for (var i = 0; i < hits.Length; i++)
             {
@@ -96,7 +99,7 @@ public static class CardPainter
                 if (!within) canvas.Rect(new(x, y, w, 8), t.Track);
                 var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
-                var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
+                var origin = within ? AxisCenter(x + w / 2) : signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
                 var toleranceWidth = c.Threshold / max * span;
                 if (value is { } v)
                 {
