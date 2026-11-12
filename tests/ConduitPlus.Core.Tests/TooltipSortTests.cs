@@ -88,13 +88,16 @@ public sealed class TooltipSortTests
         Assert.Equal(1, other.SortColumn); Assert.False(other.SortDescending);
     }
     [Fact]
-    public void NumericSortUsesInvariantParsingIncludingExponentAndThousands()
+    public void NumericSortUsesTheSameStrictInvariantGrammarAsFormatting()
     {
         var culture = CultureInfo.CurrentCulture;
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-            Assert.Equal(new[] { "r2", "r3", "r0", "r1" }, TableSort.Rows(Table("1,000", "2e3", "1.5", "20")).Select(r => r.Key));
+            Assert.Equal(new[] { "r2", "r3", "r0", "r1" }, TableSort.Rows(Table("1000", "2e3", "1.5", "20")).Select(r => r.Key));
+            Assert.Equal(new[] { "r1", "r0" }, TableSort.Rows(Table("−4.0", "-10")).Select(r => r.Key));
+            // Comma text is compared as text, never rewritten/interpreted as 123 or 1234.
+            Assert.Equal(new[] { "r0", "r1", "r2" }, TableSort.Rows(Table("1,23", "1,234", "2")).Select(r => r.Key));
         }
         finally { CultureInfo.CurrentCulture = culture; }
     }

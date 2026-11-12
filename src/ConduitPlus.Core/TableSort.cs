@@ -9,8 +9,7 @@ public static class TableSort
     public static int? Column(string key) => key.StartsWith(Prefix, StringComparison.Ordinal) &&
         int.TryParse(key.AsSpan(Prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var col) ? col : null;
     public static HitRegion[] Headers(CardSpec c, Theme t) => c.Kind != CardKind.Table ? [] :
-        TablePresentation.Columns(c, t).Select((column, i) => new HitRegion(Key(i), column.X,
-            CardMeasure.BodyTop, column.Width, t.RowHeight)).ToArray();
+        TablePresentation.Layout(c, t).Headers;
     public static CardSpec Cycle(CardSpec c, int column) => c with
     {
         SortColumn = c.SortColumn == column && c.SortDescending ? null : column,
@@ -25,8 +24,7 @@ public static class TableSort
         {
             var emptyA = string.IsNullOrEmpty(a); var emptyB = string.IsNullOrEmpty(b);
             if (emptyA || emptyB) return emptyA == emptyB ? 0 : emptyA ? 1 : -1;
-            var comparison = double.TryParse(a, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var x) &&
-                double.TryParse(b, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var y)
+            var comparison = TablePresentation.TryNumber(a, out var x) && TablePresentation.TryNumber(b, out var y)
                 ? x.CompareTo(y) : StringComparer.OrdinalIgnoreCase.Compare(a, b);
             return c.SortDescending ? -comparison : comparison;
         }

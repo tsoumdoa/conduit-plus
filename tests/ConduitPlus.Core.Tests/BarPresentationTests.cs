@@ -110,8 +110,8 @@ public sealed class BarPresentationTests
         Assert.Equal(1, BarPresentation.Precision([1.1, 1.2]));
         Assert.Equal(2, BarPresentation.Precision([1.11, 1.12]));
         Assert.Equal("−4.25", MetricFormatting.Format("-4.25"));
-        Assert.Equal("−4.2", MetricFormatting.Format("-4.25", 1));
-        Assert.Equal("0", MetricFormatting.Format("-0.0001", 2));
+        Assert.Equal("−4.3", MetricFormatting.Format("-4.25", 1));
+        Assert.Equal("0.00", MetricFormatting.Format("-0.0001", 2));
         Assert.Equal("pre-design", MetricFormatting.Format("pre-design"));
     }
 

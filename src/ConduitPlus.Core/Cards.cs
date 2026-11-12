@@ -270,6 +270,13 @@ public sealed class CardStore
             var content = CardJson.Serialize(input with { Rev = 0 });
             if (!themeChanged && _cards.TryGetValue(input.Id, out var old) && old.Content == content) continue;
             var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision };
+            // Reuse owned table data across interaction/theme snapshots. Compare values, never
+            // caller array identity: callers may mutate an existing array before Update.
+            if (_cards.TryGetValue(input.Id, out var previous) && snapshot.Kind == CardKind.Table &&
+                previous.Spec.Kind == CardKind.Table && snapshot.Headers.SequenceEqual(previous.Spec.Headers) &&
+                snapshot.Rows.Length == previous.Spec.Rows.Length && snapshot.Rows.Zip(previous.Spec.Rows).All(pair =>
+                    pair.First.Key == pair.Second.Key && pair.First.Cells.SequenceEqual(pair.Second.Cells)))
+                snapshot = snapshot with { Headers = previous.Spec.Headers, Rows = previous.Spec.Rows };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
         }

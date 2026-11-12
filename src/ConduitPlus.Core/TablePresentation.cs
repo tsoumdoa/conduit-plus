@@ -1,14 +1,23 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace ConduitPlus.Core;
 
 public sealed record TableColumn(double X, double Width, bool Numeric);
 
 /// <summary>Display-only formatting and content-fit geometry shared by painting and header hits.</summary>
-public static class TablePresentation
+public static partial class TablePresentation
 {
-    public static bool TryNumber(string? text, out double value) =>
-        double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
+    // Saved text has one meaning on every machine. Grouping, whitespace and units remain text.
+    [GeneratedRegex(@"\A[+\-−]?[0-9]+(?:\.[0-9]+)?(?:[eE][+\-−]?[0-9]+)?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex NumberPattern();
+    public static bool TryNumber(string? text, out double value)
+    {
+        value = 0;
+        return text is not null && NumberPattern().IsMatch(text) &&
+            double.TryParse(text.Replace('−', '-'), NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
+    }
 
     public static void ValidateDecimals(int? decimals)
     {
@@ -19,33 +28,158 @@ public static class TablePresentation
     {
         ValidateDecimals(decimals);
         if (decimals is not { } d || !TryNumber(text, out var value)) return text ?? "—";
-        var formatted = value.ToString("F" + d.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-        // Test the rounded display, so this uses exactly the formatter's rounding at midpoint values.
-        if (formatted.StartsWith('-') && TryNumber(formatted, out var rounded) && rounded == 0) return "0";
-        return formatted.Replace('-', '−');
+        return NumericFormatting.Fixed(value, d).Replace('-', '−');
     }
 
-    public static TableColumn[] Columns(CardSpec c, Theme t)
+    // CardStore carries its owned arrays across snapshots when authored table content is equal.
+    // Weak ownership releases all measurements with the content, rather than retaining old revisions.
+    private static readonly ConditionalWeakTable<TableRow[], ConditionalWeakTable<string[], ContentCache>> Cache = new();
+    private sealed record ContentKey(int? Decimals, string Font, double FontSize,
+        Func<string, double, string, Size2> Measure);
+    private sealed class ContentCache
     {
-        if (c.Headers.Length == 0) return [];
-        var count = c.Headers.Length;
-        var available = c.Width - 2 * t.Padding;
-        double Measure(string text) => TextMetrics.Measurer(text, t.FontSize, t.Font).Width;
-        // Always reserve the sort glyph so cycling sort never moves column boundaries.
-        var desired = Enumerable.Range(0, count).Select(i => Math.Max(Measure(c.Headers[i]) + 28,
-            c.Rows.Select(r => Measure(Format(r.Cells[i], c.Decimals)) + 12).DefaultIfEmpty(0).Max())).ToArray();
-        var minimum = Math.Min(32, available / count);
-        var total = desired.Sum();
-        var flexible = desired.Sum(w => Math.Max(0, w - minimum));
-        var widths = total <= available
-            ? desired.Select(w => w + (available - total) * w / total).ToArray()
-            : desired.Select(w => minimum + (available - minimum * count) * Math.Max(0, w - minimum) / flexible).ToArray();
-        var x = t.Padding;
-        return widths.Select((w, i) =>
+        public Dictionary<ContentKey, Content> Entries { get; } = [];
+    }
+
+    public static TableColumn[] Columns(CardSpec c, Theme t) => Layout(c, t).Columns;
+
+    internal static TableLayout Layout(CardSpec c, Theme t)
+    {
+        // Empty tables can share Array.Empty<TableRow>(); headers must have weak ownership too.
+        var cache = Cache.GetValue(c.Rows, _ => new()).GetValue(c.Headers, _ => new());
+        lock (cache)
         {
-            var column = new TableColumn(x, w, c.Rows.Length > 0 && c.Rows.All(r => TryNumber(r.Cells[i], out _)));
-            x += w;
-            return column;
-        }).ToArray();
+            var key = new ContentKey(c.Decimals, t.Font, t.FontSize, TextMetrics.Measurer);
+            if (!cache.Entries.TryGetValue(key, out var content)) cache.Entries.Add(key, content = new(c, t, key.Measure));
+            return content.Layout(c.Width, t.Padding, t.RowHeight);
+        }
+    }
+
+    internal sealed class Content
+    {
+        private const int WidthSampleRows = 128;
+        private readonly string[] headers;
+        private readonly double[] desired;
+        private readonly bool[] numeric;
+        private readonly Dictionary<TableRow, string[]> cells = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, double> measured = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string Text, double Width), FittedCell> fitted = [];
+        private readonly Dictionary<(double Width, double Padding, double RowHeight), TableLayout> layouts = [];
+        private readonly Func<string, double> measure;
+
+        public Content(CardSpec c, Theme t, Func<string, double, string, Size2> measurer)
+        {
+            headers = c.Headers;
+            measure = text => measurer(text, t.FontSize, t.Font).Width;
+            desired = headers.Select(h => Measure(h) + 12).ToArray();
+            numeric = Enumerable.Repeat(c.Rows.Length > 0, headers.Length).ToArray();
+            foreach (var row in c.Rows)
+                for (var col = 0; col < headers.Length; col++) numeric[col] &= TryNumber(row.Cells[col], out _);
+            var precision = Enumerable.Repeat(c.Decimals, headers.Length).ToArray();
+            if (c.Decimals is null)
+                for (var col = 0; col < headers.Length; col++)
+                    if (numeric[col])
+                    {
+                        var values = c.Rows.Select(r => { TryNumber(r.Cells[col], out var v); return v; }).ToArray();
+                        if (values.Any(v => Math.Round(v, 2, MidpointRounding.AwayFromZero) != v))
+                            precision[col] = NumericFormatting.AutomaticDecimals(values);
+                    }
+            var longest = new string[headers.Length];
+            var formatted = new Dictionary<(string Raw, int? Decimals), string>();
+            foreach (var row in c.Rows)
+            {
+                var display = new string[headers.Length];
+                for (var col = 0; col < headers.Length; col++)
+                {
+                    var raw = row.Cells[col];
+                    if (raw is null) display[col] = "—";
+                    else
+                    {
+                        var key = (raw, precision[col]);
+                        if (!formatted.TryGetValue(key, out var text)) formatted.Add(key, text = Format(raw, precision[col]));
+                        display[col] = text;
+                    }
+                    if (longest[col] is null || display[col].Length > longest[col].Length) longest[col] = display[col];
+                }
+                cells[row] = display;
+            }
+            for (var col = 0; col < headers.Length; col++)
+                if (longest[col] is { } text) desired[col] = Math.Max(desired[col], Measure(text) + 12);
+            // Evenly sample the full schedule (including its last row); offscreen text still
+            // participates in numeric classification. Also measure each column's longest display
+            // string so an outlier between sample rows gets space without thousands of GDI calls.
+            var sample = Math.Min(WidthSampleRows, c.Rows.Length);
+            for (var i = 0; i < sample; i++)
+            {
+                var row = c.Rows[sample == 1 ? 0 : (int)((long)i * (c.Rows.Length - 1) / (sample - 1))];
+                for (var col = 0; col < headers.Length; col++) desired[col] = Math.Max(desired[col], Measure(cells[row][col]) + 12);
+            }
+        }
+
+        private double Measure(string text)
+        {
+            if (!measured.TryGetValue(text, out var width)) measured.Add(text, width = measure(text));
+            return width;
+        }
+
+        public TableLayout Layout(double width, double padding, double rowHeight)
+        {
+            var key = (width, padding, rowHeight);
+            if (layouts.TryGetValue(key, out var layout)) return layout;
+            var available = width - 2 * padding;
+            var headerWidths = headers.Select(h => Measure(h) + 12).ToArray();
+            var headerTotal = headerWidths.Sum();
+            var minimum = headerTotal <= available ? headerWidths : headerWidths.Select(w => w * available / headerTotal).ToArray();
+            var remaining = Math.Max(0, available - minimum.Sum());
+            var total = desired.Sum();
+            var flexible = desired.Select((w, i) => Math.Max(0, w - minimum[i])).Sum();
+            var widths = total <= available
+                ? desired.Select(w => w + (available - total) * w / total)
+                : desired.Select((w, i) => minimum[i] + (flexible == 0 ? 0 : remaining * Math.Max(0, w - minimum[i]) / flexible));
+            var x = padding;
+            var columns = widths.Select((w, i) =>
+            {
+                var column = new TableColumn(x, w, numeric[i]);
+                x += w;
+                return column;
+            }).ToArray();
+            layouts.Add(key, layout = new(this, columns, columns.Select((col, i) =>
+                new HitRegion(TableSort.Key(i), col.X, CardMeasure.BodyTop, col.Width, rowHeight)).ToArray()));
+            return layout;
+        }
+
+        public string Cell(TableRow row, int col) => cells[row][col];
+
+        public FittedCell Fit(string text, double available)
+        {
+            lock (this)
+            {
+                if (fitted.TryGetValue((text, available), out var result)) return result;
+                var width = Measure(text);
+                if (width <= available) result = new(text, width);
+                else if (Measure("…") > available) result = new("", 0);
+                else
+                {
+                    // Search whole text elements, preserving surrogate pairs and combining marks.
+                    var boundaries = StringInfo.ParseCombiningCharacters(text);
+                    var low = 0; var high = boundaries.Length;
+                    while (low < high)
+                    {
+                        var mid = (low + high + 1) / 2;
+                        var end = mid == boundaries.Length ? text.Length : boundaries[mid];
+                        if (Measure(text[..end] + "…") <= available) low = mid;
+                        else high = mid - 1;
+                    }
+                    var length = low == boundaries.Length ? text.Length : boundaries[low];
+                    var display = text[..length] + "…";
+                    result = new(display, Measure(display));
+                }
+                fitted.Add((text, available), result);
+                return result;
+            }
+        }
     }
 }
+
+internal sealed record FittedCell(string Text, double Width);
+internal sealed record TableLayout(TablePresentation.Content Content, TableColumn[] Columns, HitRegion[] Headers);
