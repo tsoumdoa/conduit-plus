@@ -3,8 +3,12 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
-public sealed class KeyLegendTests
+public sealed class KeyLegendTests : IDisposable
 {
+    private readonly Func<string, double, string, Size2> _original = TextMetrics.Measurer;
+    // Measure and paint with the same provider, independently of which GDI test ran first.
+    public KeyLegendTests() => TextMetrics.Measurer = new RecordingCanvas().MeasureText;
+    public void Dispose() => TextMetrics.Measurer = _original;
     private static CardSpec Legend() => new()
     {
         Id = "key-legend", Kind = CardKind.Legend, Title = "Legend",

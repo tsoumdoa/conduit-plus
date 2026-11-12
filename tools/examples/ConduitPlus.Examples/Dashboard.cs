@@ -34,6 +34,12 @@ internal static class Dashboard
         Register(gha);
         TableHostChecks.Run();
         BarHostChecks.Run();
+        if (args.Contains("--canvas-stack-checks"))
+        {
+            InputTrapChecks.Run();
+            CanvasStackHostChecks.Run(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS") ?? throw new InvalidOperationException("Set CONDUITPLUS_RESULTS."));
+            return;
+        }
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
         InputTrapChecks.Run();

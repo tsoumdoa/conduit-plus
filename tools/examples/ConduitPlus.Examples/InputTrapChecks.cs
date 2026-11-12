@@ -92,7 +92,7 @@ internal static class InputTrapChecks
         var originals = (CardSpec[])typeof(OverlayComponent).GetField("_originals", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(overlay)!;
         Check(originals.Length == 2, "Overlay keeps valid siblings and first duplicate.");
         var canvas = Add(new CanvasCardComponent()); canvas.Params.Input[0].AddSource(legend.Params.Output[0]); Solve(canvas);
-        Check(Has(canvas, GH_RuntimeMessageLevel.Warning, "Card has an error upstream") && (string)typeof(CanvasCardComponent).GetProperty("Placeholder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(canvas)! == "Card has an error upstream", "Canvas upstream error warning/placeholder.");
+        Check(Has(canvas, GH_RuntimeMessageLevel.Warning, "Showing 0 of 1 cards. 1 is empty because its component has an error (Legend).") && (string)typeof(CanvasCardComponent).GetProperty("Placeholder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(canvas)! == "No card received. Check upstream components.", "Canvas upstream error warning/placeholder: " + string.Join("; ", canvas.RuntimeMessages(GH_RuntimeMessageLevel.Warning)) + " / " + typeof(CanvasCardComponent).GetProperty("Placeholder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(canvas));
         input.PersistentData.Clear(); input.ExpireSolution(false); Solve(overlay);
         Check(Has(overlay, GH_RuntimeMessageLevel.Warning, "Showing 0 of 1 cards"), "Connected-empty Overlay solves and removes stale cards.");
         CardSpec[] Published(OverlayComponent c) => (CardSpec[])typeof(OverlayComponent).GetField("_originals", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c)!;
