@@ -42,7 +42,7 @@ internal static class GroupInputChecks
         var max = Add(new Param_Number()); max.PersistentData.Append(new GH_Number(1));
         legend.Params.Input[2].AddSource(min); legend.Params.Input[3].AddSource(max); legend.Params.Input[8].AddSource(members);
         SolveError(legend, "Gradient Legend does not accept Members");
-        Require(bar.Params.Input.Select(p => p.Name).SequenceEqual(new[] { "Values", "Labels", "Keys", "Title", "Threshold", "Slot", "Colors", "Members" }), "Bar input order changed.");
+        Require(bar.Params.Input.Select(p => p.Name).SequenceEqual(new[] { "Values", "Labels", "Keys", "Title", "Threshold", "Slot", "Colors", "Members", "Good when", "Sort", "Visible rows" }), "Bar inputs must retain their original order with PR D appended.");
         Require(metric.Params.Input.Select(p => p.Name).SequenceEqual(new[] { "Value", "Title", "Unit", "Slot", "Decimals", "Key", "Members" }), "Metric input order changed.");
         Require(legend.Params.Input.Select(p => p.Name).SequenceEqual(new[] { "Colors", "Labels", "Min", "Max", "Unit", "Keys", "Title", "Slot", "Members" }), "Legend input order changed.");
         Console.WriteLine("GH group input checks passed: empty/path-ordered branches, wired empty tree, explicit Keys, Metric Key, diagnostics and gradient rejection.");

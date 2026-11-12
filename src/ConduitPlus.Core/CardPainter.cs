@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace ConduitPlus.Core;
 
 public static class CardPainter
@@ -16,7 +14,7 @@ public static class CardPainter
         if (c.Kind == CardKind.Metric && c.Form.Compact)
         {
             foreach (var hit in CardMeasure.DataHits(c, t)) Highlight(canvas, c, t, hit);
-            var value = c.Value ?? "—";
+            var value = NumericText.TrueMinus(c.Value ?? "—");
             var unitSize = canvas.MeasureText(c.Unit, t.FontSize, t.Font);
             var valueSize = canvas.MeasureText(value, 18, t.Font);
             var end = clear is null ? c.Width - t.Padding : clear.X - 8;
@@ -61,7 +59,7 @@ public static class CardPainter
         if (c.Kind == CardKind.Metric)
         {
             foreach (var hit in CardMeasure.DataHits(c, t)) Highlight(canvas, c, t, hit);
-            var value = c.Value ?? "—";
+            var value = NumericText.TrueMinus(c.Value ?? "—");
             canvas.Text(value, new(t.Padding, 36), 28, t.Ink, t.Font);
             var measured = canvas.MeasureText(value, 28, t.Font);
             canvas.Text(c.Unit, new(Math.Min(c.Width - 45, t.Padding + measured.Width + 8), 51), t.FontSize, t.Muted, t.Font);
@@ -71,28 +69,68 @@ public static class CardPainter
         var max = Math.Max(1e-9, Math.Max(c.HasThreshold ? c.Threshold : 0, c.Values.Select(v => Math.Abs(v ?? 0)).DefaultIfEmpty(0).Max()));
         if (c.Kind == CardKind.Bar)
         {
-            var labelWidth = Math.Min((c.Width - 2 * t.Padding - 55) * .55,
-                Math.Max(55, c.Labels.Select(label => canvas.MeasureText(label, t.FontSize, t.Font).Width + 8).DefaultIfEmpty(55).Max()));
+            var layout = BarPresentation.Layout(c, t);
+            var labelWidth = layout.LabelWidth;
+            var order = BarPresentation.Order(c);
+            var hasThreshold = BarPresentation.UsesThreshold(c);
+            var within = hasThreshold && c.GoodWhen == BarGoodWhen.Within;
+            var signed = within || c.Values.Any(v => v < 0);
+            const int axisWidth = 2;
+            // Integer strip edges remain crisp at 1x/2x; bars stop at the strip edges.
+            double AxisCenter(double x) => Math.Round(x - axisWidth / 2.0) + axisWidth / 2.0;
+            if (within && hits.Length > 0)
+            {
+                foreach (var hit in hits) Highlight(canvas, c, t, hit);
+                var first = hits[0]; var last = hits[^1];
+                var axis = first.X + labelWidth;
+                var spanWidth = (first.W - labelWidth - layout.ValueWidth) / 2;
+                var center = AxisCenter(axis + spanWidth);
+                var tolerance = c.Threshold / max * spanWidth;
+                canvas.Rect(new(center - tolerance, first.Y, 2 * tolerance, last.Y + last.H - first.Y), t.ToleranceBand);
+                canvas.Rect(new(center - axisWidth / 2.0, first.Y, axisWidth, last.Y + last.H - first.Y), t.Axis);
+            }
             for (var i = 0; i < hits.Length; i++)
             {
-                var dataIndex = TableScroll.Offset(c) + i;
-                var h = hits[i]; Highlight(canvas, c, t, h);
+                var dataIndex = order[TableScroll.Offset(c) + i];
+                var h = hits[i]; if (!within) Highlight(canvas, c, t, h);
                 using (canvas.Clip(new(h.X, h.Y, labelWidth - 4, h.H)))
                     canvas.Text(c.Labels[dataIndex], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
-                var x = h.X + labelWidth; var w = h.W - labelWidth - 55; var y = h.Y + 7;
-                canvas.Rect(new(x, y, w, 8), t.Track);
+                var x = h.X + labelWidth; var w = h.W - labelWidth - layout.ValueWidth; var y = h.Y + 7;
+                if (!within) canvas.Rect(new(x, y, w, 8), t.Track);
                 var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
-                var signed = c.Values.Any(v => v < 0); var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
-                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), c.Colors.Length > dataIndex ? c.Colors[dataIndex] : !c.HasThreshold ? t.Accent : value > c.Threshold ? t.Bad : t.Good);
-                if (c.HasThreshold) canvas.Line(new(origin + c.Threshold / max * span, y - 2), new(origin + c.Threshold / max * span, y + 10), t.Muted);
-                canvas.Text(value?.ToString("0.00", CultureInfo.InvariantCulture) ?? "—", new(h.X + h.W - 43, h.Y + 2), t.FontSize, t.Ink, t.Font);
+                var origin = within ? AxisCenter(x + w / 2) : signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
+                var toleranceWidth = c.Threshold / max * span;
+                if (value is { } v)
+                {
+                    // Keep the scale endpoints and tolerance split fixed; trim only the
+                    // innermost pixel so neither sign overpaints the two-pixel target strip.
+                    void Segment(double left, double width, string color)
+                    {
+                        var right = left + width;
+                        if (within)
+                        {
+                            if (v < 0) right = Math.Min(right, origin - axisWidth / 2.0);
+                            else left = Math.Max(left, origin + axisWidth / 2.0);
+                        }
+                        if (right > left || !within) canvas.Rect(new(left, y, right - left, 8), color);
+                    }
+                    var length = Math.Abs(v) / max * span;
+                    if (!within || c.Colors.Length > dataIndex)
+                        Segment(v < 0 ? origin - length : origin, length, BarPresentation.Color(c, t, dataIndex));
+                    else
+                    {
+                        var inside = Math.Min(length, toleranceWidth);
+                        Segment(v < 0 ? origin - inside : origin, inside, t.Data);
+                        if (length > toleranceWidth)
+                            Segment(v < 0 ? origin - length : origin + toleranceWidth, length - toleranceWidth, t.Bad);
+                    }
+                }
+                if (hasThreshold && !within) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
+                using (canvas.Clip(new(h.X + h.W - layout.ValueWidth + 6, h.Y, layout.ValueWidth - 6, h.H)))
+                    canvas.Text(layout.Values[dataIndex], new(h.X + h.W - layout.ValueWidths[dataIndex], h.Y + 2), t.FontSize, t.Ink, t.Font);
             }
-            if (TableScroll.Bar(c, t) is { } bar)
-            {
-                canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
-                canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
-            }
+            TableScroll.Paint(canvas, c, t);
         }
         else
         {
@@ -119,11 +157,7 @@ public static class CardPainter
                 for (var col = 0; col < c.Headers.Length; col++)
                     Cell(layout.Content.Cell(rows[offset + row], col), col, h.Y, t.Ink, right: columns[col].Numeric);
             }
-            if (TableScroll.Bar(c, t) is { } bar)
-            {
-                canvas.RoundedRect(bar.Track, TableScroll.BarWidth / 2, t.Track);
-                canvas.RoundedRect(bar.Thumb, TableScroll.BarWidth / 2, t.Muted);
-            }
+            TableScroll.Paint(canvas, c, t);
             void Cell(string text, int col, double y, string color, bool right = false)
             {
                 var column = columns[col];

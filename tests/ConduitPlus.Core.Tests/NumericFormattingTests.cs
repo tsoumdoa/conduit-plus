@@ -33,9 +33,9 @@ public sealed class NumericFormattingTests
     public void TableAndMetricShareAwayFromZeroRounding(string raw, int decimals, string? expected)
     {
         var metric = MetricFormatting.Format(raw, decimals)!;
-        Assert.Equal(metric, NumericFormatting.Fixed(double.Parse(raw, CultureInfo.InvariantCulture), decimals));
+        Assert.Equal(metric, NumericText.TrueMinus(NumericFormatting.Fixed(double.Parse(raw, CultureInfo.InvariantCulture), decimals)));
         Assert.Equal(metric.Replace('-', '−'), TablePresentation.Format(raw, decimals));
-        if (expected is not null) Assert.Equal(expected, metric);
+        if (expected is not null) Assert.Equal(expected.Replace('-', '−'), metric);
         else Assert.EndsWith(".00", metric);
     }
 
@@ -52,6 +52,22 @@ public sealed class NumericFormattingTests
         => Assert.Equal(decimals, NumericFormatting.AutomaticDecimals(values));
 
     [Theory]
+    [InlineData(new double[] { -4, -0.12, 0, 0.34, 12.5 }, 2)]
+    [InlineData(new double[] { 1, 2, 3 }, 0)]
+    [InlineData(new double[] { 0.0012, 0.0034 }, 4)]
+    [InlineData(new double[] { 0, 0.005 }, 2)]
+    [InlineData(new double[] { 1e6, 2.5 }, 1)]
+    [InlineData(new double[] { 0.0049, 12.5 }, 4)]
+    [InlineData(new double[] { -0.0001, 0.34 }, 5)]
+    [InlineData(new double[] { 1e-20, 0 }, 6)]
+    [InlineData(new double[] { 0, 0 }, 0)]
+    [InlineData(new double[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity }, 0)]
+    [InlineData(new double[] { double.NaN, -0.12, 0.34 }, 2)]
+    [InlineData(new double[] { }, 0)]
+    public void ColumnPrecisionPreservesRoundedDigitsAndExtendsOnlyWhenNonzeroValuesDisappear(double[] values, int decimals)
+        => Assert.Equal(decimals, NumericFormatting.ColumnDecimals(values));
+
+    [Theory]
     [InlineData("9007199254740993", 0, "9007199254740993")]
     [InlineData("1234567890123456.125", 2, "1234567890123456.13")]
     [InlineData("−1234567890123456.125", 2, "−1234567890123456.13")]
@@ -62,10 +78,10 @@ public sealed class NumericFormattingTests
 
     [Theory]
     [InlineData("72057594037927936", 0, "72057594037927936")]
-    [InlineData("-72057594037927936", 0, "-72057594037927936")]
+    [InlineData("-72057594037927936", 0, "−72057594037927936")]
     [InlineData("9007199254740993", 0, "9007199254740993")]
     [InlineData("1,234.5", 0, "1235")]
-    [InlineData("-1,234.5", 0, "-1235")]
+    [InlineData("-1,234.5", 0, "−1235")]
     [InlineData("2.5", 0, "3")]
     public void MetricKeepsSourceDigits(string raw, int decimals, string expected)
         => Assert.Equal(expected, MetricFormatting.Format(raw, decimals));

@@ -33,6 +33,7 @@ internal static class Dashboard
         var gha = typeof(ConduitPlus.Grasshopper.DemoTrussComponent).Assembly;
         Register(gha);
         TableHostChecks.Run();
+        BarHostChecks.Run();
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
         InputTrapChecks.Run();
@@ -53,7 +54,7 @@ internal static class Dashboard
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
             CheckLegacyBar(reopened);
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, six inputs, unset View and Size and card wires passed; 2 legacy Bar assertions passed (Threshold 1 and M01… keys before/after resave).");
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01… keys and eleven inputs with the new 12-row default passed before/after resave.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);
@@ -110,6 +111,10 @@ internal static class Dashboard
         definition.Enabled = true;
         definition.NewSolution(false);
         var bar = definition.Objects.OfType<ConduitPlus.Grasshopper.BarComponent>().Single();
+        Require(bar.Params.Input.Count == 11 && bar.Params.Input[8] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+            bar.Params.Input[9] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } &&
+            bar.Params.Input[10] is Param_Integer n && n.PersistentData.AllData(true).OfType<GH_Integer>().Single().Value == 12,
+            "Frozen Bar must append unset Good when/Sort and the new 12-row default.");
         var card = bar.Params.Output[0].VolatileData.AllData(true).Select(g => g.ScriptVariable()).OfType<CardSpec>().Single();
         Require(card.Title == "Member utilisation" && card.HasThreshold && card.Threshold == 1 && card.Keys.SequenceEqual(Enumerable.Range(1, 17).Select(i => $"M{i:00}")), $"Frozen legacy Bar: title={card.Title}, threshold={card.Threshold}, hasThreshold={card.HasThreshold}, keys={string.Join(",", card.Keys)}.");
     }

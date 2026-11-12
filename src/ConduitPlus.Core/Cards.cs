@@ -41,6 +41,8 @@ public sealed record CardSpec
     public double Threshold { get; init; } = 1;
     /// <summary>False for a Bar with no supplied threshold; legacy specs retain their threshold.</summary>
     public bool HasThreshold { get; init; } = true;
+    public BarGoodWhen GoodWhen { get; init; }
+    public BarOrder BarSort { get; init; }
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
     /// <summary>Table-only numeric display precision; raw cells and sort values are preserved.</summary>
@@ -50,11 +52,14 @@ public sealed record CardSpec
     public string? HoverKey { get; init; }
     public string[] SelectedKeys { get; init; } = [];
     public bool OwnerHasSelection { get; init; }
-    /// <summary>Table only: rows shown at once; more rows scroll.</summary>
-    public int MaxRows { get; init; } = TableScroll.DefaultVisibleRows;
+    private readonly int? _maxRows;
+    /// <summary>Table and Bar: rows shown at once; Bar also accepts zero for all rows.</summary>
+    public int MaxRows { get => _maxRows ?? (Kind == CardKind.Bar ? BarPresentation.DefaultVisibleRows : TableScroll.DefaultVisibleRows); init => _maxRows = value; }
+    [JsonIgnore]
+    public int RowLimit => Kind == CardKind.Bar && MaxRows == 0 ? int.MaxValue : MaxRows;
     /// <summary>Compact form chosen by the viewport layout. Presentation state, like ScrollOffset.</summary>
     public CardForm Form { get; init; } = CardForm.None;
-    /// <summary>Table only: first visible row. View state owned by the overlay session, clamped when painted.</summary>
+    /// <summary>Table and Bar: first visible row. View state owned by the overlay session, clamped when painted.</summary>
     public int ScrollOffset { get; init; }
     /// <summary>Table only: session-owned display sort; null preserves the incoming row order.</summary>
     public int? SortColumn { get; init; }
@@ -80,7 +85,7 @@ public sealed record CardSpec
         }
         else if (WiredSlot is Slot.Tc or Slot.Bc) throw new ArgumentException("Title-only position.");
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
-        if (!double.IsFinite(Threshold) || Threshold < 0 || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
+        if (!double.IsFinite(Threshold) || (Threshold < 0 && !(Kind == CardKind.Bar && GoodWhen == BarGoodWhen.Within)) || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");
         if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
         if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
@@ -104,26 +109,39 @@ public sealed record CardSpec
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
         if (Kind == CardKind.Table) TablePresentation.ValidateDecimals(Decimals);
         GroupDefinition.Validate(this);
-        if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
+        if (Kind == CardKind.Bar) BarPresentation.Validate(this);
+        else if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }
 }
 
-/// <summary>Scroll geometry for Table cards, shared by painting and hit testing.</summary>
+/// <summary>Scroll geometry for Table and Bar cards, shared by painting and hit testing.</summary>
 public static class TableScroll
 {
     public const int DefaultVisibleRows = 8;
     public const double BarWidth = 6;
-    public static int Visible(CardSpec c) => Math.Min(c.Kind == CardKind.Bar ? c.Values.Length : Math.Min(c.Rows.Length, c.MaxRows), c.Form.VisibleRows ?? int.MaxValue);
+    public static int Visible(CardSpec c) => Math.Min(Math.Min(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length, c.RowLimit), c.Form.VisibleRows ?? int.MaxValue);
     public static int MaxOffset(CardSpec c) => Math.Max(0, (c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length) - Visible(c));
     public static int Offset(CardSpec c) => Math.Clamp(c.ScrollOffset, 0, MaxOffset(c));
     public static bool CanScroll(CardSpec c) => c.Kind is (CardKind.Table or CardKind.Bar) && MaxOffset(c) > 0;
+
+    public static double FooterHeight(CardSpec c, Theme t) => CanScroll(c) ? t.RowHeight : 0;
+    public static string? Footer(CardSpec c) => !CanScroll(c) ? null :
+        $"{Offset(c) + 1}–{Offset(c) + Visible(c)} of {(c.Kind == CardKind.Bar ? c.Values.Length : c.Rows.Length)}";
+    public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
+    {
+        if (Bar(c, t) is not { } bar) return;
+        canvas.RoundedRect(bar.Track, BarWidth / 2, t.Track);
+        canvas.RoundedRect(bar.Thumb, BarWidth / 2, t.Muted);
+        using var clip = canvas.Clip(new(t.Padding, bar.Track.Y + bar.Track.Height + 2, c.Width - 2 * t.Padding, t.RowHeight));
+        canvas.Text(Footer(c)!, new(t.Padding, bar.Track.Y + bar.Track.Height + 4), t.FontSize - 1, t.Muted, t.Font);
+    }
 
     /// <summary>Minimal scroll to reveal a key in the sorted display order. Missing keys leave the offset alone.</summary>
     public static int Reveal(CardSpec c, string key)
     {
         var offset = Offset(c);
         if (c.Kind is not (CardKind.Table or CardKind.Bar)) return offset;
-        var index = c.Kind == CardKind.Bar ? Array.IndexOf(c.Keys, key) : Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
+        var index = c.Kind == CardKind.Bar ? Array.FindIndex(BarPresentation.Order(c), i => c.Keys[i] == key) : Array.FindIndex(TableSort.Rows(c), r => r.Key == key);
         if (index < 0) return offset;
         return Math.Clamp(index < offset ? index : index >= offset + Visible(c) ? index - Visible(c) + 1 : offset, 0, MaxOffset(c));
     }
@@ -156,10 +174,15 @@ public sealed record Theme
     public string Line { get; init; } = "#E3E5E9";
     public string Track { get; init; } = "#EEF0F3";
     public string Accent { get; init; } = "#1F6FD1";
+    public string Data { get; init; } = "#515968";
     public string Bad { get; init; } = "#C2334D";
     public string Good { get; init; } = "#1F8A5B";
     public string Area { get; init; } = "#E5EFFB";
     public string ThresholdBand { get; init; } = "#FCECEF";
+    /// <summary>Translucent neutral Within tolerance zone; preserves row interaction feedback.</summary>
+    public string ToleranceBand { get; init; } = "#00000012";
+    /// <summary>Structural axis below data marks in the visual hierarchy.</summary>
+    public string Axis { get; init; } = "#17191E73";
     public string Highlight { get; init; } = "#DDEAFB";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
@@ -186,8 +209,8 @@ public sealed record Theme
     public static Theme Night { get; } = new()
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
-        Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5",
-        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733",
+        Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5", Data = "#A7AEBB",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#FFFFFF03", Axis = "#E9EAEE32",
         Highlight = "#21364F", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
     // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.
@@ -196,16 +219,16 @@ public sealed record Theme
     public static Theme Smoke { get; } = new()
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
-        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#7DB8FF", Radius = 10,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26",
+        Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#7DB8FF", Data = "#B8BFCC", Radius = 10,
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26", ToleranceBand = "#FFFFFF02", Axis = "#F2F4F832",
         Highlight = "#7DB8FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
         // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
     };
     public static Theme Blueprint { get; } = new()
     {
         Name = "Blueprint", Surface = "#0A2654CC", Ink = "#E6F1FF", Muted = "#8FB4E3",
-        Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Radius = 0,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E",
+        Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Data = "#B5CBE8", Radius = 0,
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E", ToleranceBand = "#8CBEFF06", Axis = "#E6F1FF32",
         Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
         Border = "#8CBEFF73", BorderWidth = 1
     };
@@ -260,6 +283,12 @@ public sealed class CardStore
                 snapshot.Rows.Length == previous.Spec.Rows.Length && snapshot.Rows.Zip(previous.Spec.Rows).All(pair =>
                     pair.First.Key == pair.Second.Key && pair.First.Cells.SequenceEqual(pair.Second.Cells)))
                 snapshot = snapshot with { Headers = previous.Spec.Headers, Rows = previous.Spec.Rows };
+            // Preserve owned bar content for the weak measurement cache across real store
+            // updates (hover, selection, scrolling and sort). Equality still detects mutation.
+            if (_cards.TryGetValue(input.Id, out previous) && snapshot.Kind == CardKind.Bar &&
+                previous.Spec.Kind == CardKind.Bar && snapshot.Values.SequenceEqual(previous.Spec.Values) &&
+                snapshot.Labels.SequenceEqual(previous.Spec.Labels))
+                snapshot = snapshot with { Values = previous.Spec.Values, Labels = previous.Spec.Labels };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
         }

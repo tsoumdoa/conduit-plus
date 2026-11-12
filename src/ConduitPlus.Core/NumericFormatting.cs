@@ -24,11 +24,28 @@ public static class NumericFormatting
         return text.StartsWith('-') && double.Parse(text, CultureInfo.InvariantCulture) == 0 ? text[1..] : text;
     }
 
-    /// <summary>Fewest places from 2–6 retaining two significant digits in every nonzero value, capped at six.</summary>
-    public static int AutomaticDecimals(IEnumerable<double> values)
+    /// <summary>Maximum places needed after rounding to two decimals and trimming trailing zeros.
+    /// If a nonzero value disappears, retain two significant digits throughout, capped at six places.</summary>
+    public static int ColumnDecimals(IEnumerable<double> values)
     {
-        var smallest = values.Where(v => v != 0).Select(Math.Abs).DefaultIfEmpty(double.PositiveInfinity).Min();
-        for (var decimals = 2; decimals < 6; decimals++)
+        var finite = values.Where(double.IsFinite).ToArray();
+        var decimals = finite.Select(value =>
+        {
+            var text = Fixed(value, 2).TrimEnd('0');
+            var dot = text.IndexOf('.');
+            return dot < 0 ? 0 : text.Length - dot - 1;
+        }).DefaultIfEmpty(0).Max();
+        return finite.Any(value => value != 0 && double.Parse(Fixed(value, decimals), CultureInfo.InvariantCulture) == 0)
+            ? SignificantDecimals(finite, decimals) : decimals;
+    }
+
+    /// <summary>Table float-noise policy: at least two places, retaining two significant digits up to six places.</summary>
+    public static int AutomaticDecimals(IEnumerable<double> values) => SignificantDecimals(values, 2);
+
+    private static int SignificantDecimals(IEnumerable<double> values, int minimum)
+    {
+        var smallest = values.Where(v => double.IsFinite(v) && v != 0).Select(Math.Abs).DefaultIfEmpty(double.PositiveInfinity).Min();
+        for (var decimals = minimum; decimals < 6; decimals++)
             if (smallest >= Math.Pow(10, 1 - decimals)) return decimals;
         return 6;
     }
