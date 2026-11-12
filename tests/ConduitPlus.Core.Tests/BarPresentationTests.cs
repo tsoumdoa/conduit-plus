@@ -68,12 +68,12 @@ public sealed class BarPresentationTests
         Assert.Equal(new[] { 4, 6, 7, 2, 3, 0, 5, 1, 8 }, BarPresentation.Order(c with { BarSort = BarOrder.BestFirst }));
         Assert.Equal(BarPresentation.Order(c), BarPresentation.Order(c with { HasThreshold = false }));
         Assert.Equal(Enumerable.Range(0, 9), BarPresentation.Order(c with { BarSort = BarOrder.Original }));
-        Assert.Equal(new[] { "Row 1", "−7", "140% of threshold", "Within: good when −Threshold ≤ value ≤ Threshold", "k0" }, Tooltip.For(c, "k0"));
+        Assert.Equal(new[] { "Row 1", "−7", "140% of threshold", "Within: bars are neutral; only the part beyond the tolerance is red (−Threshold ≤ value ≤ Threshold).", "k0" }, Tooltip.For(c, "k0"));
     }
 
     [Theory]
     [InlineData("Paper")] [InlineData("Night")] [InlineData("Smoke")] [InlineData("Blueprint")]
-    public void WithinPaintsBandBehindBarsBetweenBothMarkersOnASignedTrack(string name)
+    public void WithinPaintsOneCorridorAndCenterWithoutTracks(string name)
     {
         Theme.TryGet(name, out var theme);
         // Both bounds must fit even when data is one-sided, inside the tolerance, or entirely missing.
@@ -81,30 +81,56 @@ public sealed class BarPresentationTests
         {
             var c = Bar(values) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
             var canvas = new Commands(); CardPainter.Paint(canvas, c, theme);
-            var tracks = canvas.Rects.Where(r => r.Fill == theme.Track && r.Rect.Height == 8).ToArray();
-            var bands = canvas.Rects.Where(r => r.Fill == (theme.ToleranceBand ?? theme.Line) && r.Rect.Height == 12).ToArray();
-            Assert.Equal(values.Length, bands.Length);
-            Assert.Equal(2 * values.Length, canvas.Lines.Count);
-            var max = Math.Max(5, values.Select(v => Math.Abs(v ?? 0)).Max());
-            for (var i = 0; i < values.Length; i++)
-            {
-                var track = tracks[i].Rect; var band = bands[i].Rect;
-                var halfBand = track.Width / 2 * 5 / max;
-                Assert.Equal(track.X + track.Width / 2 - halfBand, band.X, 6);
-                Assert.Equal(halfBand * 2, band.Width, 6);
-                Assert.Equal(track.Y - 2, band.Y); Assert.Equal(12, band.Height);
-                Assert.True(band.X >= track.X - 1e-9 && band.X + band.Width <= track.X + track.Width + 1e-9);
-                var markers = canvas.Lines.Skip(i * 2).Take(2).OrderBy(l => l.From.X).ToArray();
-                Assert.Equal(band.X, markers[0].From.X, 6);
-                Assert.Equal(band.X + band.Width, markers[1].From.X, 6);
-                Assert.All(markers, m => { Assert.Equal(m.From.X, m.To.X); Assert.Equal(band.Y, m.From.Y); Assert.Equal(band.Y + band.Height, m.To.Y); Assert.Equal(theme.Muted, m.Color); });
-                if (values[i] is { } value)
-                {
-                    var fill = canvas.Rects.Single(r => r.Rect.Y == track.Y && r.Fill == (Math.Abs(value) <= 5 ? theme.Good : theme.Bad));
-                    Assert.True(canvas.Rects.IndexOf(bands[i]) < canvas.Rects.IndexOf(fill));
-                }
-            }
+            Assert.DoesNotContain(canvas.Rects, r => r.Fill == theme.Track && r.Rect.Height == 8);
+            var band = Assert.Single(canvas.Rects, r => r.Fill == (theme.ToleranceBand ?? "#00000012"));
+            var hits = CardMeasure.DataHits(c, theme);
+            Assert.Equal(hits[0].Y, band.Rect.Y);
+            Assert.Equal(hits[^1].Y + hits[^1].H - hits[0].Y, band.Rect.Height);
+            Assert.Single(canvas.Lines);
+
         }
+    }
+
+    [Theory]
+    [InlineData(-9)] [InlineData(-5)] [InlineData(0)] [InlineData(5)] [InlineData(9)]
+    public void WithinSplitsExactlyAtTolerance(double value)
+    {
+        var c = Bar(value) with { GoodWhen = BarGoodWhen.Within, Threshold = 5 };
+        var t = Theme.Paper; var canvas = new Commands(); CardPainter.Paint(canvas, c, t);
+        var h = CardMeasure.DataHits(c, t)[0]; var layout = BarPresentation.Layout(c, t);
+        var span = (h.W - layout.LabelWidth - layout.ValueWidth) / 2;
+        var origin = h.X + layout.LabelWidth + span;
+        var scale = span / Math.Max(5, Math.Abs(value));
+        var inside = Assert.Single(canvas.Rects, r => r.Fill == t.Data);
+        Assert.Equal(Math.Min(5, Math.Abs(value)) * scale, inside.Rect.Width, 6);
+        Assert.Equal(value < 0 ? origin - inside.Rect.Width : origin, inside.Rect.X, 6);
+        var bad = canvas.Rects.Where(r => r.Fill == t.Bad).ToArray();
+        if (Math.Abs(value) <= 5) Assert.Empty(bad);
+        else
+        {
+            var outside = Assert.Single(bad).Rect;
+            Assert.Equal((Math.Abs(value) - 5) * scale, outside.Width, 6);
+            Assert.Equal(value < 0 ? origin - Math.Abs(value) * scale : origin + 5 * scale, outside.X, 6);
+        }
+    }
+
+    [Fact]
+    public void WithinCorridorSpansOnlyVisibleRowsAndSignsArePainted()
+    {
+        var c = Bar(1, 9, -7, 0, 2) with { GoodWhen = BarGoodWhen.Within, Threshold = 5, MaxRows = 3, ScrollOffset = 1 };
+        var t = Theme.Paper; var canvas = new Commands(); CardPainter.Paint(canvas, c, t);
+        var hits = CardMeasure.DataHits(c, t);
+        var band = Assert.Single(canvas.Rects, r => r.Fill == (t.ToleranceBand ?? "#00000012")).Rect;
+        Assert.Equal(hits[0].Y, band.Y);
+        Assert.Equal(hits[^1].Y + hits[^1].H, band.Y + band.Height);
+        Assert.DoesNotContain(canvas.Rects, r => r.Fill == t.Track && r.Rect.Height == 8);
+        Assert.Contains(canvas.Texts, x => x.Text == "+9");
+        Assert.Contains(canvas.Texts, x => x.Text == "\u22127");
+        Assert.Contains(canvas.Texts, x => x.Text == "0");
+        var center = Assert.Single(canvas.Lines);
+        Assert.Equal(band.X + band.Width / 2, center.From.X, 6);
+        Assert.Equal(band.Y, center.From.Y);
+        Assert.Equal(band.Y + band.Height, center.To.Y);
     }
 
     [Fact]

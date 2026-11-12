@@ -45,7 +45,7 @@ public static class Tooltip
         if (c.Kind == CardKind.Bar && value.HasValue && c.HasThreshold && c.Threshold > 0)
             lines.Add(((c.GoodWhen == BarGoodWhen.Within ? Math.Abs(value.Value) : value.Value) / c.Threshold * 100).ToString("0.###", CultureInfo.InvariantCulture) + "% of threshold");
         if (c.Kind == CardKind.Bar && c.GoodWhen == BarGoodWhen.Within)
-            lines.Add(BarPresentation.ThresholdWarning(c) ?? "Within: good when −Threshold ≤ value ≤ Threshold");
+            lines.Add(BarPresentation.ThresholdWarning(c) ?? "Within: bars are neutral; only the part beyond the tolerance is red (−Threshold ≤ value ≤ Threshold).");
         if (c.Kind == CardKind.Bar && !string.IsNullOrEmpty(label) && key != label) lines.Add(key);
         return lines.ToArray();
     }

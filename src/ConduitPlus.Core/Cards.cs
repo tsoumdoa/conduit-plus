@@ -218,7 +218,7 @@ public sealed record Theme
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
         Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#7DB8FF", Data = "#B8BFCC", Radius = 10,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26", ToleranceBand = "#FFFFFF10",
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26", ToleranceBand = "#FFFFFF08",
         Highlight = "#7DB8FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
         // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
     };
@@ -226,7 +226,7 @@ public sealed record Theme
     {
         Name = "Blueprint", Surface = "#0A2654CC", Ink = "#E6F1FF", Muted = "#8FB4E3",
         Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Data = "#B5CBE8", Radius = 0,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E", ToleranceBand = "#8CBEFF1A",
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E", ToleranceBand = "#8CBEFF10",
         Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
         Border = "#8CBEFF73", BorderWidth = 1
     };

@@ -75,22 +75,43 @@ public static class CardPainter
             var hasThreshold = BarPresentation.UsesThreshold(c);
             var within = hasThreshold && c.GoodWhen == BarGoodWhen.Within;
             var signed = within || c.Values.Any(v => v < 0);
+            if (within && hits.Length > 0)
+            {
+                foreach (var hit in hits) Highlight(canvas, c, t, hit);
+                var first = hits[0]; var last = hits[^1];
+                var axis = first.X + labelWidth;
+                var spanWidth = (first.W - labelWidth - layout.ValueWidth) / 2;
+                var center = axis + spanWidth;
+                var tolerance = c.Threshold / max * spanWidth;
+                canvas.Rect(new(center - tolerance, first.Y, 2 * tolerance, last.Y + last.H - first.Y), t.ToleranceBand ?? "#00000012");
+                canvas.Line(new(center, first.Y), new(center, last.Y + last.H), t.Line);
+            }
             for (var i = 0; i < hits.Length; i++)
             {
                 var dataIndex = order[TableScroll.Offset(c) + i];
-                var h = hits[i]; Highlight(canvas, c, t, h);
+                var h = hits[i]; if (!within) Highlight(canvas, c, t, h);
                 using (canvas.Clip(new(h.X, h.Y, labelWidth - 4, h.H)))
                     canvas.Text(c.Labels[dataIndex], new(h.X + 2, h.Y + 2), t.FontSize, t.Ink, t.Font);
                 var x = h.X + labelWidth; var w = h.W - labelWidth - layout.ValueWidth; var y = h.Y + 7;
-                canvas.Rect(new(x, y, w, 8), t.Track);
+                if (!within) canvas.Rect(new(x, y, w, 8), t.Track);
                 var value = c.Values[dataIndex];
                 // Signed axis: negatives extend left of zero, nulls remain gaps.
                 var origin = signed ? x + w / 2 : x; var span = signed ? w / 2 : w;
                 var toleranceWidth = c.Threshold / max * span;
-                if (within) canvas.Rect(new(origin - toleranceWidth, y - 2, 2 * toleranceWidth, 12), t.ToleranceBand ?? t.Line);
-                if (value.HasValue) canvas.Rect(new(value < 0 ? origin - Math.Abs(value.Value) / max * span : origin, y, Math.Abs(value.Value) / max * span, 8), BarPresentation.Color(c, t, dataIndex));
-                if (hasThreshold) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
-                if (within) canvas.Line(new(origin - toleranceWidth, y - 2), new(origin - toleranceWidth, y + 10), t.Muted);
+                if (value is { } v)
+                {
+                    var length = Math.Abs(v) / max * span;
+                    if (!within || c.Colors.Length > dataIndex)
+                        canvas.Rect(new(v < 0 ? origin - length : origin, y, length, 8), BarPresentation.Color(c, t, dataIndex));
+                    else
+                    {
+                        var inside = Math.Min(length, toleranceWidth);
+                        canvas.Rect(new(v < 0 ? origin - inside : origin, y, inside, 8), t.Data);
+                        if (length > toleranceWidth)
+                            canvas.Rect(new(v < 0 ? origin - length : origin + toleranceWidth, y, length - toleranceWidth, 8), t.Bad);
+                    }
+                }
+                if (hasThreshold && !within) canvas.Line(new(origin + toleranceWidth, y - 2), new(origin + toleranceWidth, y + 10), t.Muted);
                 using (canvas.Clip(new(h.X + h.W - layout.ValueWidth + 6, h.Y, layout.ValueWidth - 6, h.H)))
                     canvas.Text(layout.Values[dataIndex], new(h.X + h.W - layout.ValueWidths[dataIndex], h.Y + 2), t.FontSize, t.Ink, t.Font);
             }
