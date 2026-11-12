@@ -64,6 +64,9 @@ public sealed class NumericFormattingTests
     [InlineData("72057594037927936", 0, "72057594037927936")]
     [InlineData("-72057594037927936", 0, "-72057594037927936")]
     [InlineData("9007199254740993", 0, "9007199254740993")]
+    [InlineData("1,234.5", 0, "1235")]
+    [InlineData("-1,234.5", 0, "-1235")]
+    [InlineData("2.5", 0, "3")]
     public void MetricKeepsSourceDigits(string raw, int decimals, string expected)
         => Assert.Equal(expected, MetricFormatting.Format(raw, decimals));
 
