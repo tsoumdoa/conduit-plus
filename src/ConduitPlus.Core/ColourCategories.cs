@@ -29,7 +29,8 @@ public static class ColourCategories
         var colours = rows.Select((s, i) => s == "No data" ? Palettes.Missing : scheme.Kind == PaletteKind.Categorical
             ? scheme.Colours[i % scheme.Colours.Length] : scheme.ColourAt(ordinary <= 1 ? .5 : (double)i / (ordinary - 1))).ToArray();
         if (scheme.Kind == PaletteKind.Categorical && ordinary > scheme.Colours.Length)
-            messages.Add(new(ColourMessageLevel.Warning, $"{ordinary} categories but {scheme.Name} has {scheme.Colours.Length} colours; colours repeat from '{rows[scheme.Colours.Length]}'. Wire Order to choose which come first, or wire your own colours to Palette."));
+            messages.Add(new(ColourMessageLevel.Warning, $"{ordinary} categories but {scheme.Name} has {scheme.Colours.Length} colours; colours repeat from '{rows[scheme.Colours.Length]}'. Wire Order to choose which come first, wire your own colours to Palette" +
+                (scheme.Colours.Length < 24 ? ", or choose a larger style such as Programme (24 colours)." : ".")));
         if (scheme.Kind != PaletteKind.Categorical && order is not { Count: > 0 })
             messages.Add(new(scheme.Kind == PaletteKind.Status ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, $"{scheme.Name} is an ordered palette. Wire Order, best first, so colours do not follow data order."));
         if (keys is not null && keys.Count != items.Length)
@@ -51,9 +52,10 @@ public static class ColourCategories
         var members = keys is null ? [] : rows.Select(s => items.Select((category, i) => (category, i)).Where(x => x.category == s)
             .Select(x => keys[x.i]!).Distinct(StringComparer.Ordinal).ToArray()).ToArray();
         var groups = GroupInputs.Create(groupKeys, rows.Count, keys is not null, keys is null ? null : members.Select((m, i) => new MemberInputBranch($"{{{i}}}", m)).ToArray());
+        var counts = rows.Select((s, i) => keys is null ? items.Count(c => c == s) : members[i].Length).ToArray();
         var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Labels = rows.ToArray(), Colors = colours,
             Keys = groupKeys, Groups = groups, WiredSlot = slot,
-            ValueLabels = showCounts ? rows.Select((s, i) => (keys is null ? items.Count(c => c == s) : members[i].Length).ToString(CultureInfo.InvariantCulture)).ToArray() : [] };
+            ValueLabels = showCounts && !counts.All(n => n == 1) ? counts.Select(n => n.ToString(CultureInfo.InvariantCulture)).ToArray() : [] };
         legend.Validate();
         var lookup = rows.Select((s, i) => (s, colour: colours[i])).ToDictionary(x => x.s, x => x.colour, StringComparer.Ordinal);
         return new(items.Select(s => lookup[s]).ToArray(), legend, rows.ToArray(), colours, groupKeys, members, messages.ToArray());

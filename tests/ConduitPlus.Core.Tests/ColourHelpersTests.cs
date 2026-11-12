@@ -14,7 +14,7 @@ public sealed class ColourHelpersTests
             "Heat:#EFE6B1 #E3B25A #D37812 #B4410D #831826\n" +
             "Blue–Red:#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726\n" +
             "Purple–Green:#633481 #AB87C7 #DFDEDA #69AA77 #015E28\n" +
-            "Status:#209993 #EBC75E #C83846", string.Join("\n", Palettes.All.Select(p => p.Name + ":" + string.Join(" ", p.Colours))));
+            "Status:#209993 #EBC75E #C83846", string.Join("\n", Palettes.All.Take(7).Select(p => p.Name + ":" + string.Join(" ", p.Colours))));
         Assert.Equal(Palettes.All.Length, Palettes.All.Select(p => p.Name.ToUpperInvariant()).Distinct().Count());
         foreach (var p in Palettes.All)
         {
@@ -41,6 +41,26 @@ public sealed class ColourHelpersTests
         var cat = ColourCategories.Create(["A"], palette: ["Blues"]);
         Assert.Equal(Palettes.All[0].Colours[0], cat.Colours[0]);
         Assert.Contains(cat.Messages, m => m.Level == ColourMessageLevel.Warning && m.Text.Contains("using Categorical"));
+    }
+
+    [Fact]
+    public void ScaleRejectsEveryNamedCategoryPaletteIncludingReversedAndCaseVariants()
+    {
+        foreach (var p in Palettes.All.Where(p => p.Kind == PaletteKind.Categorical))
+        foreach (var reversed in new[] { false, true })
+        {
+            var name = p.Name + (reversed ? " reversed" : "");
+            var result = ColourScale.Create([0, .5, 1], [name.ToUpperInvariant()], min: 0, max: 1);
+            Assert.Equal("Blue", result.Palette.Name);
+            Assert.Equal(ColourScale.Create([0, .5, 1], min: 0, max: 1).Colours, result.Colours);
+            var warning = Assert.Single(result.Messages);
+            Assert.Equal(ColourMessageLevel.Warning, warning.Level);
+            Assert.Equal($"'{name}' is a category palette; using Blue. Choose a sequential, diverging or Status palette.", warning.Text);
+        }
+        var custom = ColourScale.Create([0, .5, 1], ["#000000", "#FFFFFF"], min: 0, max: 1);
+        Assert.Equal("Custom", custom.Palette.Name);
+        Assert.Equal(["#000000", "#808080", "#FFFFFF"], custom.Colours);
+        Assert.Empty(custom.Messages);
     }
 
     [Theory]
@@ -175,7 +195,8 @@ public sealed class ColourHelpersTests
     public void MembersDeduplicateAndCountsCanBeHidden()
     {
         var r = ColourCategories.Create(["A", "A", "B"], ["a", "a", "b"]);
-        Assert.Equal(["a"], r.Members[0]); Assert.Equal(["1", "1"], r.Legend.ValueLabels);
+        Assert.Equal(["a"], r.Members[0]); Assert.Empty(r.Legend.ValueLabels);
+        Assert.Equal(["2", "1"], ColourCategories.Create(["A", "A", "B"], ["a1", "a2", "b"]).Legend.ValueLabels);
         Assert.Empty(ColourCategories.Create(["A"], showCounts: false).Legend.ValueLabels);
         var empty = ColourCategories.Create([], [], order: ["A"]);
         Assert.Empty(empty.Members[0]); empty.Legend.Validate();

@@ -6,6 +6,7 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
+[Collection("Legend text metrics")]
 public sealed class ThemeTests
 {
     [Theory]

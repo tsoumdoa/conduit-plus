@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 namespace ConduitPlus.Grasshopper;
 
 /// <summary>Component artwork: one white glyph on the dark rounded tile shared with Panel+ and HopperFormat.</summary>
-public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories }
+public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories, ColourPalette }
 
 /// <summary>Draws the icons in a 24-unit grid (the plug-in logo in a 64-unit grid), so they stay crisp at any size.
 /// Only System.Drawing is used: tools/Generate-Icons.ps1 compiles this file to regenerate assets/icon.png.</summary>
@@ -94,6 +94,13 @@ public static class ConduitIcons
                 Fill(g, Ink, 4.5f, 6.5f, 6, 6, 1.1f);
                 Fill(g, Soft, 13.5f, 6.5f, 6, 6, 1.1f);
                 Stroke(g, Ink, W * 0.85f, 9, 15, 6, 5, 1.1f);
+                break;
+            case ComponentIcon.ColourPalette: // Axonometric diagram block, three faces in three tones.
+                using (var top = new SolidBrush(Ink)) g.FillPolygon(top, Points(12, 4, 20, 8, 12, 12, 4, 8));
+                using (var left = new SolidBrush(Color.FromArgb(190, Ink))) g.FillPolygon(left, Points(4, 8, 12, 12, 12, 21, 4, 17));
+                using (var right = new SolidBrush(Soft)) g.FillPolygon(right, Points(12, 12, 20, 8, 20, 17, 12, 21));
+                Lines(g, Tile, W * 0.55f, 4, 8, 12, 12, 20, 8);
+                Line(g, Tile, W * 0.55f, 12, 12, 12, 21);
                 break;
             case ComponentIcon.KeyLegend: // Swatches with labels.
                 Fill(g, Ink, 5, 5, 4.2f, 4.2f, 1); Fill(g, Ink, 5, 10, 4.2f, 4.2f, 1); Fill(g, Soft, 5, 15, 4.2f, 4.2f, 1);
