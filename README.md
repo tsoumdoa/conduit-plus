@@ -21,6 +21,8 @@ A docked Inspector is future work.
 4. Feed the same geometry into **Link**, then cards + Link into **Overlay**.
    Without labels, Bar and Link default to keys 1…n; with names, wire matching keys.
 5. Send Metric + Bar + Table cards into one **Canvas Card** to keep the review on the canvas.
+   Hello feeds Metric a two-item list: **Total area 90 m²** and **Rooms below 15 m² 3**.
+   These are fixed summary inputs; update them when editing the room-area list.
 
 ## Requirements
 
@@ -122,9 +124,11 @@ include failures. Their limits are fictitious, not regulatory checks:
   limit), with raw heights, limits, floor counts and GFA in the sortable table.
   A second bar totals GFA by use.
 
-[Showcase](examples/showcase.gh) uses every component once: an 11-card room dashboard on the
+[Showcase](examples/showcase.gh) uses every component: a nine-card room dashboard on the
 viewport (linked geometry, Scope shared with a Canvas Card), every card kind as a Canvas Card from
-the truss demo, and a massing strip. Use a Top view of a metre-unit document. Regenerate it with
+the truss demo, and a massing strip. The Colour Palette + Key Legend reference stays on the
+canvas in group 4; Colour Categories supplies the viewport programme legend.
+Use a Top view of a metre-unit document. Regenerate it with
 `./tools/examples/Build-Examples.ps1 -Example Showcase`, which also writes review screenshots
 (viewport, single cards and the GH canvas) and a readable definition dump under `-Output`.
 

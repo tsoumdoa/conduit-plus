@@ -74,6 +74,22 @@ internal static class Showcase
             view.Redraw();
             var cards = (CardSpec[])Get(session, "Cards");
             Console.WriteLine($"{example} overlay: {cards.Length} cards: {string.Join(", ", cards.Select(c => c.Kind + " " + c.Title))}");
+            if (hello)
+            {
+                var metrics = cards.Where(c => c.Kind == CardKind.Metric).ToArray();
+                Require(metrics.Select(c => (c.Title, c.Value ?? "", c.Unit)).SequenceEqual(new[] { ("Total area", "90", "m²"), ("Rooms below 15 m²", "3", "") }),
+                    "Hello must show the two summary KPIs in Metric list order.");
+            }
+            else
+            {
+                Require(cards.Length == 9 && cards.Count(c => c.Title == "01 Programme") == 1 && !cards.Any(c => c.Title.StartsWith("Programme palette", StringComparison.Ordinal)),
+                    "Showcase viewport must have one programme legend and no canvas palette reference.");
+                var palette = gh.Objects.OfType<ConduitPlus.Grasshopper.KeyLegendComponent>().Single(c => c.Params.Output[0].VolatileData.AllData(true)
+                    .OfType<GH_ObjectWrapper>().Any(w => w.Value is CardSpec card && card.Title == "Programme palette · canvas reference"));
+                Require(palette.Params.Output[0].Recipients.Count == 1 && palette.Params.Output[0].Recipients[0].Attributes.GetTopLevel.DocObject is GH_Component merge
+                    && merge.Params.Output[0].Recipients.Single().Attributes.GetTopLevel.DocObject is ConduitPlus.Grasshopper.CanvasCardComponent,
+                    "Programme palette reference must feed the group 4 Canvas Card only.");
+            }
 
             // RhinoCore can fail natively on a second full-scene capture, so each process takes one shot.
             var shot = args.Contains("--shot") ? args[Array.IndexOf(args, "--shot") + 1] : "paper";

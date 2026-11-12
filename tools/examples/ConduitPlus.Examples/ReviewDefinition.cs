@@ -134,7 +134,9 @@ internal sealed class ReviewDefinition
         }
         else
         {
-            var metric = Card(new MetricComponent()); Wire(metric, 0, values); Wire(metric, 1, names); Text(metric, 2, "m²"); Integer(metric, 4, 0); Text(metric, 3, "tl"); Wire(metric, 5, keys);
+            // A two-item list demonstrates native Metric matching without six room cards.
+            // These fixed summary values correspond to the editable room-area list above.
+            var metric = Card(new MetricComponent()); Text(metric, 0, "90", "3"); Text(metric, 1, "Total area", "Rooms below 15 m²"); Text(metric, 2, "m²", ""); Integer(metric, 4, 0); Text(metric, 3, "tl");
         }
         var bar = Card(new BarComponent()); Wire(bar, 0, hello ? values : rooms!.Params.Output[3]); Wire(bar, 1, names);
         Wire(bar, 2, keys);
@@ -179,9 +181,10 @@ internal sealed class ReviewDefinition
             var areaBar = Card(new BarComponent()); Wire(areaBar, 0, values); Wire(areaBar, 1, names); Wire(areaBar, 2, keys); Text(areaBar, 3, "Room area (m²)"); Integer(areaBar, 10, 6);
             var note = Card(new TextComponent()); Text(note, 0, "Reading the review"); Text(note, 1, "Left plan: programme. Right plan: area.\nArea − minimum ≥ 0 passes; ±2 is a separate allowance study (hall excluded).\nClick replaces; Shift adds; Ctrl removes; Ctrl+Shift toggles.\nClear or plain empty viewport click clears. Escape cancels gestures.\nCanvas wheel zooms; use card scrollbars.\nIllustrative data, not a regulatory check."); Number(note, 2, 340);
             var palette = Add(new ColourPaletteComponent(), 380, top + 700); Text(palette, 0, "Programme"); Integer(palette, 1, 6);
-            var key = Card(new KeyLegendComponent()); Wire(key, 0, rooms.Params.Output[10]); Wire(key, 1, palette.Params.Output[0]); Text(key, 3, "Programme palette");
-            foreach (var card in cards.Skip(2)) DisplayCard(overlay, card.Params.Output[0]);
-            Stack(scope); Finish("4  Design allowance · Within ±2 + programme palette");
+            var key = Card(new KeyLegendComponent()); Wire(key, 0, rooms.Params.Output[10]); Wire(key, 1, palette.Params.Output[0]); Text(key, 3, "Programme palette · canvas reference");
+            // The programme legend already comes from Colour Categories in the viewport.
+            DisplayCard(overlay, note.Params.Output[0]);
+            Stack(scope); Finish("4  Design allowance · Within ±2 + canvas-only palette reference");
 
             top = 5800; row = top;
             var truss = Add(new DemoTrussComponent { Hidden = true }, 180, top); Integer(truss, 1, 4);
