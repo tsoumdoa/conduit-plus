@@ -18,7 +18,7 @@ public static class LegendCardPainter
         return Math.Ceiling(Math.Clamp(Math.Max(row, title), 120, 280));
     }
     // Include the exact scale limits so the final color's value is always explicit.
-    public static double[] Ticks(CardSpec c) => ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
+    public static double[] Ticks(CardSpec c) => c.Min == c.Max ? [c.Min!.Value] : ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
         if (c.Min is { } min && c.Max is { } max)
@@ -32,13 +32,13 @@ public static class LegendCardPainter
             var left = t.Padding + Math.Max(2, LabelWidth(min) / 2); var right = c.Width - t.Padding - Math.Max(2, LabelWidth(max) / 2);
             var width = Math.Max(1, right - left);
             var barH = c.Form.Compact ? GradientCompactBar : GradientBar;
-            canvas.Gradient(new(left, GradientTop, width, barH), c.Colors);
+            canvas.Gradient(new(left, GradientTop, width, barH), c.Colors, c.ColorPositions);
             var tickTop = GradientTop + barH; var labelTop = tickTop + 6;
             var placed = new List<(double Left, double Right)>();
             // End labels first so a middle label never crowds them out; then middle ticks that fit.
             foreach (var tick in Ticks(c).OrderBy(v => v == min || v == max ? 0 : 1))
             {
-                var x = left + (tick - min) / (max - min) * width;
+                var x = left + (min == max ? .5 : ColourRange.Fraction(tick, min, max)) * width;
                 var labelWidth = LabelWidth(tick);
                 var labelX = x - labelWidth / 2;
                 if (placed.Any(p => labelX < p.Right + 6 && labelX + labelWidth > p.Left - 6)) continue;

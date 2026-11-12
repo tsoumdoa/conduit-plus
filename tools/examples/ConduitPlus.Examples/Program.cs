@@ -38,6 +38,11 @@ internal static class Program
         string[] options = ["/nosplash", "/notemplate", "/scheme=ConduitPlusExamples", .. args.Contains("--safe") ? new[] { "/safemode" } : []];
         using var core = new Rhino.Runtime.InProcess.RhinoCore(options, Rhino.Runtime.InProcess.WindowStyle.Hidden);
         Console.WriteLine($"Rhino {Rhino.RhinoApp.Version}, .NET {Environment.Version}");
+        if (args.Contains("--colour-checks"))
+        {
+            core.InvokeInHostContext(() => { ColourHostChecks.Run(); return true; });
+            return 0;
+        }
         var doc = Rhino.RhinoDoc.ActiveDoc ?? Rhino.RhinoDoc.Create(null);
         var bounds = args.Contains("--compact") ? new System.Drawing.Rectangle(0, 0, 500, 400) : new System.Drawing.Rectangle(0, 0, 1900, 1800);
         var view = doc.Views.Add("Conduit+ structural dashboard", Rhino.Display.DefinedViewportProjection.Perspective, bounds, true)

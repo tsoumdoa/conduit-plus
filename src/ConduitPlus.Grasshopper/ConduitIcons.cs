@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 namespace ConduitPlus.Grasshopper;
 
 /// <summary>Component artwork: one white glyph on the dark rounded tile shared with Panel+ and HopperFormat.</summary>
-public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss }
+public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories }
 
 /// <summary>Draws the icons in a 24-unit grid (the plug-in logo in a 64-unit grid), so they stay crisp at any size.
 /// Only System.Drawing is used: tools/Generate-Icons.ps1 compiles this file to regenerate assets/icon.png.</summary>
@@ -82,6 +82,18 @@ public static class ConduitIcons
                 using (var gradient = new LinearGradientBrush(new RectangleF(5.5f, 4.4f, 4, 15.2f), Ink, Soft, 90f))
                     g.FillPath(gradient, scale);
                 Line(g, Ink, W * 0.75f, 12.5f, 5.5f, 19, 5.5f); Line(g, Ink, W * 0.75f, 12.5f, 12, 17, 12); Line(g, Ink, W * 0.75f, 12.5f, 18.5f, 19, 18.5f);
+                break;
+            case ComponentIcon.ColourScale: // Horizontal ramp and its middle tick.
+                using (var ramp = Rounded(4.5f, 7, 15, 6, 1.3f))
+                using (var gradient = new LinearGradientBrush(new RectangleF(4.4f, 7, 15.2f, 6), Soft, Ink, 0f))
+                    g.FillPath(gradient, ramp);
+                Line(g, Soft, W * 0.7f, 5, 16.5f, 19, 16.5f);
+                Line(g, Ink, W * 0.85f, 12, 15, 12, 19.5f);
+                break;
+            case ComponentIcon.ColourCategories: // Three distinct swatches, no implied order.
+                Fill(g, Ink, 4.5f, 6.5f, 6, 6, 1.1f);
+                Fill(g, Soft, 13.5f, 6.5f, 6, 6, 1.1f);
+                Stroke(g, Ink, W * 0.85f, 9, 15, 6, 5, 1.1f);
                 break;
             case ComponentIcon.KeyLegend: // Swatches with labels.
                 Fill(g, Ink, 5, 5, 4.2f, 4.2f, 1); Fill(g, Ink, 5, 10, 4.2f, 4.2f, 1); Fill(g, Soft, 5, 15, 4.2f, 4.2f, 1);
