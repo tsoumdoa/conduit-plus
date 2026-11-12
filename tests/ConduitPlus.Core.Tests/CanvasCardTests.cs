@@ -6,8 +6,11 @@ using Xunit;
 
 namespace ConduitPlus.Core.Tests;
 
-public sealed class CanvasCardTests
+public sealed class CanvasCardTests : IDisposable
 {
+    private readonly Func<string, double, string, Size2> _original = TextMetrics.Measurer;
+    public void Dispose() => TextMetrics.Measurer = _original;
+
     private static CardSpec Table(string id = "table", int rows = 20, int columns = 2) => new()
     {
         Id = id, Kind = CardKind.Table, MaxRows = 3,
@@ -77,17 +80,21 @@ public sealed class CanvasCardTests
         Assert.Equal(new[] { "c" }, CanvasCacheBudget.Evictions(entries, "owner", bytes));
         Assert.Empty(CanvasCacheBudget.Evictions(entries[..3], "owner", bytes));
         Assert.Equal(new[] { "c", "d" }, CanvasCacheBudget.Evictions([.. entries, new("e", bytes, 9)], "owner", bytes));
-        Assert.Throws<ArgumentOutOfRangeException>(() => CanvasCacheBudget.Evictions(entries, "owner", bytes + 4));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CanvasCacheBudget.Evictions(entries, "owner", CanvasRasterPlan.DocumentBudget / 2 + 4));
     }
     [Fact]
-    public void VisibleWorkingSetSharesBudgetWithAtomicReplacementHeadroom()
+    public void LargeWorkingSetEvictsFramesWithoutReducingIndividualRasterDensity()
     {
-        for (var count = 1; count <= 200; count++)
+        var plan = CanvasRasterPlan.Create(new(1200, 2000), 2);
+        var entries = new List<CanvasCacheEntry>();
+        for (var i = 0; i < 200; i++)
         {
-            var budget = CanvasCacheBudget.PerVisibleCard(count);
-            var plan = CanvasRasterPlan.Create(new(1200, 2000), 10, budget);
-            Assert.InRange(plan.Bytes, 4, budget);
-            Assert.True(plan.Bytes * (count + 1) <= CanvasRasterPlan.DocumentBudget);
+            var owner = i.ToString();
+            var evicted = CanvasCacheBudget.Evictions(entries, owner, plan.Bytes);
+            entries.RemoveAll(e => evicted.Contains(e.Id, StringComparer.Ordinal));
+            entries.Add(new(owner, plan.Bytes, i));
+            Assert.True(entries.Sum(e => e.Bytes) <= CanvasRasterPlan.DocumentBudget);
+            Assert.Contains(entries, e => e.Id == owner && e.Bytes == plan.Bytes);
         }
     }
     [Fact]
@@ -145,13 +152,14 @@ public sealed class CanvasCardTests
     {
         var source = Table(); var state = new CanvasCardState(); state.Replace(source);
         var size = CardMeasure.Measure(state.Spec!, Theme.Paper);
-        var key = new CanvasFrameKey(state.Spec!.Id, state.Spec.Rev, Theme.Paper, size, CanvasRasterPlan.Create(size, 1));
+        var key = new CanvasStackFrameKey(state.Revision, Theme.Paper, size, 1, 1);
         state.Replace(source with { Rev = 900, WiredSlot = Slot.Br });
-        Assert.Equal(key.Revision, state.Spec!.Rev);
-        state.Replace(source with { Title = "New data", Rev = 0 }); Assert.NotEqual(key.Revision, state.Spec!.Rev);
+        Assert.Equal(key.Revision, state.Revision);
+        state.Replace(source with { Title = "New data", Rev = 0 }); Assert.NotEqual(key.Revision, state.Revision);
         Assert.NotEqual(key, key with { Theme = Theme.Paper with { Ink = "#123456" } });
         Assert.NotEqual(key, key with { Size = size with { Width = 300 } });
-        Assert.NotEqual(key, key with { Raster = CanvasRasterPlan.Create(size, 2) });
+        Assert.NotEqual(key, key with { Scale = 2 });
+        Assert.NotEqual(key, key with { RetainedCards = 2 });
         Assert.Equal(key, key with { Theme = Theme.Paper with { } });
     }
     [Fact]
