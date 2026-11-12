@@ -1,7 +1,7 @@
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
     [string]$Output = (Join-Path ([IO.Path]::GetTempPath()) ('ConduitPlus/examples-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
-    [ValidateSet('All', 'Structural', 'Rooms', 'Massing')][string]$Example = 'All',
+    [ValidateSet('All', 'Structural', 'Rooms', 'Massing', 'Showcase')][string]$Example = 'All',
     [switch]$VerifyOnly,
     [switch]$CanvasStackChecks,
     [switch]$Exports,

@@ -103,6 +103,12 @@ include failures. Their limits are fictitious, not regulatory checks:
   limit), with raw heights, limits, floor counts and GFA in the sortable table.
   A second bar totals GFA by use.
 
+[Showcase](examples/showcase.gh) uses every component once: an 11-card room dashboard on the
+viewport (linked geometry, Scope shared with a Canvas Card), every card kind as a Canvas Card from
+the truss demo, and a massing strip. Use a Top view of a metre-unit document. Regenerate it with
+`./tools/examples/Build-Examples.ps1 -Example Showcase`, which also writes review screenshots
+(viewport, single cards and the GH canvas) and a readable definition dump under `-Output`.
+
 Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even

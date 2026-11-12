@@ -41,6 +41,7 @@ internal static class Dashboard
             return;
         }
         var example = args.Contains("--example") ? args[Array.IndexOf(args, "--example") + 1] : "structural";
+        if (example == "showcase") { Showcase.Run(doc, view, root.FullName, args); return; }
         if (example is "rooms" or "massing") { GroupInputChecks.Run(); ArchitectureDashboard.Run(doc, view, root.FullName, args, example); return; }
         InputTrapChecks.Run();
         Require(example == "structural", "Run Build-Examples.ps1 for all examples (one RhinoCore host per definition).");
