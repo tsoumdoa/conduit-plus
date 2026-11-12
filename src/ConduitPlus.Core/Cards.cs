@@ -43,6 +43,8 @@ public sealed record CardSpec
     public bool HasThreshold { get; init; } = true;
     public string[] Headers { get; init; } = [];
     public TableRow[] Rows { get; init; } = [];
+    /// <summary>Table-only numeric display precision; raw cells and sort values are preserved.</summary>
+    public int? Decimals { get; init; }
     public Slot? WiredSlot { get; init; }
     public double Width { get; init; } = 280;
     public string? HoverKey { get; init; }
@@ -100,6 +102,7 @@ public sealed record CardSpec
         if (InputKeys.Repeated(keys) is { } repeated) throw new ArgumentException(repeated);
         if (keys.Any(k => string.IsNullOrWhiteSpace(k) || CardMeasure.IsReserved(k)) || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new ArgumentException("Row/bar keys must be nonempty, non-reserved and unique within a card.");
         if (Kind == CardKind.Table && (Headers.Length == 0 || Rows.Any(r => r.Cells.Length != Headers.Length))) throw new ArgumentException("Each row must match the table headers.");
+        if (Kind == CardKind.Table) TablePresentation.ValidateDecimals(Decimals);
         GroupDefinition.Validate(this);
         if (MaxRows is < 1 or > 200) throw new ArgumentException("Visible rows must be 1–200.");
     }
@@ -250,6 +253,13 @@ public sealed class CardStore
             var content = CardJson.Serialize(input with { Rev = 0 });
             if (!themeChanged && _cards.TryGetValue(input.Id, out var old) && old.Content == content) continue;
             var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision };
+            // Reuse owned table data across interaction/theme snapshots. Compare values, never
+            // caller array identity: callers may mutate an existing array before Update.
+            if (_cards.TryGetValue(input.Id, out var previous) && snapshot.Kind == CardKind.Table &&
+                previous.Spec.Kind == CardKind.Table && snapshot.Headers.SequenceEqual(previous.Spec.Headers) &&
+                snapshot.Rows.Length == previous.Spec.Rows.Length && snapshot.Rows.Zip(previous.Spec.Rows).All(pair =>
+                    pair.First.Key == pair.Second.Key && pair.First.Cells.SequenceEqual(pair.Second.Cells)))
+                snapshot = snapshot with { Headers = previous.Spec.Headers, Rows = previous.Spec.Rows };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
         }
