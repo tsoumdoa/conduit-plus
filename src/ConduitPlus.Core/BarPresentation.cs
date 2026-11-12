@@ -45,8 +45,8 @@ public static class BarPresentation
             .ThenBy(i => c.Values[i], Comparer<double?>.Create((a, b) => ascending ? Nullable.Compare(a, b) : Nullable.Compare(b, a))).ToArray();
     }
 
-    /// <summary>Fewest decimals retaining distinct authored values, capped at two.</summary>
-    public static int Precision(IEnumerable<double?> values) => NumericFormatting.AutomaticDecimals(values.OfType<double>());
+    /// <summary>Shared column precision preserves digits through two places and small nonzero values through six.</summary>
+    public static int Precision(IEnumerable<double?> values) => NumericFormatting.ColumnDecimals(values.OfType<double>());
     public static string Format(double? value, int precision) => value is { } v
         ? NumericText.TrueMinus(NumericFormatting.Fixed(v, precision)) : "—";
 

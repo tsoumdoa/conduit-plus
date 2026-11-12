@@ -104,7 +104,7 @@ public sealed class BarPresentationTests
     public void FormattingUsesFixedColumnPrecisionAndSuppressesNegativeZero()
     {
         var values = new double?[] { -4, .34, 12.5, -.0001, null, 1.234, 1.235 };
-        Assert.Equal(2, BarPresentation.Precision(values));
+        Assert.Equal(5, BarPresentation.Precision(values));
         Assert.Equal(new[] { "−4.00", "0.34", "12.50", "0.00", "—", "1.23", "1.24" }, values.Select(v => BarPresentation.Format(v, 2)));
         Assert.Equal(0, BarPresentation.Precision([-4, 0, 12, null]));
         Assert.Equal(1, BarPresentation.Precision([1.1, 1.2]));
@@ -120,8 +120,8 @@ public sealed class BarPresentationTests
     [InlineData(0, -.005, 2, "0.00", "−0.01")]
     [InlineData(.005, -.005, 2, "0.01", "−0.01")]
     [InlineData(.5, 1, 1, "0.5", "1.0")]
-    [InlineData(1.123, 2.123, 0, "1", "2")]
-    [InlineData(1.123, 1.223, 1, "1.1", "1.2")]
+    [InlineData(1.123, 2.123, 2, "1.12", "2.12")]
+    [InlineData(1.123, 1.223, 2, "1.12", "1.22")]
     [InlineData(1.123, 1.133, 2, "1.12", "1.13")]
     [InlineData(1.123, 1.124, 2, "1.12", "1.12")]
     public void AutomaticPrecisionUsesTheSameAwayFromZeroRoundingAsDisplay(double a, double b, int expected, string first, string second)
@@ -131,6 +131,31 @@ public sealed class BarPresentationTests
         Assert.Equal(first, BarPresentation.Format(a, precision));
         Assert.Equal(second, BarPresentation.Format(b, precision));
         Assert.Equal(new[] { first, second }, BarPresentation.Layout(Bar(a, b), Theme.Paper).Values);
+    }
+
+    [Theory]
+    [InlineData(new double[] { -4, -0.12, 0, 0.34, 12.5 }, 2, new[] { "−4.00", "−0.12", "0.00", "0.34", "12.50" })]
+    [InlineData(new double[] { 1, 2, 3 }, 0, new[] { "1", "2", "3" })]
+    [InlineData(new double[] { 0.0012, 0.0034 }, 4, new[] { "0.0012", "0.0034" })]
+    [InlineData(new double[] { 0, 0.005 }, 2, new[] { "0.00", "0.01" })]
+    [InlineData(new double[] { 1e6, 2.5 }, 1, new[] { "1000000.0", "2.5" })]
+    [InlineData(new double[] { -0.0001, 0.34 }, 5, new[] { "−0.00010", "0.34000" })]
+    [InlineData(new double[] { 1234567890123456, 0.12 }, 2, new[] { "1234567890123456.00", "0.12" })]
+    public void ColumnPrecisionIsUsedForEveryDisplayedBar(double[] values, int decimals, string[] expected)
+    {
+        var card = Bar(values.Select(v => (double?)v).ToArray());
+        Assert.Equal(decimals, BarPresentation.Precision(card.Values));
+        Assert.Equal(expected, BarPresentation.Layout(card, Theme.Paper).Values);
+    }
+
+    [Fact]
+    public void MissingValuesDoNotAffectPrecisionAndNaNRemainsInvalidCardInput()
+    {
+        Assert.Equal(0, BarPresentation.Precision([null, null]));
+        Assert.Equal(2, BarPresentation.Precision([null, double.NaN, -0.12, 0.34]));
+        Assert.Equal(new[] { "−0.12", "—", "0.34" }, BarPresentation.Layout(Bar(-0.12, null, 0.34), Theme.Paper).Values);
+        Assert.Throws<ArgumentException>(() => Bar(double.NaN).Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => BarPresentation.Format(double.NaN, 2));
     }
 
     [Theory]
@@ -301,6 +326,9 @@ public sealed class BarPresentationTests
             ("signed-above", signed with { Title = "Signed deltas · good above zero", GoodWhen = BarGoodWhen.Above }),
             ("scrolled-selection", many with { Title = "40 rows · selection revealed" }),
             ("precision-midpoints", Bar(-4, -.005, 0, .005, .34, 12.5) with { Width = 360, Threshold = 0, Title = "Fixed decimals · half-away-from-zero" }),
+            ("precision-small", Bar(.0012, .0034, null) with { Width = 360, HasThreshold = false, Title = "Small values · two significant digits" }),
+            ("precision-integers", Bar(1, 2, 3) with { Width = 360, HasThreshold = false, Title = "Whole values · no decimal places" }),
+            ("precision-mixed-scale", Bar(1e6, 2.5) with { Width = 360, HasThreshold = false, Title = "Mixed scale · fixed column precision" }),
             ("worst-first", signed with { Values = [.34, null, 12.5, -4, 0, -.12], Title = "Worst first · above zero is good", GoodWhen = BarGoodWhen.Above, BarSort = BarOrder.WorstFirst }) })
         {
             using var bitmap = RasterDrawing.Render(card, theme, 2);
