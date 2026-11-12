@@ -106,8 +106,8 @@ include failures. Their limits are fictitious, not regulatory checks:
 Use a metre-unit Rhino document. Open one definition at a time in a large
 viewport (Top for rooms, Perspective for massing), then Zoom Extents. Click inside a room face or a block roof/side:
 its keyed row/bar selects, and the table reveals an off-screen selected row even
-when sorted. Click a row/bar to highlight the matching geometry with translucent
-faces and x-ray wires; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
+when sorted. Click a row/bar to highlight the matching geometry with a neutral white wash
+and cased accent x-ray outlines; Ctrl-click to remove a member or use **Clear** to deselect. Wheel-scroll the room
 table and select **Hall / R17** from the model or bar to test reveal. Select **Bedroom** in the room-type legend
 or **Residential** in the GFA-by-use
 bar/legend to select every member of that category. The **Rooms below minimum**
@@ -157,7 +157,7 @@ to **Overlay**, or one card output to **Canvas Card**.
 | Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves digits, numeric text uses a true minus (−), nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group and requires a single Value. A Value list makes one card per item using native GH matching for Title/Unit/Key. |
 | Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the neutral theme data colour with no marker; a set threshold enables good/bad colouring (Below/Above accept zero for deltas; Within needs a positive tolerance). Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. Appended inputs: **Good when** (Gw, index 8), right-click Below / Above / Within (unset Below; ≤ / ≥ threshold, or −Threshold ≤ value ≤ Threshold; equality is good); **Sort** (O, index 9), Original / Worst first / Best first; **Visible rows** (N, index 10), default 12, 0 = all, otherwise 1–200. Worst is highest for Below, lowest for Above, or largest \|value\| for Within, including without a threshold. Sort is stable, missing values last in sorted modes, and keys, colours, labels and group memberships stay together. Values share the maximum decimal places needed after rounding each value to two places and removing trailing zeros. If any nonzero value would disappear, precision extends to retain two significant digits (up to six places). The measured right-aligned column keeps trailing zeros and uses a true minus (−); integer-only data has no decimals. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title (default “Line”), optional threshold and slot. A positive threshold, typed or wired, shows a band. Repeated labels with no Keys use 1…n with a Remark. |
-| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white against the viewport/canvas background). Scales with the viewport, hides last, not clickable. |
+| Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
@@ -198,9 +198,9 @@ Right-click a card's **Slot** input to pick Automatic or a viewport position,
 Overlay's **Theme** input to pick a theme, or Metric's **Decimals** input to pick
 0–6 (clear its value for automatic formatting; 7–12 can be typed or wired). A
 connected wire always takes priority. Unknown Slot text warns; use tl, tr, bl, br, lc or rc.
-Card and Link outputs have readable one-line summaries in Panels. Solve iteration
-zero retains the component ID; subsequent cards use positional `:n` suffixes.
-Unslotted cards from one component share the first card’s slot. If Values has many
+Card and Link outputs have readable one-line summaries in Panels. Metric lists,
+including grafted lists, show one card per value.
+If Values has many
 one-item branches, Bar/Line warns to flatten it for one chart.
 
 Have separate column lists? Entwine them into **Columns**, one branch per list.
@@ -223,7 +223,7 @@ minus (−), halves rounded away from zero, and rounded negative zero retaining 
 Numeric text accepts an optional sign, digits, optional dot fraction and optional exponent;
 commas, grouping separators, percentages and units remain text. Keys and sorting retain raw values.
 
-Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards stack in input order within each slot.
+Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
 
 ## Cards on the Grasshopper canvas
 
@@ -336,21 +336,36 @@ Plain-click a member or group to **Replace** the selection with its members.
 **Shift** adds, **Ctrl** removes, and **Ctrl+Shift** toggles those members.
 Repeating a plain click keeps that selection. **Clear** empties the domain.
 Escape cancels gestures or closes overflow UI; it does not clear selection. Selection outputs are
-sorted unique member keys, never group tokens. Partial groups show an accent
-dash; full groups and selected members keep the strong treatment. Hover outlines
-effective members and related groups; only the direct target gets a light fill.
+sorted unique member keys, never group tokens. Partial groups show a half-height accent
+tick in the card's left padding; full groups and selected rows get a full tick and
+selection fill. Row hover outlines effective members and related groups; only
+the direct row target gets a light fill. Metric hover uses a soft fill. Line hover
+uses a neutral band on the direct sample and hollow points on hovered members;
+selected samples use a 1 px accent rule and filled 8 px square with a surface ring. Missing samples have no point.
 Category colors stay visible. Member tooltips list containing labels (five plus
 a remainder); group tooltips report selected/hovered member counts. PNG, GH image
 and PDF card exports omit hover and retain selection. Displays stay independent
 unless explicitly connected to the same Scope.
 
+## Visible changes for saved files
+
+- Plain Title's automatic colour now follows the host background, including gradient
+  colours and Rendered-mode render backgrounds. Mixed backgrounds get a subtle glyph
+  halo when neither black nor white reaches 3:1 throughout. An explicit Colour still wins.
+- Mesh highlights use boundaries and feature edges instead of every triangulation edge;
+  each smooth closed component retains all-edge feedback. Picking is unchanged.
+- Selection uses padding ticks, distinct Paper fill, cased model outlines and a neutral
+  white wash. Hover has no model face fill; Line hover uses hollow points and soft bands.
+  Keyed Metric values, legend content and Table columns keep their original alignment.
+
 ## Scrolling and interaction
 
 - Hover a bar/table row or linked viewport geometry to brush every card with the
-  same key and draw linked geometry in a thin
-  accent wire with translucent faces for surface geometry. Plain click replaces selection;
-  Shift adds, Ctrl removes, and Ctrl+Shift toggles. Selected geometry draws stronger
-  translucent faces and thicker x-ray wires, also in captures. Only real point geometry
+  same key and draw linked geometry with a thin cased accent outline, without face fill.
+  Plain click replaces selection; Shift adds, Ctrl removes, and Ctrl+Shift toggles.
+  Selected geometry gets a thicker accent x-ray outline with contrasting black/white
+  casing and a neutral 20% white wash, also in captures. Mesh outlines use naked and feature edges (30° creases),
+  falling back to all edges per smooth closed component; picking still uses every edge. Only real point geometry
   draws point dots. Alt does not change viewport selection mode. Plain empty viewport
   clicks clear selection on release within four pixels; drags and Shift/Ctrl clicks retain it. **Clear** in a keyed card's header clears that
   owner's selection, or the whole domain when scoped. Linked model clicks emit a `click` event with card id `model`.

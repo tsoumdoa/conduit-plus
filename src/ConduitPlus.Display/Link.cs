@@ -47,7 +47,7 @@ public sealed partial class Link
                     bounds.Union(copy.GetBoundingBox(true));
                     var wire = Prepare(copy);
                     wires.Add((key, wire));
-                    // Drawing only naked mesh edges must not remove the existing edge-picking tolerance.
+                    // Drawing boundary/feature mesh edges must not remove the existing edge-picking tolerance.
                     var pickWire = copy is Mesh mesh ? wire with
                     { Lines = Enumerable.Range(0, mesh.TopologyEdges.Count).Select(mesh.TopologyEdges.EdgeLine).ToArray() } : wire;
                     picks.Add((key, PreparePick(copy, pickWire, geometry)));
@@ -91,9 +91,7 @@ public sealed partial class Link
                 var curve = c.DuplicateCurve();
                 return new([curve], [], []);
             case Mesh m:
-                var edges = m.TopologyEdges;
-                var lines = Enumerable.Range(0, edges.Count).Where(i => edges.GetConnectedFaces(i).Length == 1).Select(edges.EdgeLine).ToArray();
-                return new([], lines, []);
+                return new([], MeshOutline(m), []);
             case Extrusion e:
                 using (var brep = e.ToBrep()) return BrepWires(brep);
             case Surface s:
@@ -101,6 +99,43 @@ public sealed partial class Link
             case Brep b: return BrepWires(b);
             default: throw new ArgumentException("Unsupported Link geometry.");
         }
+    }
+    // Prepare once for this privately owned mesh. Each connected topology component needs
+    // feedback, even when another component supplies sharp edges (e.g. a joined box + sphere).
+    private static Line[] MeshOutline(Mesh mesh)
+    {
+        var edges = mesh.TopologyEdges;
+        var parents = Enumerable.Range(0, mesh.TopologyVertices.Count).ToArray();
+        int Root(int vertex)
+        {
+            while (parents[vertex] != vertex)
+            {
+                parents[vertex] = parents[parents[vertex]];
+                vertex = parents[vertex];
+            }
+            return vertex;
+        }
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var pair = edges.GetTopologyVertices(i);
+            var a = Root(pair.I); var b = Root(pair.J);
+            // Deterministic union; path compression keeps subsequent lookups cheap.
+            parents[Math.Max(a, b)] = Math.Min(a, b);
+        }
+        mesh.FaceNormals.ComputeFaceNormals();
+        var features = new bool[edges.Count];
+        var hasFeatures = new bool[parents.Length];
+        var creaseCosine = Math.Cos(Math.PI / 6);
+        for (var i = 0; i < edges.Count; i++)
+        {
+            var faces = edges.GetConnectedFaces(i);
+            features[i] = faces.Length != 2 || Vector3d.Multiply(mesh.FaceNormals[faces[0]], mesh.FaceNormals[faces[1]]) < creaseCosine;
+            if (features[i]) hasFeatures[Root(edges.GetTopologyVertices(i).I)] = true;
+        }
+        var lines = new List<Line>();
+        for (var i = 0; i < edges.Count; i++)
+            if (features[i] || !hasFeatures[Root(edges.GetTopologyVertices(i).I)]) lines.Add(edges.EdgeLine(i));
+        return lines.ToArray();
     }
     private static Wires BrepWires(Brep? brep)
     {
@@ -123,12 +158,5 @@ public sealed partial class Link
             foreach (var p in w.Points) display.DrawPoint(p, PointStyle.RoundSimple, width + 1, color);
         }
         GC.KeepAlive(_geometry);
-    }
-    internal void DrawHighlight(DisplayPipeline display, string key, Color accent, bool selected)
-    {
-        // Draw the whole casing first so connected edges cannot cut into each other's accent stroke.
-        var style = GeometryHighlight.Resolve(selected, hovered: true)!;
-        Draw(display, key, Color.White, style.CasingWidth, selected, false);
-        Draw(display, key, accent, style.AccentWidth, selected, false);
     }
 }

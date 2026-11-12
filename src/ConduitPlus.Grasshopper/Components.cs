@@ -90,7 +90,7 @@ public abstract class CardComponent(string name, string nickname, string descrip
     protected string[] ReadKeys(IReadOnlyList<string> labels, IReadOnlyList<string> supplied)
     {
         var keys = InputKeys.FromLabels(labels, supplied, out var numbered);
-        if (numbered) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, "Labels repeat, so rows are keyed 1…n.");
+        if (numbered) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, "Labels repeat, so keys are 1…n.");
         return keys;
     }
 }
@@ -147,7 +147,7 @@ public sealed class BarComponent : CardComponent
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddNumberParameter("Values", "V", "Numeric values", GH_ParamAccess.list);
-        p.AddTextParameter("Labels", "L", "Optional labels (default 1…n; legacy files retain M01…)", GH_ParamAccess.list); p[1].Optional = true;
+        p.AddTextParameter("Labels", "L", "Optional labels (default 1…n)", GH_ParamAccess.list); p[1].Optional = true;
         p.AddTextParameter("Keys", "K", "Unique stable member keys; default labels", GH_ParamAccess.list); p[2].Optional = true;
         p.AddTextParameter("Title", "T", "Chart title", GH_ParamAccess.item, "Bar");
         p.AddNumberParameter("Threshold", "Th", "Optional nonnegative threshold; Within needs a positive tolerance. Unset uses the neutral data color; Below/Above accept zero for signed deltas", GH_ParamAccess.item); p[4].Optional = true;
@@ -475,6 +475,7 @@ public sealed class OverlayComponent : GH_Component
         _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);
         _selectedTheme = _menuTheme;
         Params.Input[0].Optional = true;
+        Params.Input[0].Access = Params.Input[1].Access = GH_ParamAccess.tree;
         return result;
     }
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
@@ -536,8 +537,8 @@ public sealed class OverlayComponent : GH_Component
     protected override Bitmap Icon => _icon ??= ConduitIcons.Create(ComponentIcon.Overlay);
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards", GH_ParamAccess.list); p[0].Optional = true;
-        p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.list); p[1].Optional = true;
+        p.AddGenericParameter("Cards", "C", "Metric, Bar, Table, Line, Title, Text, Legend or Key Legend cards", GH_ParamAccess.tree); p[0].Optional = true;
+        p.AddGenericParameter("Links", "L", "Optional keyed geometry from Link", GH_ParamAccess.tree); p[1].Optional = true;
         p.AddParameter(new Param_TextOption { Options = InputOptions.Themes }, "Theme", "T", "Right-click to choose, or wire Auto, Paper, Night, Smoke or Blueprint (case-insensitive). Auto follows Rhino's UI mode. A set value overrides the Theme menu.", GH_ParamAccess.item); p[2].Optional = true;
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;
         p.AddParameter(new Param_TextOption { OptionsProvider = ViewOptions }, "View", "V", "Active viewport or a named standard Rhino viewport", GH_ParamAccess.item); p[4].Optional = true;
@@ -696,7 +697,7 @@ public sealed class OverlayComponent : GH_Component
             if (token is not null && OnPingDocument() is { } document)
             {
                 _scope = ScopeBroker.ForDocument(document).Attach(token, this,
-                    _ => OverlayManager.RefreshDomain(InstanceGuid), selectionOutput: true, eventsOutput: true);
+                    snapshot => { OverlayManager.RefreshDomain(InstanceGuid); if (!ReferenceEquals(_diagnosticMembership, snapshot.Membership)) RefreshLinkDiagnostics(snapshot.Membership); }, selectionOutput: true, eventsOutput: true);
                 _scope.Invalidated += ScopeInvalidated;
                 _scope.ActivityChanged += ScopeActivity;
                 _scope.OutputRefreshRequested += () => _interactionSolve = true;
@@ -707,12 +708,15 @@ public sealed class OverlayComponent : GH_Component
         var size = OverlaySize.Clamp(da.GetData(5, ref sizeValue) ? sizeValue : null);
         _size = size.Size;
         if (size.Clamped) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Size must be 0.75 to 1.5; using {_size}.");
-        var wrapped = new List<IGH_Goo>(); var wrappedLinks = new List<IGH_Goo>();
-        da.GetDataList(0, wrapped); da.GetDataList(1, wrappedLinks);
+        da.GetDataTree(0, out GH_Structure<IGH_Goo> cardTree);
+        da.GetDataTree(1, out GH_Structure<IGH_Goo> linkTree);
+        var wrapped = cardTree?.AllData(false).ToArray() ?? [];
+        var wrappedLinks = linkTree?.AllData(false).ToArray() ?? [];
         var cards = ReadDisplayItems<CardSpec>(wrapped, 0, "Cards", "card", c => c.Id, c => c.Validate());
         var links = ReadDisplayItems<Link>(wrappedLinks, 1, "Links", "Link", null, null);
-        foreach (var diagnostic in LinkDiagnostics.Compare(cards, links.SelectMany(l => l.LinkedGeometryKeys), Params.Input[1].SourceCount > 0))
-            AddRuntimeMessage(diagnostic.Warning ? GH_RuntimeMessageLevel.Warning : GH_RuntimeMessageLevel.Remark, diagnostic.Message);
+        _diagnosticCards = cards;
+        _diagnosticGeometryKeys = links.SelectMany(l => l.LinkedGeometryKeys).ToArray();
+        _diagnosticLinksWired = Params.Input[1].SourceCount > 0;
         if (_scope is { } scope)
         {
             var suspendedInteraction = _rhinoSuspended && _interactionSolve;
@@ -727,10 +731,12 @@ public sealed class OverlayComponent : GH_Component
             da.SetDataList(1, scope.Current.Events.Select(e => CardJson.Serialize(OverlayInteraction.From(e))));
             Message = $"{scope.Current.SelectedKeys.Count} selected";
             scope.RecordOutputs(); scope.ReportDiagnostics();
+            RefreshLinkDiagnostics(scope.Current.Membership);
             QueuePublish(cards, links); return;
         }
         var snapshot = OverlayManager.Snapshot(InstanceGuid);
         var membership = _membership = MembershipIndex.Create([new BrushRegistration("private", cards, links.SelectMany(l => l.Keys))], _membership);
+        RefreshLinkDiagnostics(membership);
         foreach (var diagnostic in membership.Diagnostics)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Card {diagnostic.CardId}, key '{diagnostic.Key}': {diagnostic.Message}");
         var live = membership.MemberKeys;
@@ -740,6 +746,27 @@ public sealed class OverlayComponent : GH_Component
         lock (_publishLock) da.SetDataList(1, _events.ToArray());
         QueuePublish(cards, links);
     }
+    private CardSpec[] _diagnosticCards = [];
+    private string[] _diagnosticGeometryKeys = [];
+    private bool _diagnosticLinksWired;
+    private MembershipIndex? _diagnosticMembership;
+    private void RefreshLinkDiagnostics(MembershipIndex membership)
+    {
+        _diagnosticMembership = membership;
+        var diagnostics = LinkDiagnostics.Compare(_diagnosticCards, _diagnosticGeometryKeys, _diagnosticLinksWired, membership);
+        foreach (var key in _notices.Keys.Where(k => k.StartsWith("keys:", StringComparison.Ordinal)).ToArray()) _notices.Remove(key);
+        for (var i = 0; i < diagnostics.Length; i++)
+            _notices[$"keys:{i}"] = (diagnostics[i].Warning ? GH_RuntimeMessageLevel.Warning : GH_RuntimeMessageLevel.Remark, diagnostics[i].Message);
+        SetNotice("keys:refresh", GH_RuntimeMessageLevel.Remark, null);
+    }
+    private static string FriendlyType(object value) => value switch
+    {
+        CardSpec => "card", Link => "link", string => "text", bool => "boolean",
+        byte or sbyte or short or ushort or int or uint or long or ulong => "integer",
+        double or float or decimal => "number",
+        GeometryBase or Point3d or Vector3d or Plane or Line or Circle or Arc or BoundingBox or Transform => "geometry",
+        _ => "item"
+    };
     private T[] ReadDisplayItems<T>(IReadOnlyList<IGH_Goo> items, int input, string plural, string singular,
         Func<T, string>? identity, Action<T>? validate) where T : class
     {
@@ -750,23 +777,24 @@ public sealed class OverlayComponent : GH_Component
             if (value is null) { empty++; continue; }
             if (value is not T item)
             {
-                var type = items[i] is GH_ObjectWrapper ? value switch { double or float or int or long or decimal => "Number", string => "Text", bool => "Boolean", _ => value.GetType().Name } : items[i]?.TypeName ?? value.GetType().Name;
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i} is a {type}, not a Conduit+ {singular}."); continue;
+                var type = FriendlyType(value);
+                var article = type is "text" or "geometry" ? "" : type is "integer" or "item" ? "an " : "a ";
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i} is {article}{type}, not a Conduit+ {singular}."); continue;
             }
             try { validate?.Invoke(item); }
             catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"{plural} item {i}: {e.Message}"); continue; }
             if (identity is not null && !seen.Add(identity(item)))
-            { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"Duplicate card ID at Cards item [{i}]. Connect each card once."); continue; }
+            { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"Cards item {i} is connected twice; connect each card once."); continue; }
             valid.Add(item);
         }
         var emptySources = Params.Input[input].Sources.Where(p => p.VolatileData.DataCount == 0).ToArray();
         empty += emptySources.Length;
         if (empty > 0)
         {
-            var names = Params.Input[input].Sources.Where(p => p.VolatileData.DataCount == 0 || p.VolatileData.AllData(true).Any(g => g?.ScriptVariable() is null))
+            var names = Params.Input[input].Sources.Where(p => p.VolatileData.DataCount == 0 || p.VolatileData.AllData(false).Any(g => g?.ScriptVariable() is null))
                 .Select(p => p.Attributes?.GetTopLevel.DocObject).OfType<GH_Component>().Select(p => p.Name).Distinct().ToArray();
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
-                $"Showing {valid.Count} of {items.Count + emptySources.Length} {plural.ToLowerInvariant()}. {empty} are empty because their components have errors{(names.Length > 0 ? " (" + string.Join(", ", names) + ")" : "")}.");
+                $"Showing {valid.Count} of {items.Count + emptySources.Length} {plural.ToLowerInvariant()}. {empty} {(empty == 1 ? "is empty because its component has an error" : "are empty because their components have errors")}{(names.Length > 0 ? " (" + string.Join(", ", names) + ")" : "")}.");
         }
         return valid.ToArray();
     }

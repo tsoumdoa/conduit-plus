@@ -73,7 +73,12 @@ internal static class ArchitectureGroupChecks
             }
             Call(session, "Select", table.Id, members[0], BrushSelectMode.Toggle);
             Require(Cards().Single(c => c.Id == target.Id).GroupStates[groupKey].IsPartiallySelected, "Partial state missing.");
-            if (captureState == "grouppartial") Capture(rooms ? "bedroom-partial" : "residential-partial");
+            if (captureState == "grouppartial")
+            {
+                // Show the numbered Study rows in fresh evidence as well as the selected Bar rows.
+                if (rooms) Call(session, "ScrollTo", table.Id, TableScroll.MaxOffset(Cards().Single(c => c.Id == table.Id)));
+                Capture(rooms ? "bedroom-partial" : "residential-partial");
+            }
             Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle); // partial -> full
             Require(OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual(members), "Partial group click must select all members.");
             Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle); // full -> empty

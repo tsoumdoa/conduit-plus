@@ -39,8 +39,8 @@ public sealed class CategoricalLegendWidthTests : IDisposable
     public void WidestLabelValueAndTitleDriveWidthAndUseThemeMetrics()
     {
         var c = Legend with { Labels = ["tiny", new string('a', 20)] };
-        Assert.Equal(170, Width(c)); // 24 padding + 6 tick gutter + 20 swatch/gap + 120 label.
-        Assert.Equal(214, Width(c with { ValueLabels = ["123456", "1"] }));
+        Assert.Equal(164, Width(c)); // 24 padding + 20 swatch/gap + 120 label.
+        Assert.Equal(208, Width(c with { ValueLabels = ["123456", "1"] }));
         Assert.Equal(204, Width(Legend with { Title = new string('t', 30) }));
         var theme = Theme with { Padding = 13.25, FontSize = 13, Font = "Custom font" };
         var measured = LegendCardPainter.CategoricalWidth(c, theme, (text, size, font) =>
@@ -49,7 +49,7 @@ public sealed class CategoricalLegendWidthTests : IDisposable
             Assert.Equal(theme.Font, font);
             return Measure(text, size, font);
         });
-        Assert.Equal(183, measured); // 182.5 rounds up.
+        Assert.Equal(177, measured); // 176.5 rounds up.
     }
 
     [Fact]
@@ -106,12 +106,12 @@ public sealed class CategoricalLegendWidthTests : IDisposable
             Form = new(Width: 999), WiredSlot = Slot.Tr
         };
         var size = FormMeasure.Size(c, Theme, c.Form, Measure);
-        Assert.Equal(214, size.Width);
+        Assert.Equal(208, size.Width);
         Assert.Equal(size, CardMeasure.Measure(c, Theme));
         var canvas = new RecordingCanvas();
         CardPainter.Paint(canvas, c, Theme);
         Assert.Equal(new Rect2(0, 0, size.Width, size.Height), canvas.Surfaces[0]);
-        Assert.Equal(202, Assert.Single(canvas.Texts, text => text.Text == "123456").At.X + 36);
+        Assert.Equal(196, Assert.Single(canvas.Texts, text => text.Text == "123456").At.X + 36);
         Assert.Equal(keyed ? 2 : 0, CardMeasure.DataHits(c, Theme).Length);
         Assert.All(CardMeasure.DataHits(c, Theme), hit => Assert.Equal(size.Width - 24, hit.W));
         Assert.True(CardMeasure.IsTitle(c, Theme, size.Width - 1, 30));

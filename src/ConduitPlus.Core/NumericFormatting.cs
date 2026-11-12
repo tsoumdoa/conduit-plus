@@ -18,7 +18,7 @@ public static class NumericFormatting
         if (!double.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value));
         var format = "F" + decimals.ToString(CultureInfo.InvariantCulture);
         // Beyond decimal's range a double has no fractional digits to round.
-        var text = decimal.TryParse(source.Replace('−', '-'), NumberStyles.Float, CultureInfo.InvariantCulture, out var exact)
+        var text = decimal.TryParse(source.Replace('−', '-'), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var exact)
             ? Math.Round(exact, decimals, MidpointRounding.AwayFromZero).ToString(format, CultureInfo.InvariantCulture)
             : value.ToString(format, CultureInfo.InvariantCulture);
         return text.StartsWith('-') && double.Parse(text, CultureInfo.InvariantCulture) == 0 ? text[1..] : text;
