@@ -182,7 +182,7 @@ public sealed record Theme
     /// <summary>Translucent neutral Within tolerance zone; preserves row interaction feedback.</summary>
     public string ToleranceBand { get; init; } = "#00000012";
     /// <summary>Structural axis below data marks in the visual hierarchy.</summary>
-    public string Axis => ColorRgba.Parse(Ink).WithAlpha(115).ToHex();
+    public string Axis { get; init; } = "#17191E73";
     public string Highlight { get; init; } = "#DDEAFB";
     /// <summary>Host-resolved ink against the viewport or canvas background, retained for transparent exports.</summary>
     public string PlainTitleInk { get; init; } = TitleMetrics.PlainInk;
@@ -210,7 +210,7 @@ public sealed record Theme
     {
         Name = "Night", Surface = "#1A1D23", Ink = "#E9EAEE", Muted = "#9AA0AC",
         Line = "#2C3039", Track = "#262A31", Accent = "#5EA2F5", Data = "#A7AEBB",
-        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#FFFFFF03",
+        Good = "#4CC48E", Bad = "#F06D86", Area = "#1E2E44", ThresholdBand = "#3D2733", ToleranceBand = "#FFFFFF03", Axis = "#E9EAEE32",
         Highlight = "#21364F", TooltipSurface = "#262A31", TooltipInk = "#E9EAEE"
     };
     // Auto is a selection, not a paint palette. Hosts resolve it before measuring/caching/painting.
@@ -220,7 +220,7 @@ public sealed record Theme
     {
         Name = "Smoke", Surface = "#12151CCC", Ink = "#F2F4F8", Muted = "#A9B0BF",
         Line = "#FFFFFF1F", Track = "#FFFFFF1A", Accent = "#7DB8FF", Data = "#B8BFCC", Radius = 10,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26", ToleranceBand = "#FFFFFF02",
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7DB8FF26", ThresholdBand = "#E0546F26", ToleranceBand = "#FFFFFF02", Axis = "#F2F4F832",
         Highlight = "#7DB8FF33", TooltipSurface = "#12151CCC", TooltipInk = "#F2F4F8", TooltipRadius = 6
         // No shadow: stacked outline shadows rendered as a hard grey band in viewport and canvas captures.
     };
@@ -228,7 +228,7 @@ public sealed record Theme
     {
         Name = "Blueprint", Surface = "#0A2654CC", Ink = "#E6F1FF", Muted = "#8FB4E3",
         Line = "#8CBEFF40", Track = "#8CBEFF24", Accent = "#7FD3FF", Data = "#B5CBE8", Radius = 0,
-        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E", ToleranceBand = "#8CBEFF06",
+        Good = "#2FAE74", Bad = "#E0546F", Area = "#7FD3FF26", ThresholdBand = "#E0546F2E", ToleranceBand = "#8CBEFF06", Axis = "#E6F1FF32",
         Highlight = "#7FD3FF33", TooltipSurface = "#0A2654CC", TooltipInk = "#E6F1FF", TooltipRadius = 0,
         Border = "#8CBEFF73", BorderWidth = 1
     };
