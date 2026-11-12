@@ -216,7 +216,10 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     }
     private void DrawPlaceholder(Graphics graphics)
     {
-        using var brush = new SolidBrush(Color.DimGray);
+        // Match the capsule's own text colour so the message stays readable on error/warning capsules.
+        var style = global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedStyle(
+            global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedPalette(Component), this);
+        using var brush = new SolidBrush(style.Text);
         using var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
         graphics.DrawString(Component.Placeholder, font, brush, new RectangleF(_body.X + 12, _body.Y + 16, _body.Width - 24, _body.Height - 28));
     }
