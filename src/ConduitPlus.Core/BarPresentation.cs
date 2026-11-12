@@ -59,6 +59,13 @@ public static class BarPresentation
     public static string Format(double? value, int precision) => value is { } v
         ? NumericText.TrueMinus(NumericFormatting.Fixed(v, precision)) : "—";
 
+    public static string DisplayValue(double? value, int precision, bool signed)
+    {
+        var text = Format(value, precision);
+        return signed && text.Length > 0 && text[0] != '\u2212' && text.Any(ch => ch is >= '1' and <= '9')
+            ? "+" + text : text;
+    }
+
     // CardStore reuses owned arrays when bar content is equal across interaction snapshots.
     // Weak keys release measurements with their content. Hosts share Table's CSS measurer.
     private static readonly ConditionalWeakTable<double?[], ConditionalWeakTable<string[], Dictionary<MetricsKey, BarTextLayout>>> Cache = new();
@@ -66,13 +73,13 @@ public static class BarPresentation
     public static BarTextLayout Layout(CardSpec c, Theme t)
     {
         var entries = Cache.GetOrCreateValue(c.Values).GetOrCreateValue(c.Labels);
-        var key = new MetricsKey(c.Width, t.Padding, t.FontSize, t.Font, c.GoodWhen == BarGoodWhen.Within, TextMetrics.Measurer);
+        var key = new MetricsKey(c.Width, t.Padding, t.FontSize, t.Font, UsesThreshold(c) && c.GoodWhen == BarGoodWhen.Within, TextMetrics.Measurer);
         lock (entries)
         {
             if (entries.TryGetValue(key, out var cached)) return cached;
             double Measure(string text) => key.Measure(text, t.FontSize, t.Font).Width;
             var precision = Precision(c.Values);
-            var texts = c.Values.Select(v => (key.Signed && v > 0 ? "+" : "") + Format(v, precision)).ToArray();
+            var texts = c.Values.Select(v => DisplayValue(v, precision, key.Signed)).ToArray();
             var widths = texts.Select(Measure).ToArray();
             var available = c.Width - 2 * t.Padding;
             var valueWidth = Math.Min(available * .45, widths.DefaultIfEmpty(0).Max() + 12);

@@ -83,8 +83,8 @@ public static class CardPainter
                 var spanWidth = (first.W - labelWidth - layout.ValueWidth) / 2;
                 var center = axis + spanWidth;
                 var tolerance = c.Threshold / max * spanWidth;
-                canvas.Rect(new(center - tolerance, first.Y, 2 * tolerance, last.Y + last.H - first.Y), t.ToleranceBand ?? "#00000012");
-                canvas.Line(new(center, first.Y), new(center, last.Y + last.H), t.Line);
+                canvas.Rect(new(center - tolerance, first.Y, 2 * tolerance, last.Y + last.H - first.Y), t.ToleranceBand);
+                canvas.Line(new(center, first.Y), new(center, last.Y + last.H), t.ToleranceCenterLine ?? t.Line);
             }
             for (var i = 0; i < hits.Length; i++)
             {
