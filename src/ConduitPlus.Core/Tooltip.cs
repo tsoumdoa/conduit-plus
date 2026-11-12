@@ -39,13 +39,13 @@ public static class Tooltip
         if (c.Kind is not (CardKind.Bar or CardKind.Line)) return null;
         var label = c.Labels[index]; var value = c.Values[index];
         var number = value is null ? "missing" : c.Kind == CardKind.Bar
-            ? BarPresentation.Format(value, BarPresentation.Precision(c.Values))
+            ? BarPresentation.DisplayValue(value, BarPresentation.Precision(c.Values), BarPresentation.UsesThreshold(c) && c.GoodWhen == BarGoodWhen.Within)
             : value.Value.ToString("0.###", CultureInfo.InvariantCulture);
         var lines = new List<string> { string.IsNullOrEmpty(label) ? key : label, number };
         if (c.Kind == CardKind.Bar && value.HasValue && c.HasThreshold && c.Threshold > 0)
             lines.Add(((c.GoodWhen == BarGoodWhen.Within ? Math.Abs(value.Value) : value.Value) / c.Threshold * 100).ToString("0.###", CultureInfo.InvariantCulture) + "% of threshold");
         if (c.Kind == CardKind.Bar && c.GoodWhen == BarGoodWhen.Within)
-            lines.Add(BarPresentation.ThresholdWarning(c) ?? "Within: good when −Threshold ≤ value ≤ Threshold");
+            lines.Add(BarPresentation.ThresholdWarning(c) ?? "Within ±Threshold is good; the part beyond it is marked.");
         if (c.Kind == CardKind.Bar && !string.IsNullOrEmpty(label) && key != label) lines.Add(key);
         return lines.ToArray();
     }

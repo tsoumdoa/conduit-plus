@@ -43,11 +43,11 @@ public sealed class TooltipSortTests
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             var layout = BarPresentation.Layout(card, Theme.Paper);
-            Assert.Equal(new[] { "0.00012", "−0.00012", "0.50000", "—" }, layout.Values);
+            Assert.Equal(new[] { "+0.00012", "−0.00012", "+0.50000", "—" }, layout.Values);
             for (var i = 0; i < 3; i++) Assert.Equal(layout.Values[i], Tooltip.For(card, card.Keys[i])![1]);
             Assert.Equal("120% of threshold", Tooltip.For(card, "p")![2]);
             Assert.Equal("120% of threshold", Tooltip.For(card, "n")![2]);
-            Assert.Equal(new[] { "Missing", "missing", "Within: good when −Threshold ≤ value ≤ Threshold", "missing" }, Tooltip.For(card, "missing"));
+            Assert.Equal(new[] { "Missing", "missing", "Within ±Threshold is good; the part beyond it is marked.", "missing" }, Tooltip.For(card, "missing"));
         }
         finally { CultureInfo.CurrentCulture = culture; }
     }

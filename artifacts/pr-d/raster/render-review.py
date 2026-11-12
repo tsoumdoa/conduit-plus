@@ -7,7 +7,7 @@ source = root.parents[2] / 'tests/ConduitPlus.Core.Tests/bin/Debug/net8.0-window
 for png in source.glob('bar-*.png'):
     copy2(png, root / png.name)
 themes = ['paper', 'night', 'smoke', 'blueprint']
-fixtures = ['signed-below', 'signed-above', 'worst-first', 'within', 'precision-midpoints',
+fixtures = ['signed-below', 'signed-above', 'worst-first', 'within', 'within-interaction', 'precision-midpoints',
             'precision-small', 'precision-integers', 'precision-mixed-scale', 'scrolled-selection']
 font = ImageFont.truetype('C:/Windows/Fonts/segoeui.ttf', 11)
 width = 360
