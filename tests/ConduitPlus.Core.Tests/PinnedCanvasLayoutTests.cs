@@ -127,4 +127,15 @@ public sealed class PinnedCanvasLayoutTests
         Assert.NotEqual(key, key with { Revision = 5 }); Assert.NotEqual(key, key with { Theme = Theme.Night });
         Assert.NotEqual(key, key with { Plan = CanvasRasterPlan.Create(size, 1.5) });
     }
+    [Fact]
+    public void DefaultTableFitsHalfScreenWindowAtFractionalDpi()
+    {
+        // 1200 px wide GH window at 150%: a 380-unit table needs 570 device px of a 584 px rail.
+        var table = new CardSpec { Id = "t", Kind = CardKind.Table, Headers = ["A", "B"], Rows = [new("1", ["x", "y"])], Width = 380, WiredSlot = Slot.Tl };
+        var metric = Card("m", Slot.Tr, 180);
+        var result = PinnedCanvasLayout.Solve(Request([table, metric], width: 1200, height: 900, dpi: 1.5));
+        Assert.Empty(result.Hidden);
+        var a = Bounds(result.Placements.Single(p => p.CardId == "t")); var b = Bounds(result.Placements.Single(p => p.CardId == "m"));
+        Assert.False(PinnedCanvasLayout.Intersects(a, b));
+    }
 }

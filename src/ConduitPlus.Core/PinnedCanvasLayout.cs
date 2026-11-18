@@ -7,7 +7,7 @@ public sealed record PinnedLayoutResult(IReadOnlyList<CardPlacement> Placements,
 /// <summary>First-cut fixed-size rails. No zoom, compaction, rotated bands or chip; omissions are explicit.</summary>
 public static class PinnedCanvasLayout
 {
-    public const double Margin = 12, Gap = 8, KeepClear = .35;
+    public const double Margin = 12, Gap = 8;
     public static bool Intersects(Rect2 a, Rect2 b) => a.X < b.X + b.Width && b.X < a.X + a.Width && a.Y < b.Y + b.Height && b.Y < a.Y + a.Height;
     public static bool Contains(Rect2 outer, Rect2 inner) => inner.X >= outer.X && inner.Y >= outer.Y && inner.X + inner.Width <= outer.X + outer.Width && inner.Y + inner.Height <= outer.Y + outer.Height;
     private sealed record Item(Guid Owner, CardSpec Spec, Theme Theme, Slot Slot, int Index);
@@ -21,7 +21,9 @@ public static class PinnedCanvasLayout
             p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => new Item(p.Owner, x.c, p.Theme, x.slot, i))).ToArray();
         var margin = Margin * u; var gap = Gap * u;
         var safe = new Rect2(r.X + margin, r.Y + margin, Math.Max(0, r.Width - margin * 2), Math.Max(0, r.Height - margin * 2));
-        var railWidth = safe.Width * (1 - KeepClear) / 2;
+        // No keep-clear centre: on the GH canvas the user chose to show these cards, and a
+        // viewport-style 35% reserve hides ordinary tables in a half-screen window.
+        var railWidth = Math.Max(0, (safe.Width - gap) / 2);
         // Titles retain their title-only centre slots. Rails preserve producer/input order within each stack.
         foreach (var slot in new[] { Slot.Tc, Slot.Bc, Slot.Tl, Slot.Tr, Slot.Bl, Slot.Br, Slot.Lc, Slot.Rc })
         {
