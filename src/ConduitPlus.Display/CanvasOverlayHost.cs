@@ -11,6 +11,7 @@ public interface ICanvasOverlayDisplay
     CanvasCardState State { get; }
     Theme Theme { get; }
     bool Disabled { get; }
+    bool CardsVisible { get; }
     bool BrushEnabled { get; }
     void SetNotice(string kind, string? message, bool error = false);
 }

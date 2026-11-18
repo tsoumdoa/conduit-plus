@@ -22,6 +22,31 @@ public sealed class ScopeAdapterTests
     { Id = id, Kind = CardKind.Table, Headers = ["Key"], Rows = keys.Select(k => new TableRow(k, [k])).ToArray(), MaxRows = 1 };
     private static InteractionDomain Domain() => new(new(1, Guid.NewGuid()));
 
+    [Theory]
+    [InlineData("card")]
+    [InlineData("canvas-pinned")]
+    public void HiddenEnabledDisplayKeepsMembershipSelectionOutputsAndLocalViewState(string surface)
+    {
+        using var domain = Domain(); var display = new Binding(domain, "display"); var other = new Binding(domain, "other");
+        var card = Table("retained", "a", "b", "c"); display.Publish(card); domain.Commit();
+        var state = new CanvasCardState(surface, retainSlots: true); state.Bind(display, Guid.NewGuid()); state.Replace(card);
+        var queue = new InteractionRefreshQueue(); queue.Watch(display.Lease, domain.Current, false);
+        domain.Changed += change => { state.Refresh(); queue.Observe(display.Lease, change); };
+        state.Activate(TableSort.Key(0)); state.Scroll(2); state.Hover("c");
+        var hidden = DisplayVisibility.Evaluate(hidden: true, locked: false);
+        domain.SetEnabled(display.Lease, hidden.ScopeEnabled); state.CancelHover();
+        Assert.False(hidden.Shown); Assert.Null(domain.Current.HoverKey); Assert.Null(queue.Take().Refresh);
+        Assert.Equal(new[] { "a", "b", "c" }, domain.Current.Membership.MemberKeys.Order(StringComparer.Ordinal));
+        // This member exists only in the hidden display; another display can still select it.
+        Assert.True(other.Toggle("c", BrushTargetKind.Member, new(Guid.NewGuid(), "model", "model")));
+        Assert.Equal(new[] { "c" }, state.Current.SelectedKeys);
+        Assert.Equal(display.Lease, Assert.Single(queue.Take().Refresh!.Participants));
+        queue.RecordOutputs(display.Lease, domain.Current);
+        Assert.True(DisplayVisibility.Evaluate(hidden: false, locked: false).Shown);
+        state.Refresh(); Assert.Equal(0, state.Spec!.SortColumn); Assert.Equal(2, state.Spec.ScrollOffset);
+        Assert.Null(queue.Take().Refresh); Assert.Single(domain.Current.Events);
+    }
+
     [Fact]
     public void PinnedSurfaceRetainsOverflowMembershipAndOriginWithoutOutputEcho()
     {

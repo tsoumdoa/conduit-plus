@@ -12,7 +12,7 @@ using Rhino;
 
 namespace ConduitPlus.Grasshopper;
 
-public sealed class CanvasOverlayComponent : GH_Component, ICanvasOverlayDisplay
+public sealed class CanvasOverlayComponent : PreviewDisplayComponent, ICanvasOverlayDisplay
 {
     private Theme _menuTheme = Theme.NewComponentDefault, _selectedTheme = Theme.NewComponentDefault;
     private Bitmap? _icon;
@@ -26,6 +26,7 @@ public sealed class CanvasOverlayComponent : GH_Component, ICanvasOverlayDisplay
     public Guid OwnerId => InstanceGuid;
     public object? Document => OnPingDocument();
     public bool Disabled => Locked || OnPingDocument()?.Enabled != true;
+    public bool CardsVisible => DisplayVisibility.Evaluate(Hidden, Locked).Shown;
     public bool BrushEnabled => _scopeValid && (_scope?.IsActive ?? true);
     public Theme Theme
     {
@@ -36,16 +37,20 @@ public sealed class CanvasOverlayComponent : GH_Component, ICanvasOverlayDisplay
         }
     }
     private bool ThemeInputSet => Params.Input[1] is Param_TextOption { HasValue: true };
-    public CanvasOverlayComponent() : base("Canvas Overlay", "Canvas Overlay", "Pin Conduit+ cards to the Grasshopper canvas window", "Conduit+", "Display")
+    public CanvasOverlayComponent() : base("Canvas Overlay", "Canvas Overlay", "Pin Conduit+ cards to the Grasshopper canvas window")
     {
         GdiCanvas.RegisterTextMetrics();
         State.Changed += PrivateChanged;
         _refresh.Watch(_lease, State.Current, false);
         ObjectChanged += (_, e) =>
         {
-            if (e.Type != GH_ObjectEventType.Enabled) return;
-            CanvasOverlayHost.Invalidate(true); State.CancelHover(); _scope?.SetEnabled(!Disabled);
-            if (!Disabled) Refresh();
+            if (!_active || e.Type is not (GH_ObjectEventType.Enabled or GH_ObjectEventType.Preview)) return;
+            CanvasOverlayHost.Invalidate(true); State.CancelHover();
+            if (e.Type == GH_ObjectEventType.Enabled)
+            {
+                _scope?.SetEnabled(DisplayVisibility.Evaluate(Hidden, Locked).ScopeEnabled && OnPingDocument()?.Enabled == true);
+                if (!Disabled) Refresh();
+            }
         };
     }
     public override Guid ComponentGuid => new("8d2f45de-2973-4b53-a55b-594870589246");

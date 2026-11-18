@@ -434,7 +434,7 @@ public sealed class LinkComponent : GH_Component
     }
 }
 
-public sealed class OverlayComponent : GH_Component
+public sealed class OverlayComponent : PreviewDisplayComponent
 {
     private readonly Queue<string> _events = new();
     private ScopeBinding? _scope;
@@ -450,14 +450,19 @@ public sealed class OverlayComponent : GH_Component
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
     private Bitmap? _icon;
-    public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active or named Rhino viewport; click bars/rows for keyed selection", "Conduit+", "Display")
+    private DisplayVisibility Visibility => DisplayVisibility.Evaluate(Hidden, Locked);
+    public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active or named Rhino viewport; click bars/rows for keyed selection")
     {
         ObjectChanged += (_, e) =>
         {
-            if (e.Type != GH_ObjectEventType.Enabled) return;
-            _scope?.SetEnabled(!Locked && !_rhinoSuspended);
-            OverlayManager.SetInteractionEnabled(InstanceGuid, !Locked && _scopeValid);
-            if (!Locked) OverlayManager.RefreshDomain(InstanceGuid);
+            if (!_active || e.Type is not (GH_ObjectEventType.Enabled or GH_ObjectEventType.Preview)) return;
+            OverlayManager.SetPresentationVisible(InstanceGuid, Visibility.Shown);
+            if (e.Type == GH_ObjectEventType.Enabled)
+            {
+                _scope?.SetEnabled(Visibility.ScopeEnabled && !_rhinoSuspended);
+                OverlayManager.SetInteractionEnabled(InstanceGuid, !Locked && _scopeValid);
+                if (!Locked) OverlayManager.RefreshDomain(InstanceGuid);
+            }
         };
     }
     private CardSpec[] _originals = [];
@@ -847,7 +852,7 @@ public sealed class OverlayComponent : GH_Component
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size, NickName);
+                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size, NickName, visible: Visibility.Shown);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }

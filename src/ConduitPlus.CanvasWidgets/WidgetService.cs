@@ -158,6 +158,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
         _captureTimer.Tick += CheckCapture; CanvasRasterCache.Register(this); ObserveDocument();
     }
     private ICanvasOverlayDisplay[] Displays => CanvasOverlayHost.Displays.Where(d => ReferenceEquals(d.Document, _canvas?.Document) && (d is not IGH_DocumentObject obj || _canvas!.Document.Objects.Contains(obj))).OrderBy(d => d.OwnerId.ToString("N"), StringComparer.Ordinal).ToArray();
+    private ICanvasOverlayDisplay[] ShownDisplays => Displays.Where(d => d.CardsVisible).ToArray();
     private bool Eligible => Visible && _canvas is { IsDisposed: false, DrawingMode: GH_CanvasMode.Control } && _canvas.Document is { Context: not (GH_DocumentContext.Close or GH_DocumentContext.Unloaded) };
     private double Dpi => (_canvas?.DeviceDpi ?? 96) / 96d;
     private Rect2 Client => _canvas is { } c ? new(0, 0, c.ClientSize.Width, c.ClientSize.Height) : new();
@@ -178,7 +179,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private string Signature() => CardJson.Serialize(new
     {
         Client, Dpi, Exclusions = Exclusions(),
-        Owners = Displays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
+        Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
     });
     internal void Changed(bool cancel)
     {
@@ -217,16 +218,10 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             graphics.ResetTransform(); graphics.PageUnit = GraphicsUnit.Pixel; graphics.PageScale = 1;
             graphics.SetClip(new Rectangle(0, 0, canvas.ClientSize.Width, canvas.ClientSize.Height));
             graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-            foreach (var card in _cards.Where(c => _geometryValid && Displays.Contains(c.Display)))
+            foreach (var card in _cards.Where(c => _geometryValid && c.Display.CardsVisible && Displays.Contains(c.Display)))
             {
                 var m = RasterDrawing.Margin(card.Theme, card.Scale);
                 graphics.DrawImageUnscaled(card.Image, (int)card.Transform.Body.X - m, (int)card.Transform.Body.Y - m);
-                if (card.Display.Disabled)
-                {
-                    using var font = new Font("Segoe UI", (float)(11 * Dpi), FontStyle.Bold, GraphicsUnit.Pixel);
-                    using var ink = new SolidBrush(Color.DarkRed);
-                    graphics.DrawString("Disabled", font, ink, (float)card.Transform.Body.X + 4, (float)card.Transform.Body.Y + 2);
-                }
             }
         }
         finally { graphics.Restore(saved); }
@@ -244,9 +239,10 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private IEnumerable<bool> BuildSteps()
     {
         if (_canvas is not { } canvas) yield break;
-        var displays = Displays;
-        foreach (var owner in _frozen.Keys.Where(id => !displays.Any(d => d.OwnerId == id)).ToArray()) _frozen.Remove(owner);
-        foreach (var display in displays)
+        var allDisplays = Displays;
+        var displays = allDisplays.Where(d => d.CardsVisible).ToArray();
+        foreach (var owner in _frozen.Keys.Where(id => !allDisplays.Any(d => d.OwnerId == id)).ToArray()) _frozen.Remove(owner);
+        foreach (var display in allDisplays)
             if (!display.Disabled || !_frozen.ContainsKey(display.OwnerId)) _frozen[display.OwnerId] = (display.State.Specs, display.Theme);
         var participants = displays.Select(d => new LayoutParticipant(d.OwnerId, 1, _frozen[d.OwnerId].Theme, _frozen[d.OwnerId].Specs)).ToArray();
         var layout = PinnedCanvasLayout.Solve(new(Client, Dpi, participants, TextMetrics.Measurer, Exclusions()));
@@ -277,7 +273,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             }
             foreach (var old in _cards.Where(c => !next.Any(n => ReferenceEquals(c.Image, n.Image)))) old.Image.Dispose();
             _cards.Clear(); _cards.AddRange(next); published = true; _buildingBytes = 0; _signature = Signature(); _accepting = true; _geometryValid = true;
-            foreach (var display in displays)
+            foreach (var display in allDisplays)
             {
                 var count = omitted.Count(h => h.Owner == display.OwnerId);
                 display.SetNotice("memory", null);
@@ -304,7 +300,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
         finally { _checkingOtherWidgets = false; }
     }
     private ScreenCard? At(Point point) => Eligible && _geometryValid && !OtherWidgetAt(point)
-        ? _cards.LastOrDefault(c => Displays.Contains(c.Display) && c.Transform.Contains(new(point.X, point.Y))) : null;
+        ? _cards.LastOrDefault(c => c.Display.CardsVisible && Displays.Contains(c.Display) && c.Transform.Contains(new(point.X, point.Y))) : null;
     public override bool Contains(Point control, PointF canvas) => Safe(() => At(control) is not null, false);
     private static CardModifiers Modifiers
     {
@@ -359,7 +355,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
         else ClearHover();
         return At(new(e.ControlX, e.ControlY)) is not null ? GH_ObjectResponse.Handled : GH_ObjectResponse.Ignore;
     }, GH_ObjectResponse.Ignore);
-    private bool GestureEligible => Eligible && _gestureOwner is { Disabled: false, BrushEnabled: true } owner && Displays.Contains(owner);
+    private bool GestureEligible => Eligible && _gestureOwner is { CardsVisible: true, Disabled: false, BrushEnabled: true } owner && Displays.Contains(owner);
     public override GH_ObjectResponse RespondToMouseUp(GH_Canvas sender, GH_CanvasMouseEvent e) => Safe(() =>
     {
         var response = Apply(_interaction.Up(_gestureFrame, Logical(e), ControlPoint(e), Modifiers, e.Button == MouseButtons.Left, GestureEligible));
