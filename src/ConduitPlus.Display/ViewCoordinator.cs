@@ -82,6 +82,7 @@ public static partial class OverlayManager
     }
     internal static CardLayout[] Placements(OverlaySession session, bool includeShown = true)
     {
+        if (!session.Visible) return [];
         ViewportSolution frame;
         if (Sessions.Values.Contains(session))
         {

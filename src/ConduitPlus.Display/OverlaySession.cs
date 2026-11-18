@@ -158,6 +158,7 @@ internal sealed partial class OverlaySession : IDisposable
 
     public (string CardId, string Key)? Hit(double x, double y)
     {
+        if (!Visible) return null;
         if (OverlayManager.CoveredByShown(this, x, y)) return null;
         var size = View.MainViewport.Size;
         foreach (var layout in OverlayManager.Placements(this).AsEnumerable().Reverse())
@@ -214,7 +215,7 @@ internal sealed partial class OverlaySession : IDisposable
     internal void DrawFloating(DrawEventArgs e) => DrawCards(e, true);
     private void DrawCards(DrawEventArgs e, bool floatingOnly)
     {
-        if (_disposed || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
+        if (_disposed || !Visible || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
         // Display-mode background edits need not raise Rhino's UI appearance event.
         if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
         if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
@@ -298,7 +299,7 @@ internal sealed partial class OverlaySession : IDisposable
         protected override void DrawForeground(DrawEventArgs e) => OverlayManager.DrawForeground(session, e);
         protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
         {
-            if (!session._disposed && e.RhinoDoc.RuntimeSerialNumber == session.Document.RuntimeSerialNumber && e.Viewport.Id == session.View.MainViewport.Id && session._linkBounds.IsValid)
+            if (!session._disposed && session.Visible && e.RhinoDoc.RuntimeSerialNumber == session.Document.RuntimeSerialNumber && e.Viewport.Id == session.View.MainViewport.Id && session._linkBounds.IsValid)
                 e.IncludeBoundingBox(session._linkBounds);
         }
     }

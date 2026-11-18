@@ -166,7 +166,7 @@ loads this checkout's assemblies directly and does
 not install or update any Grasshopper libraries. Export checks, commands and
 recorded limitations: [capture/PDF verification](docs/verification/capture-pdf.md).
 
-## Card order and position
+## Overlay: card order, position and visibility
 
 Cards appear in the order they arrive in Overlay's Cards input, and each card's Slot input picks its side.
 When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
@@ -175,6 +175,17 @@ front of Overlay makes the order explicit. Cards can't be dragged in the viewpor
 Titles scale with the viewport, support six positions, and hide last.
 
 Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Click the chip to list the hidden cards; Escape or another click closes the list. Clicking a hidden card in the list shows it over the model until you click it again or press Escape. Size scales one Overlay.
+
+Overlay follows the component's standard GH **Preview** and **Enabled** controls.
+Preview off (Hidden) or Enabled off (Locked) hides its cards and linked-geometry
+highlight wires, cancels interaction and removes its layout space. Hidden cards are
+excluded from **ConduitPlusCapture** and **ConduitPlusPdf**. Preview changes only
+redraw; showing restores the cards with their sort, scroll and selection state.
+Hidden but enabled displays still contribute Scope membership and update Selection;
+disabled displays retain the existing frozen Scope behavior until re-enabled.
+The Preview menu, Hide/Show Selected, preview shortcuts and native undo/redo all apply.
+Hidden is saved in the definition; older files without that flag open visible.
+GH's document-wide preview mode (off or selected only) does not control these cards.
 
 ## Canvas Overlay
 
@@ -193,10 +204,19 @@ returns the sorted member union, including cards hidden by overflow. Unwired dis
 keep private selection. Hover, sort, scroll, theme and visibility changes do not solve.
 
 Choose **Conduit+ cards** in GH's Widgets menu to hide/show the dashboard, or right-click
-the component → **Show pinned cards** to recover it. Visibility belongs to the canvas
-session. Locked components and disabled documents retain their frame with Disabled chrome;
-a global solver pause still permits local actions, with Selection output pending until solving
-resumes. Tab switching retains managed view/selection state without requiring a solve.
+the component → **Show pinned cards** to recover that global, canvas-session toggle.
+Each Canvas Overlay also follows GH's standard **Preview** and **Enabled** controls:
+Preview off (Hidden) or Enabled off (Locked) hides that component's cards, tooltips
+and hit regions, cancels gestures and lets the remaining cards re-layout. Both the
+widget toggle and per-component state must allow display. Preview changes only
+redraw the canvas and preserve sort, scroll and selection; native undo/redo works.
+Hidden but enabled components still participate in Scope and update Selection;
+disabled components keep frozen Scope membership. Hidden persists in saved files,
+with older files defaulting to visible. GH's global preview mode is independent.
+Disabled documents retain their last frame without a Disabled label or card actions;
+a global solver pause still permits local actions, with Selection output pending until
+solving resumes. Tab switching retains managed view/selection state without requiring a solve.
+Canvas Card keeps its existing component-body visibility behavior.
 
 This first slice uses 12 DIP margins, 8 DIP gaps and left/right rails with a 35% central
 keep-clear area. Card sizes follow device DPI only. Extra/oversized cards hide with a

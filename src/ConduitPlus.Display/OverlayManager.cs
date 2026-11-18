@@ -16,6 +16,7 @@ public static partial class OverlayManager
         public BrushState Brush { get; } = new();
         public IBrushBinding? Domain { get; set; }
         public bool Enabled { get; set; } = true;
+        public bool PresentationVisible { get; set; } = true;
         public long Gesture { get; set; } = Interlocked.Increment(ref _gestureGeneration);
         public BrushDomainSnapshot Current => Domain?.Current ?? Brush.Current;
     }
@@ -145,7 +146,7 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1, string? label = null)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1, string? label = null, bool visible = true)
     {
         UiContext.Ensure();
         Start();
@@ -158,12 +159,13 @@ public static partial class OverlayManager
             var key = (doc.RuntimeSerialNumber, owner);
             if (!States.TryGetValue(key, out var state)) States.Add(key, state = new(doc.RuntimeSerialNumber, view.MainViewport.Id));
             state.ViewId = view.MainViewport.Id; Bindings[owner] = state;
-            state.Domain = domain; state.Enabled = brushEnabled;
+            state.Domain = domain; state.Enabled = brushEnabled; state.PresentationVisible = visible;
             if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
         }
         // Following the active view removes this owner's previous conduit.
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
+        session.Visible = visible;
         session.Size = size; session.Label = label ?? "Overlay";
         session.SetLinks(linked);
         session.Update(specs, theme: theme ?? Theme.Paper);
@@ -228,6 +230,26 @@ public static partial class OverlayManager
             foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
             { ClearHover(session, false); ClearHover(session, true); }
     }
+    /// <summary>Withdraw presentation without removing cards, view state, binding or Scope membership.</summary>
+    public static void SetPresentationVisible(Guid owner, bool visible)
+    {
+        UiContext.Ensure();
+        lock (StateLock)
+            if (Bindings.TryGetValue(owner, out var state)) state.PresentationVisible = visible;
+        var sessions = Sessions.Values.Where(s => s.Owner == owner && s.Visible != visible).ToArray();
+        foreach (var session in sessions)
+        {
+            session.Visible = visible;
+            if (!visible)
+            {
+                // Private domains are skipped by CancelBrushHover; a hidden owner clears its own hover too.
+                Mouse.Forget(session); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true);
+                session.ClearCardHover(); session.HideTooltip();
+            }
+            else session.RefreshInteraction();
+        }
+        foreach (var (doc, view) in sessions.Select(s => (s.Document, s.View)).Distinct()) Settle(doc, view);
+    }
     public static void RefreshDomain(Guid owner)
     {
         UiContext.Ensure();
@@ -281,7 +303,7 @@ public static partial class OverlayManager
         lock (StateLock)
         {
             if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state)) return false;
-            if (!clearing && !state.Enabled) return false;
+            if (!clearing && (!state.Enabled || !state.PresentationVisible)) return false;
             if (!(state.Domain is { } domain ? shared(domain) : change(state.Brush))) return false;
         }
         RefreshDomain(session.Owner);
@@ -291,7 +313,7 @@ public static partial class OverlayManager
 
     internal static void DrawForeground(OverlaySession source, DrawEventArgs e)
     {
-        if (e.RhinoDoc.RuntimeSerialNumber != source.Document.RuntimeSerialNumber || e.Viewport.Id != source.View.MainViewport.Id) return;
+        if (!source.Visible || e.RhinoDoc.RuntimeSerialNumber != source.Document.RuntimeSerialNumber || e.Viewport.Id != source.View.MainViewport.Id) return;
         var sessions = InView(source.Document, source.View).Where(s => s.Visible).ToArray();
         // One foreground pass per viewport puts tooltips above every owner's cards.
         // Standalone benchmark sessions are intentionally not registered in Sessions.
