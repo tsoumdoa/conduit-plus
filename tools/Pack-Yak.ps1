@@ -70,6 +70,7 @@ $payload = @{
     'ConduitPlus.Display.dll' = Join-Path $rhinoOutput 'ConduitPlus.Display.dll'
     'ConduitPlus.Core.dll' = Join-Path $rhinoOutput 'ConduitPlus.Core.dll'
     'ConduitPlus.Grasshopper.gha' = Join-Path $ghOutput 'ConduitPlus.Grasshopper.gha'
+    'ConduitPlus.CanvasWidgets.dll' = Join-Path $ghOutput 'ConduitPlus.CanvasWidgets.dll'
     'LICENSE' = Join-Path $repo 'LICENSE'
     'README.md' = Join-Path $repo 'packaging/README.md'
     'icon.png' = Join-Path $repo 'assets/icon.png'

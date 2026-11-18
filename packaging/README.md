@@ -17,3 +17,5 @@ validation. Demo Truss produces illustrative data, not structural analysis.
 
 Source, full documentation, examples and issues:
 https://github.com/tsoumdoa/conduit-plus
+
+Canvas Overlay also requires ConduitPlus.CanvasWidgets.dll beside the GHA. Keep the complete Yak payload together.

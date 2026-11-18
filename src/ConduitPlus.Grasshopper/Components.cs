@@ -31,6 +31,7 @@ public sealed class ConduitPlusPriority : GH_AssemblyPriority
     {
         global::Grasshopper.Instances.ComponentServer.AddCategoryIcon("Conduit+", ConduitIcons.Logo(16));
         global::Grasshopper.Instances.ComponentServer.AddCategorySymbolName("Conduit+", 'C');
+        ConduitPlus.Rendering.CanvasOverlayHost.Start();
         return GH_LoadingInstruction.Proceed;
     }
 }

@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 namespace ConduitPlus.Grasshopper;
 
 /// <summary>Component artwork: one white glyph on the dark rounded tile shared with Panel+ and HopperFormat.</summary>
-public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories, ColourPalette }
+public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories, ColourPalette, CanvasOverlay }
 
 /// <summary>Draws the icons in a 24-unit grid (the plug-in logo in a 64-unit grid), so they stay crisp at any size.
 /// Only System.Drawing is used: tools/Generate-Icons.ps1 compiles this file to regenerate assets/icon.png.</summary>
@@ -121,6 +121,13 @@ public static class ConduitIcons
                 Fill(g, Ink, 6, 7.5f, 6, 4.2f, 0.9f);
                 Fill(g, Soft, 13.5f, 13.3f, 4.5f, 3.4f, 0.8f);
                 Lines(g, Color.FromArgb(153, Ink), W * 0.6f, 8, 16.5f, 10, 15.2f, 12, 16.5f);
+                break;
+            case ComponentIcon.CanvasOverlay:
+                Stroke(g, Soft, W * .7f, 3.5f, 4.5f, 17, 15, 1.5f);
+                Fill(g, Ink, 5.5f, 7, 7, 4, .8f);
+                Fill(g, Soft, 5.5f, 13, 7, 4, .8f);
+                Line(g, Ink, W, 16, 8, 18.5f, 8);
+                Line(g, Ink, W, 16, 11, 18.5f, 11);
                 break;
             case ComponentIcon.CanvasCard: // A card with wire grips, as a node on the canvas.
                 Stroke(g, Ink, W * 0.85f, 7, 5.5f, 10, 13, 2);

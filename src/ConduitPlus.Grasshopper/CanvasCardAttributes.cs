@@ -9,8 +9,13 @@ using Grasshopper.Kernel.Attributes;
 
 namespace ConduitPlus.Grasshopper;
 
-internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_ComponentAttributes(component)
+internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_ComponentAttributes(component), ICanvasRasterOwner
 {
+    public object? RasterDocument => Component.OnPingDocument();
+    public string RasterOwner => "inline:" + Component.InstanceGuid.ToString("N");
+    public long RasterBytes => Frame?.Bytes ?? 0;
+    public long RasterLastVisible => LastVisible;
+    public void EvictCanvasRasters() => EvictRasters();
     internal CanvasCardComponent Component { get; } = component;
     internal CanvasCardFrame? Frame { get; private set; }
     internal bool Pending { get; set; }
@@ -25,7 +30,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private PointF? _hoverPoint;
     private CanvasStackFrameKey? _failed;
     private bool _tooltipOwned;
-    internal bool HasGesture => _interaction.Active;
+    internal bool HasGesture => _interaction.Active || _interaction.OwnsRelease;
     private bool Disabled => Component.Locked || Component.OnPingDocument()?.Enabled == false;
     private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Specs.Select(c => c.Id).SequenceEqual(Component.State.Specs.Select(c => c.Id)));
     internal bool Visible
@@ -257,8 +262,8 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         result.Action?.Apply(Component.State);
         if (result.Repaint) { HideTooltip(); RequestDisplay(); }
         if (result.Response == CardResponse.Release && _canvas is { } canvas && canvas.ActiveObject == Component)
-        { canvas.ActiveObject = null; canvas.Capture = false; }
-        return CardHostModifiers.Response(result.Response);
+        { if (!_interaction.OwnsRelease) canvas.ActiveObject = null; canvas.Capture = false; }
+        return result.Response == CardResponse.Release && _interaction.OwnsRelease ? GH_ObjectResponse.Handled : CardHostModifiers.Response(result.Response);
     }
     public override GH_ObjectResponse RespondToMouseDown(GH_Canvas sender, GH_CanvasMouseEvent e)
     {
@@ -283,11 +288,13 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     public override GH_ObjectResponse RespondToKeyDown(GH_Canvas sender, KeyEventArgs e)
     {
         if (e.KeyCode != Keys.Escape || !_interaction.Active) return base.RespondToKeyDown(sender, e);
-        CancelGesture(); return GH_ObjectResponse.Release;
+        CancelGesture(); return GH_ObjectResponse.Handled;
     }
     internal void CheckCapture()
     {
         if (_interaction.Active && (!Interactive || _canvas?.ActiveObject != Component || _canvas.Capture != true)) CancelGesture();
+        if (!_interaction.Active && _interaction.OwnsRelease && (Control.MouseButtons & MouseButtons.Left) == 0)
+            Apply(_interaction.Up(new([]), new(), new(), CardModifiers.None, enabled: false));
     }
     internal void CancelGesture() { Component.State.CancelHover(); Apply(_interaction.Cancel()); }
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
@@ -327,6 +334,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             canvas.MouseDown -= NavigationStarted; canvas.MouseWheel -= NavigationStarted;
             canvas.ViewportChanged -= ViewportChanged; canvas.Disposed -= CanvasDisposed;
         }
+        if (_canvas?.ActiveObject == Component) { _canvas.ActiveObject = null; _canvas.Capture = false; }
         _canvas = null;
     }
     internal void Detach() { DetachCanvas(); Pending = false; ReleaseFrame(); CanvasCardCache.Remove(this); }

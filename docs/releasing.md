@@ -38,7 +38,7 @@ The script runs the Release solution build (warnings are errors) and tests,
 checks all four assemblies' product versions, replaces only the generated
 `artifacts/yak/stage` directory, and stages an explicit list of eight files.
 Yak builds for **Windows / Rhino 8.20+**. The archive validator checks the exact
-inventory, manifest, distribution filename and all seven payload hashes against staging.
+inventory, manifest, distribution filename and all eight payload hashes against staging.
 Yak normalizes the manifest during build, so metadata is checked separately.
 Host DLLs, PDBs, build folders and unrelated dependencies cannot silently ship.
 The two stable assembly GUIDs are included as package-restore keywords.
@@ -62,7 +62,7 @@ it does not claim archive validation. To check an existing package again:
 ./tools/Test-YakPackage.ps1 -Package './artifacts/yak/conduit-plus-0.1.0-rh8_20-win.yak' -Version 0.1.0
 ```
 
-Supply `-SourceDirectory ./artifacts/yak/stage` to also compare the seven payload
+Supply `-SourceDirectory ./artifacts/yak/stage` to also compare the eight payload
 files to that candidate's staging contents. Without it, the command checks
 structure/metadata only, not payload provenance. Verify the sidecar SHA-256 when
 moving or downloading a candidate.

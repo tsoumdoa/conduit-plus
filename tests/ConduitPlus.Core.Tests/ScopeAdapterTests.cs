@@ -22,6 +22,31 @@ public sealed class ScopeAdapterTests
     { Id = id, Kind = CardKind.Table, Headers = ["Key"], Rows = keys.Select(k => new TableRow(k, [k])).ToArray(), MaxRows = 1 };
     private static InteractionDomain Domain() => new(new(1, Guid.NewGuid()));
 
+    [Fact]
+    public void PinnedSurfaceRetainsOverflowMembershipAndOriginWithoutOutputEcho()
+    {
+        using var domain = Domain(); var pinned = new Binding(domain, "pinned"); var overlay = new Binding(domain, "overlay");
+        var visible = Table("visible", "a"); var hidden = Table("hidden", "b");
+        domain.Stage(domain.BeginPublication(pinned.Lease)!, new(pinned.ParticipantId, [visible, hidden], []));
+        overlay.Publish(hidden); domain.Commit();
+        var state = new CanvasCardState("canvas-pinned", retainSlots: true); state.Bind(pinned, Guid.NewGuid()); state.ReplaceCards([visible, hidden]);
+        var queue = new InteractionRefreshQueue(); queue.Watch(pinned.Lease, domain.Current, false);
+        domain.Changed += change => { state.Refresh(); queue.Observe(pinned.Lease, change); };
+        // Layout omission/hiding is presentation only: no registration replacement and no pruning.
+        var layout = PinnedCanvasLayout.Solve(new(new(0, 0, 20, 20), 1,
+            [new(Guid.NewGuid(), 1, Theme.Paper, state.Specs)], TextMetrics.Estimate, []));
+        Assert.Empty(layout.Placements); Assert.Equal(2, layout.Hidden.Count);
+        overlay.Toggle("b", BrushTargetKind.Member, new(Guid.NewGuid(), "hidden", "model"));
+        Assert.Equal(new[] { "b" }, state.Current.SelectedKeys); queue.Take(); queue.RecordOutputs(pinned.Lease, domain.Current);
+        state.Hover("visible", "a"); Assert.Equal("canvas-pinned", domain.Current.HoverOrigin!.Surface);
+        state.Activate("visible", TableSort.Key(0)); state.Scroll("visible", 1); state.CancelHover(); state.Refresh();
+        Assert.Null(queue.Take().Refresh);
+        state.Activate("visible", CardMeasure.ClearKey);
+        Assert.Equal("canvas-pinned", domain.Current.Events[^1].SourceSurface);
+        Assert.NotNull(queue.Take().Refresh); Assert.Empty(domain.Current.SelectedKeys);
+        queue.RecordOutputs(pinned.Lease, domain.Current); state.Refresh(); Assert.Null(queue.Take().Refresh);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
