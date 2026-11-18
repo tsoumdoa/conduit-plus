@@ -30,7 +30,8 @@ public sealed class ScopeBroker : IDisposable
     public static ScopeBroker ForDocument(GH_Document document)
     {
         if (document.Context == GH_DocumentContext.Close) throw new ObjectDisposedException(nameof(document));
-        ConduitPlus.Rhino.OverlayManager.Start();
+        // Scope alone must not initialize viewport input (in particular the Rhino wheel hook).
+        // Each viewport display initializes its own host when activated.
         return Brokers.GetValue(document, d => new(d));
     }
     private ScopeBroker(GH_Document document)

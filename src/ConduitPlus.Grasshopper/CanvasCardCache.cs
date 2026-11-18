@@ -1,5 +1,6 @@
 using System.Drawing;
 using ConduitPlus.Core;
+using ConduitPlus.Rendering;
 
 namespace ConduitPlus.Grasshopper;
 
@@ -12,7 +13,7 @@ internal static class CanvasCardCache
     private static System.Windows.Forms.Timer? _timer;
     internal static void Register(CanvasCardAttributes entry)
     {
-        Entries.Add(entry);
+        Entries.Add(entry); CanvasRasterCache.Register(entry);
     }
     internal static void Queue(CanvasCardAttributes entry)
     {
@@ -23,7 +24,7 @@ internal static class CanvasCardCache
     }
     internal static void Remove(CanvasCardAttributes entry)
     {
-        Entries.Remove(entry);
+        Entries.Remove(entry); CanvasRasterCache.Remove(entry);
         if (Queued.Remove(entry, out var node)) QueueEntries.Remove(node);
         if (Entries.Count != 0 || _timer is null) return;
         _timer.Stop(); _timer.Tick -= Tick; _timer.Dispose(); _timer = null;
@@ -51,11 +52,7 @@ internal static class CanvasCardCache
     internal static void Reserve(CanvasCardAttributes owner, long bytes)
     {
         Register(owner);
-        var document = owner.Component.OnPingDocument();
-        var entries = Entries.Where(e => ReferenceEquals(e.Component.OnPingDocument(), document)).ToArray();
-        var evict = CanvasCacheBudget.Evictions(entries.Where(e => e.Frame is not null).Select(e =>
-            new CanvasCacheEntry(e.Component.InstanceGuid.ToString("N"), e.Frame!.Bytes, e.LastVisible)).ToArray(), owner.Component.InstanceGuid.ToString("N"), bytes);
-        foreach (var entry in entries.Where(e => evict.Contains(e.Component.InstanceGuid.ToString("N"), StringComparer.Ordinal))) entry.EvictRasters();
+        CanvasRasterCache.Reserve(owner, bytes);
     }
 }
 

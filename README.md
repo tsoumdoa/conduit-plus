@@ -176,10 +176,45 @@ Titles scale with the viewport, support six positions, and hide last.
 
 Layout: cards scale with the viewport (1600 × 900 is 1×), wrap into columns that keep the middle clear for the model, and shrink down to 0.625×. When they still do not fit, the last-wired cards hide, with a "+N cards" chip in the viewport and a warning on Overlay. Click the chip to list the hidden cards; Escape or another click closes the list. Clicking a hidden card in the list shows it over the model until you click it again or press Escape. Size scales one Overlay.
 
+## Canvas Overlay
+
+Use **Conduit+ → Display → Canvas Overlay** for cards that stay fixed in the Grasshopper
+window while the definition pans and zooms underneath. Wire Cards as a tree; valid cards
+keep their input order within each Slot stack. Theme input/menu precedence matches Overlay.
+The component capsule remains in the definition for wiring and diagnostics; moving it does
+not move the dashboard. The same card can also feed Canvas Card or a Rhino Overlay.
+
+Click keyed rows/bars/groups to select, Shift to add, Ctrl to remove, Ctrl+Shift to toggle;
+Clear clears the whole domain. Table headers sort, scrollbars scroll tables and Bars, and
+hover shows local GH tooltips. **The wheel always zooms GH**, including over a card.
+Card bodies consume ordinary left clicks; gaps and shadows pass through. Wire one Scope
+to Canvas Overlay and Overlay to share selection with linked model geometry; Selection
+returns the sorted member union, including cards hidden by overflow. Unwired displays
+keep private selection. Hover, sort, scroll, theme and visibility changes do not solve.
+
+Choose **Conduit+ cards** in GH's Widgets menu to hide/show the dashboard, or right-click
+the component → **Show pinned cards** to recover it. Visibility belongs to the canvas
+session. Locked components and disabled documents retain their frame with Disabled chrome;
+a global solver pause still permits local actions, with Selection output pending until solving
+resumes. Tab switching retains managed view/selection state without requiring a solve.
+
+This first slice uses 12 DIP margins, 8 DIP gaps and left/right rails with a 35% central
+keep-clear area. Card sizes follow device DPI only. Extra/oversized cards hide with a
+replaceable component Remark; enlarge the window or reduce authored widths/rows to reveal
+them. Full inward wrapping, the overflow chip/list and collapse control are deferred.
+Compass and scrollbar bounds are excluded; Markov and unknown widgets win residual hit
+conflicts, but their full painted areas are not yet reserved. Profiler coexists with the cards.
+GH definition image export excludes Canvas Overlay; an OS window screenshot includes it.
+
+The widget API is excluded from GH's documented support surface. Load/render/input failure
+withdraws the HUD and its hit regions and reports a component error; Canvas Card and Rhino
+Overlay remain available. Live API acceptance checks are recorded in
+[the Canvas Overlay check sheet](docs/testing/canvas-overlay-live.md).
+
 ## Grasshopper components
 
 All components are in the **Conduit+** category. Connect one or more card outputs
-to **Overlay**, or card outputs to **Canvas Card**.
+to **Overlay**, **Canvas Card**, or **Canvas Overlay**.
 
 | Component | Inputs and behavior |
 |---|---|
@@ -197,12 +232,13 @@ to **Overlay**, or card outputs to **Canvas Card**.
 | Link | Geometry tree and optional Keys list: defaults to 1…n per branch, or per item for a single branch. Explicit keys match branch count (preferred), otherwise flattened item count. Repeated keys combine geometry. |
 | Scope | Optional Name is a display label only; wire its typed token to Canvas Card and Overlay to share selection and hover within this GH document. |
 | Overlay | Cards, optional Links, Theme, Scope, View and Size inputs; Selection and Events outputs. Empty items warn and are skipped; foreign items and duplicate card IDs report their index, while valid siblings still draw. Publication failures appear as runtime errors. With Links wired, zero key overlap warns with examples; individual unmatched cards get Remarks when others match. Auto theme by default for new components. **Size** (right-click 0.75–1.5×) scales all of that Overlay's cards. **View** defaults to Active viewport, which follows the bound document's active view on data solves while interaction solves stay in the bound view. Right-click View to pick an open standard viewport, or wire its name (trimmed, case-insensitive). The Overlay stays on that viewport if Rhino renames it, for example after `_SetView`; the name is looked up again when the file is reopened. A name that isn't open draws nothing and warns, then reconnects when that viewport appears. |
+| Canvas Overlay | Cards (tree), optional Theme and Scope → Selection. Pins cards at a fixed screen size inside the Grasshopper window; uses each card's Slot. See the Canvas Overlay section for preview layout limits. |
 | Canvas Card | Cards in input tree order, up to 12 unique cards in a left-aligned stack; empty items warn, duplicates show once. Each card keeps its width, sort, scrollbar and GH hover tooltips. One shared selection/Clear domain; optional Scope input and Selection union output. Right-click → Theme. |
 | Demo Rooms | Examples: Plan scale → 17 keyed planar room faces, names/types, areas/minima/deltas, schedule, GIA/net/circulation metrics and status/type colors. |
 | Demo Massing | Examples: Extra floors → six keyed breps, site boundary, floors/heights/limits/GFA/uses, schedule, zoning summaries and use colors. |
 | Demo Truss | Examples: Span, Bays, Depth and Load → keyed members, illustrative utilisation/deflection/mass, table rows and summaries. |
 
-Card components are under **Cards**; Link, Scope, Overlay and Canvas Card are under **Display**.
+Card components are under **Cards**; Link, Scope, Overlay, Canvas Card and Canvas Overlay are under **Display**.
 Colour Scale, Colour Categories and Colour Palette are under **Colour**.
 Choose **Overlay → Theme → Auto / Paper / Night / Smoke / Blueprint** in the right-click menu.
 New Overlay and Canvas Card components default to **Auto**: Paper for Rhino's light

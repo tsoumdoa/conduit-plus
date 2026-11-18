@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><TargetExt>.gha</TargetExt></PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../ConduitPlus.CanvasWidgets/ConduitPlus.CanvasWidgets.csproj" />
     <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
     <ProjectReference Include="../ConduitPlus.Display/ConduitPlus.Display.csproj" />
     <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
