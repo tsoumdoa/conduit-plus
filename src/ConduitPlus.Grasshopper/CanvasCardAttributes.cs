@@ -19,23 +19,13 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private GH_Canvas? _canvas;
     private RectangleF _body, _strip;
     private double _scale = 1;
-    private string? _pressed;
-    private string? _pressedCard;
-    private CardSpec? GestureSpec => Frame?.Specs.FirstOrDefault(c => c.Id == _pressedCard);
-    private Point2 _down;
-    private Keys _selectionModifiers;
-    // Letting go of Shift/Ctrl just before the button keeps the click; only an extra modifier cancels it.
-    private bool GestureModifiersValid => (Control.ModifierKeys & ~_selectionModifiers) == Keys.None;
-    private bool Actionable(string? key) => key is not null && !CardMeasure.IsReserved(key) && Frame is { } frame && frame.Specs.Where(c => c.Id == _pressedCard).SelectMany(BrushState.Keys).Contains(key, StringComparer.Ordinal);
-    private bool _dragScroll, _cancelClick;
-    private double _grab;
-    private int _originalOffset;
+    private readonly CardInteractionController _interaction = new();
+    private static CardModifiers Modifiers => CardHostModifiers.Read(Control.ModifierKeys);
+    private CardInteractionFrame InteractionFrame => Frame is { } f ? CardInteractionFrame.Stack(f.Specs, f.Theme, f.Layout) : new([]);
     private PointF? _hoverPoint;
     private CanvasStackFrameKey? _failed;
     private bool _tooltipOwned;
-    private const string TrackKey = "\u0001canvas-scroll-track";
-    private int _pageOffset;
-    internal bool HasGesture => _pressed is not null || _dragScroll;
+    internal bool HasGesture => _interaction.Active;
     private bool Disabled => Component.Locked || Component.OnPingDocument()?.Enabled == false;
     private bool Interactive => !Disabled && Component.BrushEnabled && _canvas?.Document == Component.OnPingDocument() && (Frame is null || Frame.Specs.Select(c => c.Id).SequenceEqual(Component.State.Specs.Select(c => c.Id)));
     internal bool Visible
@@ -83,10 +73,10 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void MouseLeft(object? sender, EventArgs e) { ClearHover(); }
     private void CanvasDisposed(object? sender, EventArgs e) => Detach();
     private void NavigationStarted(object? sender, MouseEventArgs e)
-    { if (e.Button != MouseButtons.Left || (Control.ModifierKeys != Keys.None && !(_pressed is not null && Actionable(_pressed) && GestureModifiersValid)) || e.Delta != 0) { CancelGesture(); ClearHover(); } }
+    { if (e.Button != MouseButtons.Left || (Control.ModifierKeys != Keys.None && !(_interaction.IsSelectionGesture && _interaction.ModifiersValid(Modifiers))) || e.Delta != 0) { CancelGesture(); ClearHover(); } }
     private void CanvasMouseMoved(object? sender, MouseEventArgs e)
     {
-        if (_pressed is not null || _dragScroll) return;
+        if (_interaction.Active) return;
         if (!Interactive || _canvas?.IsActiveInteraction == true || e.Button != MouseButtons.None || Control.ModifierKeys != Keys.None)
         { ClearHover(); return; }
         if (_canvas is null) return;
@@ -157,7 +147,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
                 if (specs is { Length: > 0 } && theme is not null)
                 {
                     specs = specs.Select(spec => BrushPresentation.WithoutHover(spec) with
-                    { ScrollOffset = _dragScroll && spec.Id == _pressedCard ? _originalOffset : spec.ScrollOffset }).ToArray();
+                    { ScrollOffset = _interaction.DraggingScroll && spec.Id == _interaction.PressedCard ? _interaction.OriginalOffset : spec.ScrollOffset }).ToArray();
                     var layout = new CanvasStackLayout(specs, theme);
                     for (var i = 0; i < specs.Length; i++)
                     {
@@ -262,88 +252,47 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             Component.AddRuntimeMessage(global::Grasshopper.Kernel.GH_RuntimeMessageLevel.Warning, "Canvas Card render failed: " + e.Message);
         }
     }
+    private GH_ObjectResponse Apply(CardInteractionResult result)
+    {
+        result.Action?.Apply(Component.State);
+        if (result.Repaint) { HideTooltip(); RequestDisplay(); }
+        if (result.Response == CardResponse.Release && _canvas is { } canvas && canvas.ActiveObject == Component)
+        { canvas.ActiveObject = null; canvas.Capture = false; }
+        return CardHostModifiers.Response(result.Response);
+    }
     public override GH_ObjectResponse RespondToMouseDown(GH_Canvas sender, GH_CanvasMouseEvent e)
     {
-        if (!Interactive || e.Button != MouseButtons.Left || Control.MouseButtons != MouseButtons.Left || Frame is not { } frame)
-            return base.RespondToMouseDown(sender, e);
-        var stackLocal = Local(e.CanvasLocation);
-        var card = frame.Layout.CardAt(stackLocal);
-        if (card is null) return base.RespondToMouseDown(sender, e);
-        var spec = frame.Specs.Single(c => c.Id == card.Id);
-        var local = CanvasCardGeometry.ToLocal(stackLocal, new(card.X, card.Y));
-        var bar = TableScroll.Bar(spec, frame.Theme);
-        var hit = Hit(e.CanvasLocation);
-        var modifiers = Control.ModifierKeys;
-        if (modifiers != Keys.None && ((modifiers & ~(Keys.Shift | Keys.Control)) != Keys.None || (hit is null || CardMeasure.IsReserved(hit.Key) || !BrushState.Keys(spec).Contains(hit.Key, StringComparer.Ordinal)) || bar?.Track.Contains(local.X, local.Y) == true))
-            return base.RespondToMouseDown(sender, e);
-        _selectionModifiers = modifiers;
-        if (bar?.Track.Contains(local.X, local.Y) != true && hit is null) return base.RespondToMouseDown(sender, e);
-        ClearHover();
-        _pressedCard = spec.Id;
-        _down = new(e.ControlX, e.ControlY); _originalOffset = spec.ScrollOffset;
-        _cancelClick = false;
-        if (bar is { } scroll && scroll.Track.Contains(local.X, local.Y))
-        {
-            if (scroll.Thumb.Contains(local.X, local.Y)) { _dragScroll = true; _grab = local.Y - scroll.Thumb.Y; }
-            else { _pressed = TrackKey; _pageOffset = local.Y < scroll.Thumb.Y ? -TableScroll.Visible(spec) : TableScroll.Visible(spec); }
-        }
-        else _pressed = hit!.Key;
-        sender.Capture = true; CanvasCardCache.Queue(this); RequestDisplay();
-        return GH_ObjectResponse.Capture;
+        var result = _interaction.Down(InteractionFrame, Local(e.CanvasLocation), new(e.ControlX, e.ControlY), Modifiers,
+            e.Button == MouseButtons.Left && Control.MouseButtons == MouseButtons.Left, Interactive, sender.IsActiveInteraction);
+        if (result.Response == CardResponse.Pass) return base.RespondToMouseDown(sender, e);
+        ClearHover(); sender.Capture = true; CanvasCardCache.Queue(this);
+        return Apply(result);
     }
     public override GH_ObjectResponse RespondToMouseMove(GH_Canvas sender, GH_CanvasMouseEvent e)
     {
-        if (_pressed is null && !_dragScroll) return base.RespondToMouseMove(sender, e);
-        if (!Interactive || !GestureModifiersValid) { CancelGesture(); return GH_ObjectResponse.Release; }
-        if (!CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY))) _cancelClick = true;
-        if (_dragScroll && Frame is { } frame && GestureSpec is { } spec)
-        {
-            var card = frame.Layout.Cards.Single(c => c.Id == spec.Id);
-            Component.State.Scroll(spec.Id, TableScroll.OffsetForThumbTop(spec, frame.Theme, Local(e.CanvasLocation).Y - card.Y - _grab));
-            HideTooltip(); RequestDisplay();
-        }
-        return GH_ObjectResponse.Handled;
+        var result = _interaction.Move(InteractionFrame, Local(e.CanvasLocation), new(e.ControlX, e.ControlY), Modifiers, Interactive);
+        return result.Response == CardResponse.Pass ? base.RespondToMouseMove(sender, e) : Apply(result);
     }
     public override GH_ObjectResponse RespondToMouseUp(GH_Canvas sender, GH_CanvasMouseEvent e)
     {
-        if (_pressed is null && !_dragScroll) return base.RespondToMouseUp(sender, e);
-        var key = _pressed;
-        var commit = Interactive && e.Button == MouseButtons.Left && GestureModifiersValid;
-        if (commit && !_cancelClick && key is not null && CanvasCardGeometry.WithinClick(_down, new(e.ControlX, e.ControlY)))
-        {
-            var local = Local(e.CanvasLocation);
-            var card = Frame?.Layout.Cards.FirstOrDefault(c => c.Id == _pressedCard);
-            if (card is not null) local = CanvasCardGeometry.ToLocal(local, new(card.X, card.Y));
-            if (key == TrackKey && Frame is { } frame && GestureSpec is { } spec && TableScroll.Bar(spec, frame.Theme) is { } bar &&
-                bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y)) Component.State.Scroll(spec.Id, _originalOffset + _pageOffset);
-            else if (Hit(e.CanvasLocation) is { } hit && hit.Key == key && hit.CardId == _pressedCard) Component.State.Activate(hit.CardId, key, BrushSelection.FromModifiers((_selectionModifiers & Keys.Shift) != 0, (_selectionModifiers & Keys.Control) != 0));
-        }
-        FinishGesture(!commit); _hoverPoint = e.CanvasLocation; RefreshHover(); RequestDisplay();
-        return GH_ObjectResponse.Release;
+        var result = _interaction.Up(InteractionFrame, Local(e.CanvasLocation), new(e.ControlX, e.ControlY), Modifiers, e.Button == MouseButtons.Left, Interactive);
+        if (result.Response == CardResponse.Pass) return base.RespondToMouseUp(sender, e);
+        var response = Apply(result); _hoverPoint = e.CanvasLocation; RefreshHover();
+        return response;
     }
     public override GH_ObjectResponse RespondToKeyDown(GH_Canvas sender, KeyEventArgs e)
     {
-        if (e.KeyCode != Keys.Escape || (_pressed is null && !_dragScroll)) return base.RespondToKeyDown(sender, e);
+        if (e.KeyCode != Keys.Escape || !_interaction.Active) return base.RespondToKeyDown(sender, e);
         CancelGesture(); return GH_ObjectResponse.Release;
     }
     internal void CheckCapture()
     {
-        if ((_pressed is not null || _dragScroll) && (!Interactive || _canvas?.ActiveObject != Component || _canvas.Capture != true)) CancelGesture();
+        if (_interaction.Active && (!Interactive || _canvas?.ActiveObject != Component || _canvas.Capture != true)) CancelGesture();
     }
-    internal void CancelGesture() { Component.State.CancelHover(); FinishGesture(true); }
-    private void FinishGesture(bool cancel)
-    {
-        var active = _pressed is not null || _dragScroll;
-        var restore = cancel && _dragScroll;
-        _pressed = null; _dragScroll = false;
-        if (restore && _pressedCard is { } id) { Component.State.Scroll(id, _originalOffset); RequestDisplay(); }
-        _pressedCard = null;
-        if (active && _canvas is not null)
-        { if (_canvas.ActiveObject == Component) _canvas.ActiveObject = null; _canvas.Capture = false; }
-    }
+    internal void CancelGesture() { Component.State.CancelHover(); Apply(_interaction.Cancel()); }
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
     {
-        if (!Interactive || _pressed is not null || _dragScroll || _canvas?.IsActiveInteraction == true) return;
+        if (!Interactive || _interaction.Active || _canvas?.IsActiveInteraction == true) return;
         if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Specs.Single(c => c.Id == hit.CardId), hit.Key, Component.State.Membership) is { } lines)
         {
             _tooltipOwned = true;

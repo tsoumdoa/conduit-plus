@@ -124,7 +124,7 @@ public sealed record CanvasStackHit(string CardId, HitRegion Region)
 }
 
 /// <summary>Transient stack state for one component: one domain, view state keyed by live card ID.</summary>
-public sealed class CanvasCardState
+public sealed class CanvasCardState(string surface = "canvas", bool retainSlots = false)
 {
     private BrushState _brush = new();
     private CardSpec[] _sources = [];
@@ -136,7 +136,7 @@ public sealed class CanvasCardState
     private bool _enabled = true;
     private long _gesture;
     private IReadOnlySet<string> _selectedMembers = new HashSet<string>(StringComparer.Ordinal);
-    private BrushOrigin Origin => new(_binding?.ParticipantId ?? "canvas", "canvas", _gesture);
+    private BrushOrigin Origin => new(_binding?.ParticipantId ?? surface, surface, _gesture);
     public BrushDomainSnapshot Current => _binding?.Current ?? _brush.Current;
     public event Action<InteractionChange>? Changed;
     public long Revision { get; private set; }
@@ -178,7 +178,7 @@ public sealed class CanvasCardState
             if (source.Kind != CardKind.Table || view.Column < 0 || view.Column >= source.Headers.Length)
             { view.Column = null; view.Descending = false; }
             view.Offset = source.Kind is CardKind.Table or CardKind.Bar ? Math.Clamp(view.Offset, 0, TableScroll.MaxOffset(source)) : 0;
-            var spec = projected[i] with { ScrollOffset = view.Offset, SortColumn = view.Column, SortDescending = view.Descending, WiredSlot = null };
+            var spec = projected[i] with { ScrollOffset = view.Offset, SortColumn = view.Column, SortDescending = view.Descending, WiredSlot = retainSlots ? source.WiredSlot : null };
             if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers, Current.SelectedMemberKeys) is { } added)
             { view.Offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = view.Offset }; }
             projected[i] = spec;
@@ -207,7 +207,7 @@ public sealed class CanvasCardState
         var spec = Specs.FirstOrDefault(c => c.Id == cardId);
         if (spec is null || !CanInteract) return;
         var previous = Current.SelectionRevision;
-        var source = new BrushActionSource(_owner, spec.Id, "canvas");
+        var source = new BrushActionSource(_owner, spec.Id, surface);
         if (key == CardMeasure.ClearKey) { if (_binding is { } binding) binding.Clear(source); else _brush.Clear(source); }
         else if (TableSort.Column(key) is { } column && spec.Kind == CardKind.Table && column >= 0 && column < spec.Headers.Length)
         { var sorted = TableSort.Cycle(spec, column); var view = _views[cardId]; view.Column = sorted.SortColumn; view.Descending = sorted.SortDescending; }
