@@ -18,7 +18,22 @@ public abstract class PreviewDisplayComponent(string name, string nickname, stri
         {
             if (base.Hidden == value) return;
             base.Hidden = value;
-            OnObjectChanged(GH_ObjectEventType.Preview);
+            NotifyPreview();
         }
     }
+
+    // Backstop for any path that sets Hidden through a GH_Component-typed reference (the
+    // sealed base setter) but still expires preview, as GH's own preview commands do.
+    private bool? _notifiedHidden;
+    public override void ExpirePreview(bool redraw)
+    {
+        base.ExpirePreview(redraw);
+        if (_notifiedHidden is { } seen && seen != base.Hidden) NotifyPreview();
+    }
+    private void NotifyPreview()
+    {
+        _notifiedHidden = base.Hidden;
+        OnObjectChanged(GH_ObjectEventType.Preview);
+    }
+    public override void AddedToDocument(GH_Document document) { _notifiedHidden = base.Hidden; base.AddedToDocument(document); }
 }

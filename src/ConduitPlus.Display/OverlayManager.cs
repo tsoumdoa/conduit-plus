@@ -210,7 +210,7 @@ public static partial class OverlayManager
     private static void CancelBrushHover(OverlaySession session)
     {
         lock (StateLock)
-            if (!States.ContainsKey((session.Document.RuntimeSerialNumber, session.Owner))) return;
+            if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var current) || current.Domain is null) return;
         ClearHover(session, false); ClearHover(session, true);
         lock (StateLock)
             if (States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state))
@@ -242,7 +242,8 @@ public static partial class OverlayManager
             session.Visible = visible;
             if (!visible)
             {
-                Mouse.Forget(session); CancelBrushHover(session);
+                // Private domains are skipped by CancelBrushHover; a hidden owner clears its own hover too.
+                Mouse.Forget(session); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true);
                 session.ClearCardHover(); session.HideTooltip();
             }
             else session.RefreshInteraction();
