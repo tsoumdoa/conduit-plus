@@ -88,4 +88,14 @@ public sealed class CardInteractionControllerTests
         Assert.Equal(Slot.Br, pinned.Spec!.WiredSlot);
         pinned.Activate("a"); Assert.Equal("canvas-pinned", pinned.Current.Events.Last().SourceSurface);
     }
+    [Fact]
+    public void ANewPressForgetsAReleaseKeptAfterCancellation()
+    {
+        var c = new CardInteractionController(); var f = Frame(); var p = Row(f);
+        c.Down(f, p, new(10, 10), CardModifiers.None); c.Cancel();
+        Assert.True(c.OwnsRelease); // the cancelled gesture's release is still ours
+        // That release happened elsewhere; the next press is not on a card and must not leave its release swallowed.
+        Assert.Equal(CardResponse.Pass, c.Down(f, new(-50, -50), new(0, 0), CardModifiers.None).Response);
+        Assert.Equal(CardResponse.Pass, c.Up(f, new(-50, -50), new(0, 0), CardModifiers.None).Response);
+    }
 }

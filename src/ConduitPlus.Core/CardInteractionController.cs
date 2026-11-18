@@ -54,6 +54,8 @@ public sealed class CardInteractionController
     public CardInteractionResult Down(CardInteractionFrame frame, Point2 point, Point2 control, CardModifiers modifiers,
         bool leftOnly = true, bool enabled = true, bool busy = false, bool consumeBody = false)
     {
+        // A new press means any release we kept after a cancellation is gone.
+        if (!Active) OwnsRelease = false;
         if (Active || !leftOnly || !enabled || busy || (modifiers & ~(CardModifiers.Shift | CardModifiers.Control)) != 0) return new(CardResponse.Pass);
         var card = frame.CardAt(point);
         if (card is null) return new(CardResponse.Pass);
