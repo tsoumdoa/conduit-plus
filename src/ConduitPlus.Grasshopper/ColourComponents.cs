@@ -94,6 +94,8 @@ public sealed class ColourScaleComponent : ColourComponent
         p.AddTextParameter("Unit", "U", "Legend unit", GH_ParamAccess.item, "");
         p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position", GH_ParamAccess.item); p[7].Optional = true;
+        p.AddColourParameter("Below", "Bl", "Colour for values below Min; unset uses the first colour", GH_ParamAccess.item); p[8].Optional = true;
+        p.AddColourParameter("Above", "Ab", "Colour for values above Max; unset uses the last colour", GH_ParamAccess.item); p[9].Optional = true;
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
@@ -102,7 +104,7 @@ public sealed class ColourScaleComponent : ColourComponent
     }
     protected override void SolveInstance(IGH_DataAccess da)
     {
-        if (!SingleIteration(da, "Colour Scale", "Title, Unit, Slot, Min, Max and Mid")) return;
+        if (!SingleIteration(da, "Colour Scale", "Title, Unit, Slot, Min, Max, Mid, Below and Above")) return;
         da.GetDataTree(0, out GH_Structure<GH_Number> tree); tree ??= new();
         double min = 0, max = 0, mid = 0;
         var hasMin = da.GetData(2, ref min); var hasMax = da.GetData(3, ref max); var hasMid = da.GetData(4, ref mid);
@@ -111,8 +113,14 @@ public sealed class ColourScaleComponent : ColourComponent
         string unit = "", title = "Legend"; da.GetData(5, ref unit); da.GetData(6, ref title);
         try
         {
+            string? ReadColour(int index)
+            {
+                var colour = Color.Empty;
+                return da.GetData(index, ref colour) ? $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}" : null;
+            }
             var result = ColourScale.Create(tree.Branches.SelectMany(b => b.Select(v => (double?)v?.Value)).ToArray(),
-                ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId, ReadSlot(da, 7));
+                ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId, ReadSlot(da, 7),
+                ReadColour(8), ReadColour(9));
             da.SetDataTree(0, ColourTree(tree, result.Colours)); da.SetData(1, new GH_ObjectWrapper(result.Legend)); Messages(result.Messages);
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }

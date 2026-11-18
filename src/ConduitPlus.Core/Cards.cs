@@ -23,6 +23,9 @@ public sealed record CardSpec
     public string[] Colors { get; init; } = [];
     /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
     public double[] ColorPositions { get; init; } = [];
+    /// <summary>Optional #RRGGBB extend caps for values outside a gradient legend's range.</summary>
+    public string? BelowColor { get; init; }
+    public string? AboveColor { get; init; }
     public double? Min { get; init; }
     public double? Max { get; init; }
     public double?[] Values { get; init; } = [];
@@ -78,6 +81,14 @@ public sealed record CardSpec
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(Id)) throw new ArgumentException("Card ID is required.");
+        if (BelowColor is not null || AboveColor is not null)
+        {
+            if (Kind != CardKind.Legend || !Min.HasValue || !Max.HasValue)
+                throw new ArgumentException("BelowColor and AboveColor are only allowed on gradient legends.");
+            foreach (var (colour, name) in new[] { (BelowColor, nameof(BelowColor)), (AboveColor, nameof(AboveColor)) })
+                if (colour is not null && (colour.Length != 7 || colour[0] != '#' || !colour.Skip(1).All(Uri.IsHexDigit)))
+                    throw new ArgumentException($"{name} must be a #RRGGBB string.");
+        }
         if (WiredSlot is { } wired && !Enum.IsDefined(wired)) throw new ArgumentException("Invalid card layout.");
         if (Kind == CardKind.Title)
         {
