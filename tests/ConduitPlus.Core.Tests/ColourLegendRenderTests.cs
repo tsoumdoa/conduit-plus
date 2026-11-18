@@ -193,6 +193,105 @@ public sealed class ColourLegendRenderTests
         }
     }
 
+    [Theory]
+    [InlineData("Paper", false)]
+    [InlineData("Paper", true)]
+    [InlineData("Night", false)]
+    [InlineData("Night", true)]
+    [InlineData("Smoke", false)]
+    [InlineData("Smoke", true)]
+    [InlineData("Blueprint", false)]
+    [InlineData("Blueprint", true)]
+    public void ExtendCapsRenderTheirColoursAndKeepEndpointLabelsOnTheBar(string name, bool compact)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        GdiCanvas.RegisterTextMetrics();
+        const int resolution = 3;
+        foreach (var (below, above) in new (string?, string?)[] { (null, null), ("#FFFFFF", null), (null, "#FFF4A3"), ("#FFFFFF", "#FFF4A3") })
+        foreach (var (min, max, width) in new[] { (0d, 1d, 180d), (-123456d, 987654d, 280d) })
+        {
+            var scale = ColourScale.Create([], min: min, max: max, below: below, above: above);
+            var card = scale.Legend with { Width = width, Form = new(Compact: compact) };
+            var size = CardMeasure.Measure(card, theme);
+            Assert.Equal(size, CardMeasure.Measure(card with { BelowColor = null, AboveColor = null }, theme));
+            Assert.Empty(CardMeasure.Hits(card, theme));
+            using var image = new Bitmap((int)(size.Width * resolution), (int)(size.Height * resolution));
+            using var graphics = Graphics.FromImage(image);
+            graphics.Clear(Color.Transparent);
+            graphics.ScaleTransform(resolution, resolution);
+            using var gdi = new GdiCanvas(graphics);
+            var canvas = new LegendRecordingCanvas(gdi);
+            CardPainter.Paint(canvas, card, theme);
+            var bar = Assert.Single(canvas.Gradients);
+            Assert.Equal(compact ? LegendCardPainter.GradientCompactBar : LegendCardPainter.GradientBar, bar.Height);
+            Assert.Equal((below is null ? 0 : 1) + (above is null ? 0 : 1), canvas.Polygons.Count);
+            foreach (var (colour, end, direction) in new[] { (below, bar.X, -1), (above, bar.X + bar.Width, 1) })
+            {
+                if (colour is null) continue;
+                var points = Assert.Single(canvas.Polygons, p => p.Fill == colour).Points;
+                Assert.Equal(3, points.Length);
+                Assert.Contains(new Point2(end, bar.Y), points);
+                Assert.Contains(new Point2(end, bar.Y + bar.Height), points);
+                var tip = Assert.Single(points, p => p.X != end);
+                Assert.True(direction * (tip.X - end) > 0);
+                Assert.Equal(bar.Y + bar.Height / 2, tip.Y);
+                var outline = Assert.Single(canvas.Outlines, o => o.Points.SequenceEqual(points.Append(points[0])));
+                Assert.Equal(theme.Muted, outline.Colour);
+                Assert.InRange(outline.Width, .5, 1);
+                Assert.All(points, p =>
+                {
+                    Assert.InRange(p.X - outline.Width / 2, 0, size.Width);
+                    Assert.InRange(p.X + outline.Width / 2, 0, size.Width);
+                    Assert.InRange(p.Y - outline.Width / 2, 0, size.Height);
+                    Assert.InRange(p.Y + outline.Width / 2, 0, size.Height);
+                });
+                // Probe well inside each triangle, away from antialiasing and the outline.
+                Near(colour, image.GetPixel((int)((end + (tip.X - end) * .4) * resolution),
+                    (int)((bar.Y + bar.Height / 2) * resolution)), 0);
+            }
+            foreach (var (value, x) in new[] { (min, bar.X), (max, bar.X + bar.Width) })
+            {
+                var label = Assert.Single(canvas.Labels, l => l.Text == value.ToString("G4", System.Globalization.CultureInfo.InvariantCulture));
+                var labelSize = canvas.MeasureText(label.Text, 10, theme.Font);
+                Assert.Equal(x, label.At.X + labelSize.Width / 2, 8);
+                Assert.InRange(label.At.X, 0, size.Width - labelSize.Width);
+                Assert.InRange(label.At.Y + labelSize.Height, 0, size.Height);
+                Assert.Contains(canvas.Lines, l => l.From == new Point2(x, bar.Y + bar.Height) &&
+                    l.To == new Point2(x, bar.Y + bar.Height + 4));
+            }
+            // Reserving the caps must preserve the gradient's correspondence to model colours.
+            var pixelX = (int)((bar.X + bar.Width * .3) * resolution);
+            var fraction = ((pixelX + .5) / resolution - bar.X) / bar.Width;
+            Near(scale.ColourAt(ColourRange.Lerp(min, max, fraction)), image.GetPixel(pixelX,
+                (int)((bar.Y + bar.Height / 2) * resolution)), 3);
+            Save(image, $"extend-{name}-{compact}-{min}-{below is not null}-{above is not null}.png");
+        }
+    }
+
+    private sealed class LegendRecordingCanvas(ICanvas2D inner) : ICanvas2D
+    {
+        public List<Rect2> Gradients { get; } = [];
+        public List<(Point2[] Points, string Fill)> Polygons { get; } = [];
+        public List<(Point2[] Points, string Colour, double Width)> Outlines { get; } = [];
+        public List<(Point2 From, Point2 To)> Lines { get; } = [];
+        public List<(string Text, Point2 At)> Labels { get; } = [];
+        public Size2 MeasureText(string text, double size, string font) => inner.MeasureText(text, size, font);
+        public void Rect(Rect2 rect, string fill) => inner.Rect(rect, fill);
+        public void RoundedRect(Rect2 rect, double radius, string fill) => inner.RoundedRect(rect, radius, fill);
+        public IDisposable Clip(Rect2 rect) => inner.Clip(rect);
+        public void Gradient(Rect2 rect, IReadOnlyList<string> colors) => Gradient(rect, colors, []);
+        public void Gradient(Rect2 rect, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
+        { Gradients.Add(rect); inner.Gradient(rect, colors, positions); }
+        public void FillPolygon(IReadOnlyList<Point2> points, string fill)
+        { Polygons.Add((points.ToArray(), fill)); inner.FillPolygon(points, fill); }
+        public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1)
+        { Outlines.Add((points.ToArray(), color, width)); inner.Polyline(points, color, width); }
+        public void Line(Point2 from, Point2 to, string color, double width = 1)
+        { Lines.Add((from, to)); inner.Line(from, to, color, width); }
+        public void Text(string text, Point2 topLeft, double size, string color, string font)
+        { Labels.Add((text, topLeft)); inner.Text(text, topLeft, size, color, font); }
+    }
+
     private static (double Left, double Right) BarBounds(CardSpec card, Theme theme)
     {
         string Label(double v) => v.ToString("G4", System.Globalization.CultureInfo.InvariantCulture);

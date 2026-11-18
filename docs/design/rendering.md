@@ -37,6 +37,13 @@ markers, and leaves gaps for missing values. The painter calls abstract
 `ICanvas2D` operations; GDI+ supplies the pixel implementation. There is no chart
 library or browser behind these operations.
 
+Colour Scale appends optional **Below (Bl)** and **Above (Ab)** colour inputs after
+Slot. `CardSpec.BelowColor` / `AboveColor` carry these opaque RGB colours to
+`LegendCardPainter`, which draws small outlined triangular extend caps. The
+shared painter reserves room inside the measured card and centres endpoint tick
+labels on the gradient bar ends, including compact form. Raster/GDI, Canvas Cards
+and vector PDF use the same caps; gradient legends remain unkeyed.
+
 Ordinary redraws place cached bitmaps through `SlotLayout` and composite them;
 they do not rerun a chart layout engine. Hover/click/scroll/sort can change a
 card's spec and cause repainting. Hover does not solve Grasshopper; click events

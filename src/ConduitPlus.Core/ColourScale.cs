@@ -11,11 +11,13 @@ public static class ColourRange
 }
 
 public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, ColourMessage[] Messages,
-    ColourPalette Palette, double Min, double Max, double Mid)
+    ColourPalette Palette, double Min, double Max, double Mid, string? Below = null, string? Above = null)
 {
     public string ColourAt(double? value)
     {
         if (value is not { } v || !double.IsFinite(v)) return Palettes.Missing;
+        if (v < Min && Below is { } below) return below;
+        if (v > Max && Above is { } above) return above;
         // Work relative to each side: a global normalized pivot can round to 0 or 1
         // even though Mid is an interior double in the original domain.
         var position = Min == Max ? .5 : v <= Min ? 0 : v >= Max ? 1
@@ -30,8 +32,14 @@ public static class ColourScale
 {
     public static ColourScaleResult Create(IReadOnlyList<double?> values, IReadOnlyList<string>? palette = null,
         double? min = null, double? max = null, double? mid = null, string title = "Legend", string unit = "",
-        string id = "colour-scale", Slot? slot = null)
+        string id = "colour-scale", Slot? slot = null, string? below = null, string? above = null)
     {
+        static void ValidateColour(string? colour, string name)
+        {
+            if (colour is not null && (colour.Length != 7 || colour[0] != '#' || !colour.Skip(1).All(Uri.IsHexDigit)))
+                throw new ArgumentException($"{name} colour must be a #RRGGBB string.");
+        }
+        ValidateColour(below, "Below"); ValidateColour(above, "Above");
         var messages = new List<ColourMessage>();
         var scheme = Palettes.Resolve(palette, "Blue", messages);
         if (scheme.Kind == PaletteKind.Categorical && scheme.Name != "Custom")
@@ -74,8 +82,9 @@ public static class ColourScale
             throw new ArgumentException("Automatic bounds cannot include these controls; set finite Min and Max around Mid.");
         var explicitMid = mid.HasValue;
         mid ??= scheme.Kind is PaletteKind.Diverging or PaletteKind.Status && min < 0 && max > 0 ? 0 : ColourRange.Lerp(min.Value, max.Value, .5);
-        var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Unit = unit, Min = min, Max = max, WiredSlot = slot };
-        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value);
+        var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Unit = unit, Min = min, Max = max, WiredSlot = slot,
+            BelowColor = below, AboveColor = above };
+        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value, below, above);
         // Compute the breakpoint from the nearer side, without subtracting two
         // almost equal values at the far endpoint. Explicit controls must fit the
         // positioned-stop transport; never silently discard an accepted Mid.
@@ -106,8 +115,21 @@ public static class ColourScale
         legend.Validate();
         var missing = values.Count - finite.Length;
         if (missing > 0) messages.Add(new(ColourMessageLevel.Remark, $"{missing} missing {(missing == 1 ? "value" : "values")} shown in grey ({Palettes.Missing})."));
-        var outside = finite.Count(v => v < min || v > max);
-        if (outside > 0) messages.Add(new(outside == finite.Length ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, $"{outside} of {values.Count} {(values.Count == 1 ? "value" : "values")} {(outside == 1 ? "is" : "are")} outside {F(min)}–{F(max)} and {(outside == 1 ? "uses" : "use")} the end colours."));
+        var belowCount = finite.Count(v => v < min); var aboveCount = finite.Count(v => v > max);
+        var outside = belowCount + aboveCount;
+        if (outside > 0)
+        {
+            var prefix = $"{outside} of {values.Count} {(values.Count == 1 ? "value" : "values")} {(outside == 1 ? "is" : "are")} outside {F(min)}–{F(max)}";
+            var detail = $" and {(outside == 1 ? "uses" : "use")} the end colours";
+            if (below is not null || above is not null)
+            {
+                var sides = new List<string>();
+                if (belowCount > 0) sides.Add($"{belowCount} below Min {(belowCount == 1 ? "uses" : "use")} the {(below is null ? "first" : "Below")} colour");
+                if (aboveCount > 0) sides.Add($"{aboveCount} above Max {(aboveCount == 1 ? "uses" : "use")} the {(above is null ? "last" : "Above")} colour");
+                detail = ": " + string.Join("; ", sides);
+            }
+            messages.Add(new(outside == finite.Length ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, prefix + detail + "."));
+        }
         return result with { Colours = values.Select(result.ColourAt).ToArray(), Legend = legend, Messages = messages.ToArray() };
     }
 }

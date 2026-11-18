@@ -28,11 +28,22 @@ public static class LegendCardPainter
             // The unit sits on the title row, right-aligned (CardPainter keeps the title clear of it).
             if (!string.IsNullOrWhiteSpace(c.Unit))
                 canvas.Text(c.Unit, new(c.Width - t.Padding - canvas.MeasureText(c.Unit, t.FontSize, t.Font).Width, 10), t.FontSize, t.Muted, t.Font);
-            // Full-width bar, inset only enough to centre the end labels under its ends.
-            var left = t.Padding + Math.Max(2, LabelWidth(min) / 2); var right = c.Width - t.Padding - Math.Max(2, LabelWidth(max) / 2);
-            var width = Math.Max(1, right - left);
             var barH = c.Form.Compact ? GradientCompactBar : GradientBar;
+            var capW = barH * .6;
+            // Reserve each cap (including its stroke) or half the endpoint label, whichever is wider.
+            // Caps stay inside the existing measured card bounds in both forms.
+            var left = t.Padding + Math.Max(c.BelowColor is null ? 2 : capW + .5, LabelWidth(min) / 2);
+            var right = c.Width - t.Padding - Math.Max(c.AboveColor is null ? 2 : capW + .5, LabelWidth(max) / 2);
+            var width = Math.Max(1, right - left);
             canvas.Gradient(new(left, GradientTop, width, barH), c.Colors, c.ColorPositions);
+            void Cap(double x, double direction, string colour)
+            {
+                Point2[] points = [new(x, GradientTop), new(x + direction * capW, GradientTop + barH / 2), new(x, GradientTop + barH)];
+                canvas.FillPolygon(points, colour);
+                canvas.Polyline([.. points, points[0]], t.Muted, .75);
+            }
+            if (c.BelowColor is { } below) Cap(left, -1, below);
+            if (c.AboveColor is { } above) Cap(right, 1, above);
             var tickTop = GradientTop + barH; var labelTop = tickTop + 6;
             var placed = new List<(double Left, double Right)>();
             // End labels first so a middle label never crowds them out; then middle ticks that fit.

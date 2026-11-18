@@ -190,7 +190,7 @@ to **Overlay**, or card outputs to **Canvas Card**.
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
-| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title and Slot → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
+| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title, Slot and optional Below/Above colours → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
 | Colour Palette | Colour: Style (Programme), Count (8), Shift (0) → Colours and #RRGGBB Hex lists. Curated diagram styles keep the first colours the same when Count grows. |
 | Colour Categories | Colour: Categories tree, optional member Keys, Palette (Categorical), Order, Title and Slot → Colours tree, Legend, distinct Categories, Category colours, Group keys and Members for a grouped Bar. Order pins colours across filtering; right-click Show counts defaults on. |
 | Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a remark; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
@@ -269,7 +269,9 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 Maps numbers to colours and a finished ordinary Legend. Colours can also feed
 Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
 of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
-set both for a legend with no Values. Out-of-range values use the end colours.
+set both for a legend with no Values. Out-of-range values use the end colours unless
+you set **Below** and/or **Above**. Each supplied colour adds an outward triangular
+cap to that end of the legend. Values equal to Min/Max still use the gradient endpoints.
 Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
 a remark. Constant finite data gets a single-colour legend at that value.
 
@@ -283,11 +285,13 @@ a remark. Constant finite data gets a single-colour legend at that value.
 | Unit | U | Text | Empty; shown on the legend. |
 | Title | T | Text | Legend. |
 | Slot | S | Text option, optional | Automatic. |
+| Below | Bl | Colour, optional | Colour for values below Min; unset uses the first colour. Alpha is ignored. |
+| Above | Ab | Colour, optional | Colour for values above Max; unset uses the last colour. Alpha is ignored. |
 
 Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid is the value at the
 palette's middle colour; each side of it is linear, and automatic bounds grow to include
 it. The legend is drawn from the same mapping as the model colours, so the two always
-agree. Give one Title, Unit, Slot and Mid per component: it makes one legend.
+agree. Give one Title, Unit, Slot, Min, Max, Mid, Below and Above per component: it makes one legend.
 
 **Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1.
 
