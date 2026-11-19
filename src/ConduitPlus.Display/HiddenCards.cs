@@ -8,13 +8,13 @@ public static partial class OverlayManager
     { if (global::Rhino.Commands.Command.InCommand()) return; foreach (var c in Coordinators.Values) { c.ListOpen = false; c.Shown = null; } foreach (var s in Sessions.Values) s.View.Redraw(); }
     private static (HiddenRow[] Rows, HiddenPanel Panel, double Unit) HiddenGeometry(RhinoView view, ViewCoordinator c)
     {
-        var f = c.Frame!; var unit = f.Unit.Values.Min();
+        var f = CurrentFrame(view, c); var unit = f.Unit.Values.Min();
         var rows = HiddenList.Build(InView(view.Document, view).Where(s => s.Visible).Select(s => new HiddenParticipant(s.Label, s.Owner, s.Cards, f.Hidden.Where(h => h.Owner == s.Owner).Select(h => h.CardId).ToHashSet(StringComparer.Ordinal))));
         return (rows, HiddenList.Layout(f.Chip!.Value, f.Chip.Value.Y, 22 * unit, rows.Length), unit);
     }
     private static bool HiddenHit(RhinoView view, double x, double y, bool click = false)
     {
-        if (!Coordinators.TryGetValue((view.Document.RuntimeSerialNumber, view.MainViewport.Id), out var c) || c.Frame?.Chip is not { } chip) return false;
+        if (!Coordinators.TryGetValue((view.Document.RuntimeSerialNumber, view.MainViewport.Id), out var c) || CurrentFrame(view, c).Chip is not { } chip) return false;
         if (chip.Contains(x,y)) { if (click) { c.ListOpen = !c.ListOpen; view.Redraw(); } return true; }
         if (!c.ListOpen) return false;
         var g = HiddenGeometry(view,c);
@@ -26,6 +26,8 @@ public static partial class OverlayManager
     {
         if (!c.ListOpen) return;
         var g=HiddenGeometry(view,c); var b=g.Panel.Bounds;
+        // The frozen-size chip can briefly be above/left of a very small viewport during resizing.
+        if (b.Width <= 0 || b.Height <= 0) return;
         e.Display.Draw2dRectangle(new System.Drawing.Rectangle((int)b.X,(int)b.Y,(int)b.Width,(int)b.Height), System.Drawing.Color.FromArgb(242,31,35,41),0,System.Drawing.Color.FromArgb(242,31,35,41));
 
         // Keep long titles inside the panel: measure in design units, then compare to the panel's inner width.

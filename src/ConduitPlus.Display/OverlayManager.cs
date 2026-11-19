@@ -332,7 +332,7 @@ public static partial class OverlayManager
         if (sessions.Contains(source) && Sessions.Values.Contains(source)) CheckFrame(source);
         foreach (var session in sessions) session.Draw(e);
         if (!e.Display.IsInViewCapture) foreach (var session in sessions.Where(s => ShownId(s) is not null)) session.DrawFloating(e);
-        if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && coordinator.Frame is { Chip: { } chip } frame)
+        if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && CurrentFrame(source.View, coordinator) is { Chip: { } chip } frame)
         {
             DrawHiddenList(source.View, coordinator, e);
             var n = frame.Hidden.Count;

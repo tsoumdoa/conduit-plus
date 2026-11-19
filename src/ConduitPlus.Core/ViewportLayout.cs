@@ -26,7 +26,7 @@ public static class FormMeasure
         } + TableScroll.FooterHeight(c with { Form = f }, t));
     }
 }
-public sealed record CardPlacement(Guid Owner, string CardId, double X, double Y, double Width, double Height, CardForm Form);
+public sealed record CardPlacement(Guid Owner, string CardId, double X, double Y, double Width, double Height, CardForm Form, Slot Slot = Slot.Tl, bool Title = false);
 public enum LayoutOrientation { Columns, Bands }
 public sealed record LayoutReport(IReadOnlyDictionary<Guid, double> BaseZoom, double ShrinkMultiplier, int WrapLines, LayoutOrientation Orientation, IReadOnlyList<string> CompactSteps, int HiddenCount);
 public sealed record ViewportSolution(IReadOnlyList<CardPlacement> Placements, IReadOnlyList<(Guid Owner, string CardId)> Hidden, IReadOnlyDictionary<Guid, double> Zoom, IReadOnlyDictionary<Guid, double> Unit, Rect2? Chip, LayoutReport Report);
@@ -47,6 +47,38 @@ public static class ViewportLayout
     });
     public static ViewportSolution Solve(LayoutRequest r)
     {
+        var columns = Solve(r, bands: false);
+        if (columns.Hidden.Count == 0 || r.Viewport.Width >= r.Viewport.Height) return columns;
+        var bands = Solve(r, bands: true);
+        return bands.Hidden.Count < columns.Hidden.Count ? bands : columns;
+    }
+
+    /// <summary>Move a settled frame without changing its raster sizes, forms, zoom or hidden set.
+    /// Always reanchor from the settled size, rather than accumulating deltas between draws.
+    /// During a resize, placements may overlap or clip until the next settled solve.</summary>
+    public static ViewportSolution Reanchor(ViewportSolution solution, Size2 fromSize, Size2 toSize)
+    {
+        if (fromSize == toSize) return solution;
+        var dx = toSize.Width - fromSize.Width;
+        var dy = toSize.Height - fromSize.Height;
+        var bands = solution.Report.Orientation == LayoutOrientation.Bands;
+        static bool Right(Slot slot) => slot is Slot.Tr or Slot.Rc or Slot.Br;
+        // In bands, cards sit in the left rail's top band or the right rail's bottom band, whatever their slot's row.
+        double ShiftY(CardPlacement p) => bands && !p.Title ? Right(p.Slot) ? dy : 0
+            : p.Slot is Slot.Bl or Slot.Bc or Slot.Br ? dy : p.Slot is Slot.Lc or Slot.Rc ? dy / 2 : 0;
+        return solution with
+        {
+            Placements = solution.Placements.Select(p => p with
+            {
+                X = p.X + (Right(p.Slot) ? dx : p.Slot is Slot.Tc or Slot.Bc ? dx / 2 : 0),
+                Y = p.Y + ShiftY(p)
+            }).ToArray(),
+            Chip = solution.Chip is { } chip ? chip with { X = chip.X + dx, Y = chip.Y + dy } : null
+        };
+    }
+
+    private static ViewportSolution Solve(LayoutRequest r, bool bands)
+    {
         var o = r.Options;
         if (!double.IsFinite(r.Dpi) || r.Dpi <= 0 || r.Viewport.Width < 0 || r.Viewport.Height < 0 || o.ZoomStep <= 0 || o.MinZoom <= 0 || o.MaxZoom < o.MinZoom) throw new ArgumentException("Invalid layout dimensions or scale.");
         var owners = r.Participants.OrderBy(p => p.Owner.ToString("N"), StringComparer.Ordinal).ToArray();
@@ -59,7 +91,6 @@ public static class ViewportLayout
         var forms = items.ToDictionary(x => (x.P.Owner, x.C.Id), _ => CardForm.None);
         var hidden = new List<Item>();
         var steps = new List<string>();
-        var portrait = r.Viewport.Width < r.Viewport.Height;
         var multiplier = 1d;
         Rect2? chip = null;
         List<CardPlacement> placed = [];
@@ -89,38 +120,40 @@ public static class ViewportLayout
                 var hasMiddle = titles.Any(y => IsTop(y) == IsTop(x) && y.Slot is Slot.Tc or Slot.Bc);
                 forms[(x.P.Owner,x.C.Id)] = forms[(x.P.Owner,x.C.Id)] with { Width = r.Viewport.Width * (middle ? .6 : hasMiddle ? .3 : .45) / (r.Dpi * zoom[x.P.Owner]) };
             }
-            var topBand = portrait ? new[]{Slot.Tl,Slot.Tc,Slot.Tr}.Max(Zone) : 0;
-            var bottomBand = portrait ? new[]{Slot.Bl,Slot.Bc,Slot.Br}.Max(Zone) : 0;
+            var topBand = bands ? new[]{Slot.Tl,Slot.Tc,Slot.Tr}.Max(Zone) : 0;
+            var bottomBand = bands ? new[]{Slot.Bl,Slot.Bc,Slot.Br}.Max(Zone) : 0;
             var extents = new double[2]; var exempt = new double[2];
             for (var rail = 0; rail < 2; rail++)
             {
                 Slot[] slots = rail == 0 ? [Slot.Tl, Slot.Lc, Slot.Bl] : [Slot.Tr, Slot.Rc, Slot.Br];
                 var ordered = slots.SelectMany(s => items.Where(x => x.C.Kind != CardKind.Title && x.Slot == s)).Where(x => !hidden.Contains(x)).ToArray();
                 var groups = new List<List<Item>>();
-                // Keep the bottom-left corner clear (Rhino's world axes icon): the left rail, or the bottom band in portrait, ends above it.
-                var bottom = margin + ((portrait ? rail == 1 : rail == 0) ? o.BottomLeftReserve : 0);
-                bottom += portrait ? bottomBand : Zone(rail == 0 ? Slot.Bl : Slot.Br);
-                var railTop = top + (portrait ? topBand : Zone(rail == 0 ? Slot.Tl : Slot.Tr));
-                var capacity = portrait ? r.Viewport.Width - 2 * margin : r.Viewport.Height - railTop - bottom;
+                // Keep the bottom-left corner clear (Rhino's world axes icon): the left rail, or the bottom band, ends above it.
+                var bottom = margin + ((bands ? rail == 1 : rail == 0) ? o.BottomLeftReserve : 0);
+                bottom += bands ? bottomBand : Zone(rail == 0 ? Slot.Bl : Slot.Br);
+                if (rail == 1 && reserve) bottom += o.ChipReserve * u + gap;
+                var railTop = top + (bands ? topBand : Zone(rail == 0 ? Slot.Tl : Slot.Tr));
+                var capacity = bands ? r.Viewport.Width - 2 * margin : r.Viewport.Height - railTop - bottom;
                 foreach (var x in ordered)
                 {
-                    var size = Measure(x); var length = portrait ? size.Width : size.Height;
+                    var size = Measure(x); var length = bands ? size.Width : size.Height;
                     if (length > capacity + 1e-7) return false;
-                    if (groups.Count == 0 || groups[^1].Sum(y => portrait ? Measure(y).Width : Measure(y).Height) + groups[^1].Count * gap + length > capacity) groups.Add([]);
+                    var used = groups.Count == 0 ? 0 : groups[^1].Sum(y => bands ? Measure(y).Width : Measure(y).Height) + groups[^1].Count * gap;
+                    if (groups.Count == 0 || used + length > capacity || bands && used + length / 2 > r.Viewport.Width / 2 - margin) groups.Add([]);
                     groups[^1].Add(x);
                 }
                 var offset = 0d;
                 foreach (var group in groups)
                 {
                     lines++;
-                    var thickness = group.Max(x => portrait ? Measure(x).Height : Measure(x).Width);
+                    var thickness = group.Max(x => bands ? Measure(x).Height : Measure(x).Width);
                     var middle = group.Where(y => y.Slot is Slot.Lc or Slot.Rc).ToArray();
                     var middleTotal = middle.Sum(y => Measure(y).Height) + Math.Max(0, middle.Length - 1) * gap;
-                    var cursor = portrait ? margin : railTop;
+                    var cursor = bands ? rail == 0 ? margin : r.Viewport.Width - margin : railTop;
                     foreach (var x in group)
                     {
                         var s = Measure(x);
-                        if (!portrait)
+                        if (!bands)
                         {
                             var remaining = group.SkipWhile(y => y != x).ToArray();
                             var rest = remaining.Sum(y => Measure(y).Height) + (remaining.Length - 1) * gap;
@@ -128,25 +161,27 @@ public static class ViewportLayout
                             // Centre the middle-slot cards as a block, clamped between the top and bottom stacks.
                             else if (middle.Length > 0 && ReferenceEquals(x, middle[0])) cursor = Math.Max(cursor, Math.Min((r.Viewport.Height - middleTotal) / 2, r.Viewport.Height - bottom - rest));
                         }
-                        var px = portrait ? cursor : rail == 0 ? margin + offset : r.Viewport.Width - margin - offset - s.Width;
-                        var py = portrait ? rail == 0 ? railTop + offset : r.Viewport.Height - bottom - offset - s.Height : cursor;
+                        var px = bands ? rail == 0 ? cursor : cursor - s.Width : rail == 0 ? margin + offset : r.Viewport.Width - margin - offset - s.Width;
+                        var py = bands ? rail == 0 ? railTop + offset : r.Viewport.Height - bottom - offset - s.Height : cursor;
                         var rect = new Rect2(px, py, s.Width, s.Height);
+                        // Inward wrapping must never move a card's centre onto the opposite side.
+                        if (rail == 0 ? px + s.Width / 2 > r.Viewport.Width / 2 : px + s.Width / 2 < r.Viewport.Width / 2) return false;
                         if (px < 0 || py < 0 || px + s.Width > r.Viewport.Width + 1e-7 || py + s.Height > r.Viewport.Height + 1e-7 || chip is { } ch && Overlap(rect, ch) || placed.Any(p => Overlap(rect, new(p.X, p.Y, p.Width, p.Height)))) return false;
-                        placed.Add(new(x.P.Owner, x.C.Id, px, py, s.Width, s.Height, forms[(x.P.Owner, x.C.Id)]));
-                        cursor += (portrait ? s.Width : s.Height) + gap;
+                        placed.Add(new(x.P.Owner, x.C.Id, px, py, s.Width, s.Height, forms[(x.P.Owner, x.C.Id)], x.Slot));
+                        cursor += ((bands ? s.Width : s.Height) + gap) * (bands && rail == 1 ? -1 : 1);
                     }
                     offset += thickness + gap;
                 }
                 extents[rail] = Math.Max(0, offset - gap);
                 // A card too wide for the keep-clear budget may sit alone in its rail's first column; overlap is checked above.
-                var axisLength = portrait ? r.Viewport.Height : r.Viewport.Width;
+                var axisLength = bands ? r.Viewport.Height : r.Viewport.Width;
                 if (groups.Count > 0 && groups[0].Count == 1)
                 {
-                    var first = portrait ? Measure(groups[0][0]).Height : Measure(groups[0][0]).Width;
+                    var first = bands ? Measure(groups[0][0]).Height : Measure(groups[0][0]).Width;
                     if (first + o.KeepClear * axisLength > axisLength) exempt[rail] = first + (groups.Count > 1 ? gap : 0);
                 }
             }
-            var axis = portrait ? r.Viewport.Height : r.Viewport.Width;
+            var axis = bands ? r.Viewport.Height : r.Viewport.Width;
             if (extents.Sum() - exempt.Sum() + o.KeepClear * axis > axis + 1e-7) return false;
             foreach (var zone in new[]{Slot.Tl,Slot.Tr,Slot.Bl,Slot.Br,Slot.Tc,Slot.Bc})
             {
@@ -185,7 +220,7 @@ public static class ViewportLayout
                     var py = upper ? cursor : cursor-size.Height;
                     var rect = new Rect2(px,py,size.Width,size.Height);
                     if(px<0 || py<0 || px+size.Width>r.Viewport.Width+1e-7 || py+size.Height>r.Viewport.Height+1e-7 || chip is {} ch && Overlap(rect,ch) || placed.Any(p=>Overlap(rect,new(p.X,p.Y,p.Width,p.Height)))) return false;
-                    placed.Add(new(x.P.Owner,x.C.Id,px,py,size.Width,size.Height,forms[(x.P.Owner,x.C.Id)]));
+                    placed.Add(new(x.P.Owner,x.C.Id,px,py,size.Width,size.Height,forms[(x.P.Owner,x.C.Id)],x.Slot,Title: true));
                     cursor += upper ? size.Height+gap : -size.Height-gap;
                 }
             }
@@ -229,7 +264,7 @@ public static class ViewportLayout
             }
             Fit(hidden.Count > 0);
         }
-        return new(items.Where(x => !hidden.Contains(x)).Select(x => placed.Single(p => p.Owner == x.P.Owner && p.CardId == x.C.Id)).ToArray(), hidden.Select(x => (x.P.Owner,x.C.Id)).ToArray(), zoom, zoom.ToDictionary(x => x.Key,x => x.Value*r.Dpi), chip, new(initial,multiplier,lines,portrait ? LayoutOrientation.Bands : LayoutOrientation.Columns,steps,hidden.Count));
+        return new(items.Where(x => !hidden.Contains(x)).Select(x => placed.Single(p => p.Owner == x.P.Owner && p.CardId == x.C.Id)).ToArray(), hidden.Select(x => (x.P.Owner,x.C.Id)).ToArray(), zoom, zoom.ToDictionary(x => x.Key,x => x.Value*r.Dpi), chip, new(initial,multiplier,lines,bands ? LayoutOrientation.Bands : LayoutOrientation.Columns,steps,hidden.Count));
         Size2 MeasureDesign(Item x) => FormMeasure.Size(x.C,x.P.Theme,forms[(x.P.Owner,x.C.Id)],r.Measure);
     }
     private static bool Overlap(Rect2 a, Rect2 b) => a.X < b.X+b.Width && b.X < a.X+a.Width && a.Y < b.Y+b.Height && b.Y < a.Y+a.Height;

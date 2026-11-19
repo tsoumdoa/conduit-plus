@@ -15,6 +15,8 @@ public static partial class OverlayManager
         internal long Generation;
         internal Size2 Size;
         internal double Dpi;
+        internal Size2 ObservedSize;
+        internal double ObservedDpi;
         internal string? Signature;
         internal readonly System.Windows.Forms.Timer Timer = new() { Interval = 120 };
         public void Dispose() { foreach (var owner in Reports.Keys) OverflowChanged?.Invoke(owner, null); Timer.Dispose(); }
@@ -46,6 +48,7 @@ public static partial class OverlayManager
         c.Timer.Stop();
         var sessions = InView(doc, view);
         var request = Request(view, sessions);
+        c.ObservedSize = request.Viewport; c.ObservedDpi = request.Dpi;
         var signature = ViewportLayout.Signature(request);
         if (c.Frame is null || c.Signature != signature)
         {
@@ -73,12 +76,23 @@ public static partial class OverlayManager
         view.Redraw();
     }
     private static void CheckFrame(OverlaySession session)
+        => CheckFrame(session.Document, session.View, Coordinator(session.Document, session.View));
+    private static void CheckFrame(RhinoDoc doc, RhinoView view, ViewCoordinator c)
     {
-        var c = Coordinator(session.Document, session.View);
-        if (c.Frame is null) { Settle(session.Document, session.View); return; }
-        var size = session.View.MainViewport.Size;
-        if (c.Size != new Size2(size.Width, size.Height) || c.Dpi != UiContext.Dpi(session.View))
-        { c.Timer.Stop(); c.Timer.Start(); }
+        if (c.Frame is null) { Settle(doc, view); return; }
+        var size = new Size2(view.MainViewport.Size.Width, view.MainViewport.Size.Height);
+        var dpi = UiContext.Dpi(view);
+        // Draws and input can run continuously. Debounce actual changes, not every read of an unsettled frame.
+        if (c.ObservedSize == size && c.ObservedDpi == dpi) return;
+        c.ObservedSize = size; c.ObservedDpi = dpi;
+        c.Timer.Stop();
+        if (c.Size != size || c.Dpi != dpi) c.Timer.Start();
+    }
+    private static ViewportSolution CurrentFrame(RhinoView view, ViewCoordinator c)
+    {
+        // Input may arrive before the first draw after maximize/restore or a viewport layout change.
+        CheckFrame(view.Document, view, c);
+        return ViewportLayout.Reanchor(c.Frame!, c.Size, new(view.MainViewport.Size.Width, view.MainViewport.Size.Height));
     }
     internal static CardLayout[] Placements(OverlaySession session, bool includeShown = true)
     {
@@ -87,8 +101,7 @@ public static partial class OverlayManager
         if (Sessions.Values.Contains(session))
         {
             var c = Coordinator(session.Document, session.View);
-            if (c.Frame is null) Settle(session.Document, session.View);
-            frame = c.Frame!;
+            frame = CurrentFrame(session.View, c);
         }
         else
         {
@@ -101,15 +114,10 @@ public static partial class OverlayManager
         {
             var unit = frame.Unit[session.Owner]; var size = CardMeasure.Measure(floating, session.Theme);
             // Only card columns bound the clear gap; Titles (top or bottom rows) don't.
-            Slot? SlotOf(CardPlacement placement)
-            {
-                var cards = InView(session.Document, session.View).First(s => s.Owner == placement.Owner).AuthoredCards;
-                var index = Array.FindIndex(cards, card => card.Id == placement.CardId);
-                return index < 0 || cards[index].Kind == CardKind.Title ? null : SlotLayout.ResolveAll(cards)[index];
-            }
-            var left = frame.Placements.Where(p => SlotOf(p) is Slot.Tl or Slot.Lc or Slot.Bl).Select(p => p.X + p.Width).DefaultIfEmpty(0).Max();
-            var right = frame.Placements.Where(p => SlotOf(p) is Slot.Tr or Slot.Rc or Slot.Br).Select(p => p.X).DefaultIfEmpty(coordinator.Size.Width).Min();
-            var rect = ShownCard.Place(new(size.Width * unit, size.Height * unit), coordinator.Size, 12 * coordinator.Dpi, left, right);
+            bool IsCard(CardPlacement p) => InView(session.Document, session.View).First(s => s.Owner == p.Owner).Card(p.CardId)?.Kind != CardKind.Title;
+            var left = frame.Placements.Where(p => IsCard(p) && p.Slot is Slot.Tl or Slot.Lc or Slot.Bl).Select(p => p.X + p.Width).DefaultIfEmpty(0).Max();
+            var right = frame.Placements.Where(p => IsCard(p) && p.Slot is Slot.Tr or Slot.Rc or Slot.Br).Select(p => p.X).DefaultIfEmpty(session.ViewSize.Width).Min();
+            var rect = ShownCard.Place(new(size.Width * unit, size.Height * unit), session.ViewSize, 12 * coordinator.Dpi, left, right);
             placements = placements.Append(new(session.Owner, floating.Id, rect.X, rect.Y, rect.Width, rect.Height, floating.Form));
         }
         return placements.Where(p => p.Owner == session.Owner)
@@ -121,6 +129,19 @@ public static partial class OverlayManager
         if (!Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var c) || c.Shown is not { } shown || shown.Owner == session.Owner) return false;
         var owner = InView(session.Document, session.View).FirstOrDefault(s => s.Owner == shown.Owner);
         return owner is not null && Placements(owner).Any(p => p.Id == shown.CardId && new Rect2(p.X, p.Y, p.W, p.H).Contains(x, y));
+    }
+    /// <summary>True when an Overlay drawn later in this view has a (non-Title) card over the point.
+    /// Settled frames never overlap, but reanchoring during a resize can briefly stack cards from different owners;
+    /// input then goes to the card drawn on top, matching what the user sees.</summary>
+    internal static bool CoveredByLater(OverlaySession session, double x, double y)
+    {
+        var sessions = InView(session.Document, session.View).Where(s => s.Visible).ToArray();
+        var index = Array.IndexOf(sessions, session);
+        if (index < 0) return false;
+        foreach (var later in sessions.Skip(index + 1))
+            foreach (var p in Placements(later))
+                if (later.Card(p.Id)?.Kind != CardKind.Title && new Rect2(p.X, p.Y, p.W, p.H).Contains(x, y)) return true;
+        return false;
     }
     internal static string? ShownId(OverlaySession session) => Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var c) && c.Shown is { } shown && shown.Owner == session.Owner ? shown.CardId : null;
     private static void DisposeCoordinators(Func<(uint Doc, Guid View), bool> match)

@@ -159,7 +159,7 @@ internal sealed partial class OverlaySession : IDisposable
     public (string CardId, string Key)? Hit(double x, double y)
     {
         if (!Visible) return null;
-        if (OverlayManager.CoveredByShown(this, x, y)) return null;
+        if (OverlayManager.CoveredByShown(this, x, y) || OverlayManager.CoveredByLater(this, x, y)) return null;
         var size = View.MainViewport.Size;
         foreach (var layout in OverlayManager.Placements(this).AsEnumerable().Reverse())
         {
