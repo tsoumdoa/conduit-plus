@@ -10,6 +10,8 @@ synchronously on Rhino's UI thread.
 
 Licensed under MIT. Features include Auto, Paper, Night, Smoke and Blueprint themes,
 deterministic viewport slots in input order and keyed geometry highlighting.
+Right-click a pinned card, Canvas Card or Overlay and choose **Copy card as image** to paste
+a sharp 2× picture of it into slides or documents (transparent PNG, with an opaque fallback).
 A docked Inspector is future work.
 
 ## Quick start

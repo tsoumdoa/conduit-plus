@@ -18,7 +18,7 @@ Version 0.2.0-beta.2, published on public Yak as a prerelease (`conduit-plus`; t
 | Layout | Cards input order; Slot input picks the side |
 | Inputs | Right-click Slot, Overlay Theme or Metric Decimals to pick a value from a list |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events; Canvas Card outputs Selection |
-| Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards) |
+| Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards); copy one card or a stack as a 2× clipboard image from pinned-card, Canvas Card and Overlay menus (selection retained, hover omitted) |
 | Examples | Structural dashboard, room area check and massing/zoning with keyed demo geometry |
 
 ## Sample files for checking

@@ -231,6 +231,13 @@ public sealed class CanvasCardComponent : GH_Component
     {
         base.AppendAdditionalComponentMenuItems(menu);
         Menu_AppendSeparator(menu);
+        var shown = (Attributes as CanvasCardAttributes)?.Frame?.Specs.Length ?? 0;
+        Menu_AppendItem(menu, shown > 1 ? "Copy cards as image" : "Copy card as image", (_, _) =>
+        {
+            // Read the frame on click: a solve may replace it while the menu is open.
+            if ((Attributes as CanvasCardAttributes)?.Frame is { Specs.Length: > 0 } frame && !CardClipboard.TryCopy(frame.Specs, frame.Theme, out var error))
+                global::Rhino.RhinoApp.WriteLine(error);
+        }, shown > 0);
         var themes = Menu_AppendItem(menu, "Theme");
         foreach (var theme in Theme.Presets)
             Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme.Name), true, string.Equals(_themeName, theme.Name, StringComparison.OrdinalIgnoreCase));
