@@ -73,11 +73,27 @@ public class TitleBehaviourTests
     }
 
     [Fact]
-    public void PortraitTitlesSitAboveAndBelowTheBands()
+    public void PortraitTitlesKeepTheirEdgesWithColumns()
     {
         var s = Solve(600, 1200, owners: Owner(1, Title("top", Slot.Tc), Title("bottom", Slot.Bc), Metric("left", Slot.Tl), Metric("right", Slot.Tr)));
+        Assert.Equal(LayoutOrientation.Columns, s.Report.Orientation);
+        Assert.Empty(s.Hidden);
+        Assert.Equal(30, At(s, "top").Y);
+        Assert.Equal(30, At(s, "left").Y);
+        Assert.Equal(30, At(s, "right").Y);
+        Assert.Equal(1200 - 12 * .625, At(s, "bottom").Y + At(s, "bottom").Height);
+        Assert.True(At(s, "right").Y + At(s, "right").Height <= At(s, "bottom").Y);
+    }
+
+    [Fact]
+    public void PortraitFallbackBandsStillClearTitles()
+    {
+        var s = Solve(600, 1200, owners: Owner(1, Title("top", Slot.Tc), Title("bottom", Slot.Bc), Wide("left", Slot.Tl), Wide("right", Slot.Tr)));
+        Assert.Equal(LayoutOrientation.Bands, s.Report.Orientation);
+        Assert.Empty(s.Hidden);
         Assert.True(At(s, "top").Y + At(s, "top").Height <= At(s, "left").Y);
         Assert.True(At(s, "right").Y + At(s, "right").Height <= At(s, "bottom").Y);
+        Assert.Equal(600 - 12 * .625, At(s, "right").X + At(s, "right").Width);
     }
 
     [Fact]
