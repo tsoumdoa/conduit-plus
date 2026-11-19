@@ -1,7 +1,7 @@
 name: conduit-plus
 version: "@VERSION@"
 authors:
-  - Tomo S
+  - aectooling by tomoS
 license: MIT
 description: >
   Viewport HUD cards for Rhino 8 and Grasshopper, with metrics, signed bars,

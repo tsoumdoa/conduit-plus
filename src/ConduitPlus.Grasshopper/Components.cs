@@ -19,7 +19,7 @@ public sealed class AssemblyInfo : GH_AssemblyInfo
     public override string Name => "Conduit+";
     public override string Description => "Viewport cards for structural results";
     public override Guid Id => new("b02874c1-57b6-43d2-871a-3cb89603f101");
-    public override string AuthorName => "Tomo S";
+    public override string AuthorName => "aectooling by tomoS";
     public override string AuthorContact => "";
     public override GH_LibraryLicense License => GH_LibraryLicense.opensource;
     public override Bitmap Icon => ConduitIcons.Logo(24);
