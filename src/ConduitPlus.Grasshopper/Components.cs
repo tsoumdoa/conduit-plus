@@ -450,9 +450,10 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     private PendingPublish? _pending;
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
+    private bool _followActiveView = true, _activeViewPending;
     private Bitmap? _icon;
     private DisplayVisibility Visibility => DisplayVisibility.Evaluate(Hidden, Locked);
-    public OverlayComponent() : base("Overlay", "Overlay", "Display cards in the active or named Rhino viewport; click bars/rows for keyed selection")
+    public OverlayComponent() : base("Overlay", "Overlay", "Display cards following the active Rhino viewport by default, or in a named viewport; click bars/rows for keyed selection")
     {
         ObjectChanged += (_, e) =>
         {
@@ -472,6 +473,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     public override bool Write(GH_IWriter writer)
     {
         writer.SetString("ConduitPlus.Theme", _menuTheme.Name);
+        writer.SetBoolean("ConduitPlus.FollowActiveView", _followActiveView);
         return base.Write(writer);
     }
     public override bool Read(GH_IReader reader)
@@ -481,6 +483,8 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         var themeFound = reader.TryGetString("ConduitPlus.Theme", ref themeName);
         _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);
         _selectedTheme = _menuTheme;
+        var followActiveView = true;
+        _followActiveView = !reader.TryGetBoolean("ConduitPlus.FollowActiveView", ref followActiveView) || followActiveView;
         Params.Input[0].Optional = true;
         Params.Input[0].Access = Params.Input[1].Access = GH_ParamAccess.tree;
         return result;
@@ -514,6 +518,8 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         var themes = Menu_AppendItem(menu, setByInput ? "Theme (set by input)" : "Theme");
         foreach (var theme in Theme.Presets)
             Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme), !setByInput, _menuTheme == theme);
+        Menu_AppendItem(menu, ViewInputSet ? "Follow active viewport (View set by input)" : "Follow active viewport",
+            (_, _) => ChangeFollowActiveView(), !ViewInputSet, _followActiveView);
     }
     // Re-read on click: a solve may update or remove cards while the menu is open. Null id copies all shown cards.
     private void CopyCards(string? id)
@@ -530,6 +536,43 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         if (error is not null) RhinoApp.WriteLine(error);
     }
     private bool ThemeInputSet => Params.Input[2] is Param_TextOption { HasValue: true };
+    private bool ViewInputSet => Params.Input[4] is Param_TextOption { HasValue: true };
+    private void ChangeFollowActiveView()
+    {
+        if (OnPingDocument() is null || ViewInputSet) return;
+        RecordUndoEvent("Follow active viewport", new FollowActiveViewUndoAction(InstanceGuid, _followActiveView, !_followActiveView));
+        ApplyFollowActiveView(!_followActiveView);
+    }
+    private void ApplyFollowActiveView(bool enabled)
+    {
+        _followActiveView = enabled;
+        if (enabled) FollowActiveView();
+        OnPingDocument()?.Modified();
+    }
+    public sealed class FollowActiveViewUndoAction : GH_ObjectUndoAction
+    {
+        private Guid _owner;
+        private bool _before, _after;
+        public FollowActiveViewUndoAction() : base(Guid.Empty) { }
+        public FollowActiveViewUndoAction(Guid owner, bool before, bool after) : base(owner)
+        { _owner = owner; _before = before; _after = after; }
+        public override bool ExpiresSolution => false;
+        public override bool ExpiresDisplay => true;
+        protected override void Object_Undo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyFollowActiveView(_before); }
+        protected override void Object_Redo(GH_Document doc, IGH_DocumentObject obj) { if (obj is OverlayComponent overlay) overlay.ApplyFollowActiveView(_after); }
+        protected override void Internal_Undo(GH_Document doc) => Object_Undo(doc, doc.FindObject(_owner, false));
+        protected override void Internal_Redo(GH_Document doc) => Object_Redo(doc, doc.FindObject(_owner, false));
+        public override bool Write(GH_IWriter writer)
+        {
+            writer.SetGuid("Owner", _owner); writer.SetBoolean("Before", _before); writer.SetBoolean("After", _after);
+            return base.Write(writer);
+        }
+        public override bool Read(GH_IReader reader)
+        {
+            _owner = reader.GetGuid("Owner"); _before = reader.GetBoolean("Before"); _after = reader.GetBoolean("After");
+            return base.Read(reader);
+        }
+    }
     private void ChangeTheme(Theme theme)
     {
         if (OnPingDocument() is null || _menuTheme == theme) return;
@@ -631,6 +674,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         OverlayManager.Interaction += OnInteraction;
         OverlayManager.BoundDocumentClosed += OnBoundDocumentClosed;
         OverlayManager.ViewsChanged += OnViewsChanged;
+        global::Rhino.Display.RhinoView.SetActive += OnActiveViewChanged;
         OverlayManager.OverflowChanged += OnOverflowChanged;
         if (_scope is { IsValid: true } && _lastPublish is { } last)
         { _pending = last with { Interaction = true, Generation = _generation }; Publish(); }
@@ -653,6 +697,8 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         OverlayManager.Interaction -= OnInteraction;
         OverlayManager.BoundDocumentClosed -= OnBoundDocumentClosed;
         OverlayManager.ViewsChanged -= OnViewsChanged;
+        global::Rhino.Display.RhinoView.SetActive -= OnActiveViewChanged;
+        RhinoApp.Idle -= ActiveViewIdle; _activeViewPending = false;
         OverlayManager.OverflowChanged -= OnOverflowChanged;
         if (clear) { DetachScope(); _lastPublish = null; _events.Clear(); }
         OverlayManager.Remove(InstanceGuid);
@@ -665,6 +711,51 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         // A queued publication has newer data and resolves the name itself.
         lock (_publishLock) { if (_pending is not null) return; _pending = last with { Interaction = true, Generation = _generation, Theme = _selectedTheme }; }
         Publish();
+    }
+    private void OnActiveViewChanged(object? sender, global::Rhino.Display.ViewEventArgs e)
+    {
+        try
+        {
+            if (!_active || !_followActiveView || _activeViewPending) return;
+            _activeViewPending = true;
+            RhinoApp.Idle += ActiveViewIdle;
+        }
+        catch (Exception error) { RhinoApp.WriteLine("Conduit+ Overlay active viewport: " + error.Message); }
+    }
+    private void ActiveViewIdle(object? sender, EventArgs e)
+    {
+        try
+        {
+            RhinoApp.Idle -= ActiveViewIdle; _activeViewPending = false;
+            FollowActiveView();
+        }
+        catch (Exception error) { RhinoApp.WriteLine("Conduit+ Overlay active viewport: " + error.Message); }
+    }
+    private void FollowActiveView()
+    {
+        try
+        {
+            // A locked GH document or an inactive Scope withdraws scoped cards; following must not bring them back.
+            if (!_active || !_followActiveView || ViewInputSet || _rhinoSuspended || Locked ||
+                OnPingDocument() is not { Enabled: true } || _scope is { IsActive: false } ||
+                _lastPublish is not { RequestedView: null, DocumentSerial: { } serial } last) return;
+            var doc = RhinoDoc.FromRuntimeSerialNumber(serial);
+            var activeDoc = RhinoDoc.ActiveDoc;
+            var activeView = activeDoc?.Views.ActiveView;
+            if (doc is null) return;
+            var target = ActiveViewportFollow.Target(serial, last.ViewId, activeDoc?.RuntimeSerialNumber,
+                activeView?.MainViewport.Id, doc.Views.GetStandardRhinoViews().Select(v => v.MainViewport.Id));
+            if (target is null) return;
+            lock (_publishLock)
+            {
+                // Keep newer queued data/theme/scope and its solve semantics when activation races a publication.
+                var pending = _pending ?? (last with { Interaction = true, Generation = _generation, Theme = _selectedTheme });
+                if (pending.RequestedView is not null || pending.DocumentSerial != serial) return;
+                _pending = pending with { ViewId = target };
+            }
+            Publish(); // Presentation only: no GH solution or Scope publication.
+        }
+        catch (Exception error) { RhinoApp.WriteLine("Conduit+ Overlay active viewport: " + error.Message); }
     }
     private void OnBoundDocumentClosed(Guid owner)
     {

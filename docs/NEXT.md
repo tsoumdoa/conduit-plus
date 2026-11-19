@@ -16,6 +16,7 @@ Version 0.2.0-beta.2, published on public Yak as a prerelease (`conduit-plus`; t
 | Group keys | Bar, categorical Legend and Metric take Members, so one click selects a whole group; partial selection shows a dash |
 | Scope | Wire one Scope into Canvas Cards and Overlays to share selection and hover between them; unwired displays stay private |
 | Layout | Cards input order; Slot input picks the side |
+| Viewports | Overlay follows the active standard model view in its bound Rhino document without a GH solve; saved, undoable **Follow active viewport** menu defaults on (including older files). A set View input overrides it; selection survives moves. |
 | Inputs | Right-click Slot, Overlay Theme or Metric Decimals to pick a value from a list |
 | Feedback | Tooltips after 250 ms; Overlay outputs Selection and Events; Canvas Card outputs Selection |
 | Output | `ConduitPlusCapture` 1×/2×/4× PNG; experimental `ConduitPlusPdf` (vector cards); copy one card or a stack as a 2× clipboard image from pinned-card, Canvas Card and Overlay menus (selection retained, hover omitted) |
