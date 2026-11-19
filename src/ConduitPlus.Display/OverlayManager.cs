@@ -163,6 +163,10 @@ public static partial class OverlayManager
             if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
         }
         // Following the active view removes this owner's previous conduit.
+        // Clear only this owner's old-surface hover, including private brush state; retain selection.
+        foreach (var previous in Sessions.Values.Where(s => s.Owner == owner &&
+            (s.Document.RuntimeSerialNumber != doc.RuntimeSerialNumber || s.View.MainViewport.Id != view.MainViewport.Id)).ToArray())
+        { ClearHover(previous, false); ClearHover(previous, true); }
         RemoveWhere(k => k.Owner == owner && (k.Doc != doc.RuntimeSerialNumber || k.View != view.MainViewport.Id));
         var session = Get(doc, view, owner);
         session.Visible = visible;

@@ -9,7 +9,7 @@ cards. Clean cards reuse their textures. Updates, hover and scrolling run
 synchronously on Rhino's UI thread.
 
 Licensed under MIT. Features include Auto, Paper, Night, Smoke and Blueprint themes,
-deterministic viewport slots in input order and keyed geometry highlighting.
+deterministic viewport slots in input order, active-viewport following and keyed geometry highlighting.
 Right-click a pinned card, Canvas Card or Overlay and choose **Copy card as image** to paste
 a sharp 2× picture of it into slides or documents (transparent PNG, with an opaque fallback).
 A docked Inspector is future work.
@@ -173,6 +173,12 @@ recorded limitations: [capture/PDF verification](docs/verification/capture-pdf.m
 Cards appear in the order they arrive in Overlay's Cards input, and each card's Slot input picks its side.
 When several wires feed Cards, Grasshopper orders them by when they were connected, so a Merge component in
 front of Overlay makes the order explicit. Cards can't be dragged in the viewport.
+
+With **View** unset, Overlay follows the active standard model viewport without a GH solve,
+keeping selection. Right-click → **Follow active viewport** to turn this off (on by default,
+including older definitions). Turning it on moves immediately; turning it off keeps the current
+view until the next data solve. Setting View by wire or right-click overrides and disables the toggle.
+Switching to a layout or another Rhino document does not move the cards.
 
 Titles scale with the viewport, support six positions, and hide last.
 

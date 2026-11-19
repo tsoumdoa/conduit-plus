@@ -37,6 +37,7 @@ public static partial class OverlayManager
         public void Forget(OverlaySession session)
         {
             _hoverTimer.Stop(); _pending = null;
+            if (_emptyPress?.View == session.View) _emptyPress = null;
             if (_gesture?.Session == session) Cancel();
         }
         private bool Valid(MouseCallbackEventArgs e)
