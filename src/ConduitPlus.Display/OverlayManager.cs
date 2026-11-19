@@ -220,6 +220,16 @@ public static partial class OverlayManager
     { HoveredKeys = state.Current.HoveredKeys.ToArray(), HoverOrigin = state.Current.HoverOrigin, HoverTargetKind = state.Current.HoverTargetKind };
     public static BrushSnapshot Snapshot(Guid owner)
     { Start(); lock (StateLock) return Bindings.TryGetValue(owner, out var state) ? Snapshot(state) : new([], null); }
+
+    /// <summary>Current presentation, including view state and floating overflow cards; excludes hidden cards.</summary>
+    internal static (CardSpec[] Specs, Theme Theme)? ShownCards(Guid owner)
+    {
+        UiContext.Ensure();
+        var session = Sessions.Values.FirstOrDefault(s => s.Owner == owner && s.Visible);
+        if (session is null) return null;
+        var shown = Placements(session).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        return (session.Cards.Where(c => shown.Contains(c.Id)).ToArray(), session.Theme);
+    }
     public static void SetInteractionEnabled(Guid owner, bool enabled)
     {
         UiContext.Ensure();

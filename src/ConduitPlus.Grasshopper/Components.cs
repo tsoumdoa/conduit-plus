@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using GH_IO.Serialization;
 using ConduitPlus.Core;
 using ConduitPlus.Rhino;
+using ConduitPlus.Rendering;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
@@ -487,11 +488,46 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalComponentMenuItems(menu);
+        var copy = Menu_AppendItem(menu, "Copy card as image");
+        copy.Enabled = false;
+        try
+        {
+            if (OverlayManager.ShownCards(InstanceGuid) is { Specs.Length: > 0 } shown)
+            {
+                copy.Enabled = true;
+                var labels = CardImageExport.MenuLabels(shown.Specs);
+                for (var i = 0; i < shown.Specs.Length; i++)
+                {
+                    var id = shown.Specs[i].Id;
+                    Menu_AppendItem(copy.DropDown, labels[i].Replace("&", "&&", StringComparison.Ordinal), (_, _) => CopyCards(id));
+                }
+                if (shown.Specs.Length > 1)
+                {
+                    Menu_AppendSeparator(copy.DropDown);
+                    Menu_AppendItem(copy.DropDown, "All cards", (_, _) => CopyCards(null));
+                }
+            }
+        }
+        catch (Exception error) { RhinoApp.WriteLine("Could not list cards to copy: " + error.Message); }
         // A wired or right-click-set Theme input wins, so the menu is shown but disabled while it has a value.
         var setByInput = ThemeInputSet;
         var themes = Menu_AppendItem(menu, setByInput ? "Theme (set by input)" : "Theme");
         foreach (var theme in Theme.Presets)
             Menu_AppendItem(themes.DropDown, theme.Name, (_, _) => ChangeTheme(theme), !setByInput, _menuTheme == theme);
+    }
+    // Re-read on click: a solve may update or remove cards while the menu is open. Null id copies all shown cards.
+    private void CopyCards(string? id)
+    {
+        string? error;
+        try
+        {
+            var shown = OverlayManager.ShownCards(InstanceGuid);
+            var cards = shown?.Specs.Where(c => id is null || c.Id == id).ToArray() ?? [];
+            error = cards.Length == 0 ? "Could not copy card as image: the card is no longer shown." : null;
+            if (cards.Length > 0) CardClipboard.TryCopy(cards, shown!.Value.Theme, out error);
+        }
+        catch (Exception exception) { error = "Could not copy card as image: " + exception.Message; }
+        if (error is not null) RhinoApp.WriteLine(error);
     }
     private bool ThemeInputSet => Params.Input[2] is Param_TextOption { HasValue: true };
     private void ChangeTheme(Theme theme)

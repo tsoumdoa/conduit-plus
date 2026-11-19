@@ -328,6 +328,15 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
         if (e.Button == MouseButtons.Right && Modifiers == CardModifiers.None)
         {
             var menu = new ContextMenuStrip();
+            menu.Items.Add("Copy card as image", null, (_, _) => Safe(() =>
+            {
+                // Re-read on click: a solve may update or remove the card while the menu is open.
+                var current = _cards.LastOrDefault(c => c.Display == card.Display && c.Spec.Id == card.Spec.Id && c.Display.CardsVisible && Displays.Contains(c.Display));
+                var error = current is null ? "Could not copy card as image: the card is no longer shown." : null;
+                if (current is not null) CardClipboard.TryCopy([current.Spec], current.Theme, out error);
+                if (error is not null) global::Rhino.RhinoApp.WriteLine(error);
+            }));
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Find Canvas Overlay component", null, (_, _) =>
             {
                 if (card.Display is GH_Component component) { component.Attributes.Selected = true; sender.Viewport.MidPoint = component.Attributes.Pivot; sender.Invalidate(); }
