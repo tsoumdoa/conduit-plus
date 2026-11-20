@@ -121,7 +121,9 @@ public static partial class OverlayManager
             placements = placements.Append(new(session.Owner, floating.Id, rect.X, rect.Y, rect.Width, rect.Height, floating.Form));
         }
         return placements.Where(p => p.Owner == session.Owner)
-            .Select(p => session.Card(p.CardId) is { } card ? new CardLayout(card.Id, card.Rev, p.X, p.Y, p.Width, p.Height, CardMeasure.Hits(card, session.Theme)) : null)
+            // Placements are geometry only. Drawing, occlusion and Local never need hit
+            // maps; Hit resolves the touched card from its prepared raster (or lazily).
+            .Select(p => session.Card(p.CardId) is { } card ? new CardLayout(card.Id, card.Rev, p.X, p.Y, p.Width, p.Height, []) : null)
             .OfType<CardLayout>().ToArray();
     }
     internal static bool CoveredByShown(OverlaySession session, double x, double y)

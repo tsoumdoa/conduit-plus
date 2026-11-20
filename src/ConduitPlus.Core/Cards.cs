@@ -273,9 +273,16 @@ public static class CardJson
     public static T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, Options) ?? throw new JsonException("Null spec.");
 }
 
-/// <summary>Owns revision numbers; compares serialized content so caller-owned arrays cannot defeat dirty tracking.</summary>
+/// <summary>Owns revision numbers and snapshots. Caller-owned arrays are copied and compared by value,
+/// so in-place mutations cannot defeat dirty tracking. Arrays exposed by Snapshot are store-owned:
+/// treat them as immutable, including nested row cells. They can be reused in record copies for cheap interaction updates.</summary>
 public sealed class CardStore
 {
+    // JSON distinguishes -0 from 0. Keep the same revision semantics for numeric arrays.
+    private static readonly IEqualityComparer<double> DoubleContent = EqualityComparer<double>.Create(
+        (a, b) => BitConverter.DoubleToInt64Bits(a) == BitConverter.DoubleToInt64Bits(b));
+    private static readonly IEqualityComparer<double?> NullableDoubleContent = EqualityComparer<double?>.Create(
+        (a, b) => a.HasValue == b.HasValue && (!a.HasValue || DoubleContent.Equals(a.Value, b!.Value)));
     private readonly Dictionary<string, (string Content, CardSpec Spec)> _cards = new(StringComparer.Ordinal);
     private long _revision;
     private string[] _order = [];
@@ -290,22 +297,28 @@ public sealed class CardStore
         var dirty = new List<CardSpec>();
         foreach (var input in incoming)
         {
-            var content = CardJson.Serialize(input with { Rev = 0 });
-            if (!themeChanged && _cards.TryGetValue(input.Id, out var old) && old.Content == content) continue;
-            var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision };
-            // Reuse owned table data across interaction/theme snapshots. Compare values, never
-            // caller array identity: callers may mutate an existing array before Update.
-            if (_cards.TryGetValue(input.Id, out var previous) && snapshot.Kind == CardKind.Table &&
-                previous.Spec.Kind == CardKind.Table && snapshot.Headers.SequenceEqual(previous.Spec.Headers) &&
-                snapshot.Rows.Length == previous.Spec.Rows.Length && snapshot.Rows.Zip(previous.Spec.Rows).All(pair =>
-                    pair.First.Key == pair.Second.Key && pair.First.Cells.SequenceEqual(pair.Second.Cells)))
-                snapshot = snapshot with { Headers = previous.Spec.Headers, Rows = previous.Spec.Rows };
-            // Preserve owned bar content for the weak measurement cache across real store
-            // updates (hover, selection, scrolling and sort). Equality still detects mutation.
-            if (_cards.TryGetValue(input.Id, out previous) && snapshot.Kind == CardKind.Bar &&
-                previous.Spec.Kind == CardKind.Bar && snapshot.Values.SequenceEqual(previous.Spec.Values) &&
-                snapshot.Labels.SequenceEqual(previous.Spec.Labels))
-                snapshot = snapshot with { Values = previous.Spec.Values, Labels = previous.Spec.Labels };
+            // Serialize only metadata. Bulk data has independent value equality, with an O(1)
+            // shortcut exclusively for our own immutable arrays from an earlier snapshot.
+            var content = CardJson.Serialize(input with { Rev = 0, Headers = [], Rows = [], Values = [],
+                Labels = [], Keys = [], Colors = [], ColorPositions = [], ValueLabels = [] });
+            _cards.TryGetValue(input.Id, out var old);
+            var previous = old.Spec;
+            var headers = Own(input.Headers, previous?.Headers);
+            var rows = OwnRows(input.Rows, previous?.Rows);
+            var values = Own(input.Values, previous?.Values, NullableDoubleContent);
+            var labels = Own(input.Labels, previous?.Labels);
+            var keys = Own(input.Keys, previous?.Keys);
+            var colors = Own(input.Colors, previous?.Colors);
+            var positions = Own(input.ColorPositions, previous?.ColorPositions, DoubleContent);
+            var valueLabels = Own(input.ValueLabels, previous?.ValueLabels);
+            if (!themeChanged && previous is not null && old.Content == content &&
+                ReferenceEquals(headers, previous.Headers) && ReferenceEquals(rows, previous.Rows) &&
+                ReferenceEquals(values, previous.Values) && ReferenceEquals(labels, previous.Labels) &&
+                ReferenceEquals(keys, previous.Keys) && ReferenceEquals(colors, previous.Colors) &&
+                ReferenceEquals(positions, previous.ColorPositions) && ReferenceEquals(valueLabels, previous.ValueLabels)) continue;
+            var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision,
+                Headers = headers, Rows = rows, Values = values, Labels = labels, Keys = keys,
+                Colors = colors, ColorPositions = positions, ValueLabels = valueLabels };
             _cards[input.Id] = (content, snapshot);
             dirty.Add(snapshot);
         }
@@ -315,6 +328,12 @@ public sealed class CardStore
         _theme = theme;
         return dirty;
     }
+    private static T[] Own<T>(T[] input, T[]? owned, IEqualityComparer<T>? comparer = null) =>
+        ReferenceEquals(input, owned) || owned is not null && input.SequenceEqual(owned, comparer) ? owned! : [.. input];
+    private static TableRow[] OwnRows(TableRow[] input, TableRow[]? owned) =>
+        ReferenceEquals(input, owned) || owned is not null && input.Length == owned.Length && input.Zip(owned).All(p =>
+            p.First.Key == p.Second.Key && p.First.Cells.SequenceEqual(p.Second.Cells))
+            ? owned! : input.Select(r => r with { Cells = [.. r.Cells] }).ToArray();
     public CardSpec[] Snapshot => _order.Select(id => _cards[id].Spec).ToArray();
 }
 

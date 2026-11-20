@@ -166,14 +166,16 @@ internal sealed partial class OverlaySession : IDisposable
             if (Cards.Any(c => c.Id == layout.Id && c.Kind == CardKind.Title)) continue;
             if (!new Rect2(layout.X, layout.Y, layout.W, layout.H).Contains(x, y)) continue;
             var dpi = Unit;
-            if (Cards.FirstOrDefault(c => c.Id == layout.Id) is { } spec && TableScroll.Bar(spec, Theme) is { } bar)
+            var spec = Card(layout.Id)!;
+            if (TableScroll.Bar(spec, Theme) is { } bar)
             {
                 // Generous horizontal target: the bar is 6 px wide but easy to grab within the card's right padding.
                 var lx = (x - layout.X) / dpi; var ly = (y - layout.Y) / dpi;
                 if (lx >= bar.Track.X - 4 && lx <= spec.Width && ly >= bar.Track.Y && ly <= bar.Track.Y + bar.Track.Height) return (layout.Id, ScrollbarKey);
             }
             var prepared = _raster.Prepared;
-            var hits = prepared.TryGetValue(layout.Id, out var p) ? p.Capture.Layout.HitRegions : layout.HitRegions;
+            var hits = prepared.TryGetValue(layout.Id, out var p) && p.Capture.Spec.Rev == spec.Rev
+                ? p.Capture.Layout.HitRegions : CardMeasure.Hits(spec, Theme);
             var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / Unit, (y - layout.Y) / Unit));
             return (layout.Id, hit?.Key ?? "");
         }

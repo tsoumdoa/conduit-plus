@@ -13,6 +13,10 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     private static Size2 MeasureCssText(string text, double size, string font)
         => (_measure ??= new GdiCanvas(Graphics.FromImage(new Bitmap(1, 1)))).MeasureText(text, size, font);
     private readonly Graphics graphics;
+    private bool _transparentBackground;
+    // Raster stacks have disjoint card bodies. The caller must guarantee that the next
+    // paint touches only cleared pixels; never reset this for overlapping decorations.
+    internal void BeginTransparentRegion() => _transparentBackground = true;
     private readonly Dictionary<(string Font, double Size), Font> _fonts = [];
     private readonly Dictionary<string, SolidBrush> _brushes = [];
     private readonly StringFormat _format = new(StringFormat.GenericTypographic)
@@ -20,12 +24,13 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
         FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces,
         Trimming = StringTrimming.EllipsisCharacter
     };
-    public GdiCanvas(Graphics graphics)
+    public GdiCanvas(Graphics graphics, bool transparentBackground = false)
     {
         this.graphics = graphics;
+        _transparentBackground = transparentBackground;
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        graphics.CompositingQuality = CompositingQuality.HighQuality;
+        graphics.CompositingQuality = CompositingQuality.HighSpeed;
         graphics.CompositingMode = CompositingMode.SourceOver;
         // ClearType assumes an opaque background: never use it on our alpha textures.
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
@@ -46,16 +51,42 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
         return Color.FromArgb(rgba.A, rgba.R, rgba.G, rgba.B);
     }
     private static Color C(string value) => ParseColor(value);
+    private void Composite(bool opaque, bool antialiased = false)
+    {
+        // Gamma correction is costly and changes translucent layering visibly. Preserve it
+        // there (including partial edge coverage), but opaque rectangle interiors need none.
+        // On a cleared texture, ordinary source-over
+        // also gives the correct premultiplied source colour (HighQuality loses a byte).
+        graphics.CompositingQuality = opaque && !antialiased || _transparentBackground
+            ? CompositingQuality.HighSpeed : CompositingQuality.HighQuality;
+        _transparentBackground = false;
+    }
     public Size2 MeasureText(string text, double size, string font)
     {
         var measured = graphics.MeasureString(text, FontOf(font, size), int.MaxValue, _format); return new(measured.Width, measured.Height);
     }
     public void Rect(Rect2 r, string fill)
-    { graphics.FillRectangle(BrushOf(fill), (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height); }
+    {
+        var brush = BrushOf(fill);
+        Composite(brush.Color.A == 255, antialiased: !PixelAligned(r));
+        graphics.FillRectangle(brush, (float)r.X, (float)r.Y, (float)r.Width, (float)r.Height);
+    }
+    private bool PixelAligned(Rect2 r)
+    {
+        // Fractional rectangle edges have translucent coverage too. In particular, bar
+        // ends and line-chart bands must retain their original gamma-correct edge pixels.
+        if (graphics.PageUnit is not (GraphicsUnit.Pixel or GraphicsUnit.Display) || graphics.PageScale != 1) return false;
+        using var transform = graphics.Transform;
+        var m = transform.Elements;
+        static bool Integer(double value) => Math.Abs(value - Math.Round(value)) < .0001;
+        return m[1] == 0 && m[2] == 0 && Integer(r.X * m[0] + m[4]) && Integer(r.Y * m[3] + m[5]) &&
+            Integer((r.X + r.Width) * m[0] + m[4]) && Integer((r.Y + r.Height) * m[3] + m[5]);
+    }
     public void Gradient(Rect2 r, IReadOnlyList<string> colors) => Gradient(r, colors, []);
     public void Gradient(Rect2 r, IReadOnlyList<string> colors, IReadOnlyList<double> positions)
     {
         if (r.Width <= 0 || r.Height <= 0) return;
+        Composite(colors.All(c => C(c).A == 255));
         var state = graphics.Save();
         try
         {
@@ -100,32 +131,37 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     public void RoundedRect(Rect2 r, double radius, string fill)
     {
         if (radius <= 0) { Rect(r, fill); return; }
+        var brush = BrushOf(fill); Composite(brush.Color.A == 255, antialiased: true);
         using var path = new GraphicsPath(); var d = (float)(Math.Min(radius, Math.Min(r.Width, r.Height) / 2) * 2); var x = (float)r.X; var y = (float)r.Y; var w = (float)r.Width; var h = (float)r.Height;
         path.AddArc(x, y, d, d, 180, 90); path.AddArc(x + w - d, y, d, d, 270, 90); path.AddArc(x + w - d, y + h - d, d, d, 0, 90); path.AddArc(x, y + h - d, d, d, 90, 90); path.CloseFigure();
-        graphics.FillPath(BrushOf(fill), path);
+        graphics.FillPath(brush, path);
     }
     public void Line(Point2 a, Point2 b, string color, double width = 1)
-    { using var pen = new Pen(C(color), (float)width); graphics.DrawLine(pen, (float)a.X, (float)a.Y, (float)b.X, (float)b.Y); }
+    { var c = C(color); Composite(c.A == 255, antialiased: true); using var pen = new Pen(c, (float)width); graphics.DrawLine(pen, (float)a.X, (float)a.Y, (float)b.X, (float)b.Y); }
     public void Text(string text, Point2 p, double size, string color, string font)
     {
         var bounds = graphics.ClipBounds;
         var width = bounds.Right - (float)p.X;
         var height = bounds.Bottom - (float)p.Y;
         if (width <= 0 || height <= 0) return;
+        // Glyph coverage is translucent even when the ink is opaque.
+        Composite(false);
         graphics.DrawString(text, FontOf(font, size), BrushOf(color), new RectangleF((float)p.X, (float)p.Y, width, Math.Max((float)(size * 1.5), height)), _format);
     }
     public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1)
     {
         if (points.Count < 2) return;
-        using var pen = new Pen(C(color), (float)width) { LineJoin = LineJoin.Round };
+        var c = C(color); Composite(c.A == 255, antialiased: true);
+        using var pen = new Pen(c, (float)width) { LineJoin = LineJoin.Round };
         graphics.DrawLines(pen, points.Select(p => new PointF((float)p.X, (float)p.Y)).ToArray());
     }
     public void FillPolygon(IReadOnlyList<Point2> points, string fill)
     {
         if (points.Count < 3) return;
+        var brush = BrushOf(fill); Composite(brush.Color.A == 255, antialiased: true);
         using var path = new GraphicsPath();
         path.AddPolygon(points.Select(p => new PointF((float)p.X, (float)p.Y)).ToArray());
-        graphics.FillPath(BrushOf(fill), path);
+        graphics.FillPath(brush, path);
     }
     public IDisposable Clip(Rect2 r)
     {

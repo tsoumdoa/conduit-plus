@@ -33,7 +33,12 @@ public static class RasterDrawing
             for (var i = 0; i < specs.Count; i++)
             {
                 var saved = graphics.Save();
-                try { graphics.TranslateTransform((float)layout.Cards[i].X, (float)layout.Cards[i].Y); CardPainter.Paint(canvas, specs[i], theme); }
+                try
+                {
+                    graphics.TranslateTransform((float)layout.Cards[i].X, (float)layout.Cards[i].Y);
+                    if (!theme.Shadow) canvas.BeginTransparentRegion();
+                    CardPainter.Paint(canvas, specs[i], theme);
+                }
                 finally { graphics.Restore(saved); }
             }
             return bitmap;
@@ -57,7 +62,7 @@ public static class RasterDrawing
             graphics.Clear(Color.Transparent);
             graphics.TranslateTransform(margin, margin);
             graphics.ScaleTransform((float)scale, (float)scale);
-            using var canvas = new GdiCanvas(graphics);
+            using var canvas = new GdiCanvas(graphics, transparentBackground: true);
             paint(canvas);
             return bitmap;
         }
