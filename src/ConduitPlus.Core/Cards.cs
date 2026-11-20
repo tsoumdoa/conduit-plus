@@ -333,7 +333,8 @@ public sealed class CardStore
     private static TableRow[] OwnRows(TableRow[] input, TableRow[]? owned) =>
         ReferenceEquals(input, owned) || owned is not null && input.Length == owned.Length && input.Zip(owned).All(p =>
             p.First.Key == p.Second.Key && p.First.Cells.SequenceEqual(p.Second.Cells))
-            ? owned! : input.Select(r => r with { Cells = [.. r.Cells] }).ToArray();
+            ? owned! : Owned(input.Select(r => r with { Cells = [.. r.Cells] }).ToArray());
+    private static TableRow[] Owned(TableRow[] rows) { TableSort.MarkImmutable(rows); return rows; }
     public CardSpec[] Snapshot => _order.Select(id => _cards[id].Spec).ToArray();
 }
 
