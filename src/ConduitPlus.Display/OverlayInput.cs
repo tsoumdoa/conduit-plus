@@ -170,7 +170,7 @@ public static partial class OverlayManager
                 var local = drag.Session.Local(drag.CardId, e.ViewportPoint.X, e.ViewportPoint.Y);
                 if (local is { } p && drag.Session.Card(drag.CardId) is { } card)
                     drag.Session.ScrollTo(drag.CardId, TableScroll.OffsetForThumbTop(card, drag.Session.Theme, p.Y - drag.Grab));
-                InteractionPump.Flush();
+                // ScrollTo queues one coalesced update; the pump presents the latest thumb position per frame.
                 return;
             }
             if (_buttonDown)
