@@ -36,6 +36,7 @@ internal sealed partial class OverlaySession : IDisposable
             foreach (var p in next) _forms[p.Key] = p.Value;
             Update(Cards, preserveGesture: true);
         }
+        else if (OverlayManager.HasPendingInteraction(this)) Update(Cards, preserveGesture: true);
         else if (_raster.Scale != unit) _raster.Prepare(Cards, Theme, unit);
     }
     public double CaptureMultiplier { get; set; } = 1;
@@ -46,6 +47,7 @@ internal sealed partial class OverlaySession : IDisposable
     private readonly SessionConduit _conduit;
     private readonly RasterCardRenderer _raster = new();
     private bool _disposed;
+    internal bool IsDisposed => _disposed;
     private Link[] _links = [];
     internal bool HasLinks => _links.Length > 0;
     private BoundingBox _linkBounds = BoundingBox.Empty;
@@ -65,11 +67,13 @@ internal sealed partial class OverlaySession : IDisposable
     {
         UiContext.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        OverlayManager.InteractionUpdated(this);
         if (theme is not null) _themeSelection = theme;
         var resolved = ResolveTheme();
         if (Theme != resolved)
         {
             OverlayManager.CancelGesture(this);
+            if (_disposed) return; // Scope callbacks can remove a session while cancelling its gesture.
             HideTooltip();
             Theme = resolved;
         }
@@ -82,6 +86,7 @@ internal sealed partial class OverlaySession : IDisposable
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
+        if (_disposed) return;
         _raster.Prepare(next, Theme, Unit, force: _rasterHasCaptureState);
         _rasterHasCaptureState = false;
         Cards = next;
@@ -135,7 +140,7 @@ internal sealed partial class OverlaySession : IDisposable
         var next = TableSort.Cycle(c, column);
         _sort[id] = (next.SortColumn, next.SortDescending);
         HideTooltip();
-        UpdateInteraction(Cards);
+        UpdateInteraction();
     }
 
     /// <summary>Viewport client pixels → card-local CSS pixels for the card's current layout.</summary>
@@ -153,7 +158,7 @@ internal sealed partial class OverlaySession : IDisposable
         offset = Math.Clamp(offset, 0, TableScroll.MaxOffset(c));
         if (_scroll.TryGetValue(cardId, out var old) && old == offset) return;
         _scroll[cardId] = offset;
-        UpdateInteraction(Cards); // re-render just this card: its ScrollOffset changes the revision
+        UpdateInteraction(); // re-render just this card: its ScrollOffset changes the revision
     }
 
     public (string CardId, string Key)? Hit(double x, double y)
@@ -181,21 +186,23 @@ internal sealed partial class OverlaySession : IDisposable
     }
     public void SetHover(string? card, string? key)
     {
+        if (_disposed) return;
         _cardHover = card is not null && !string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key) ? (card, key) : null;
         var header = card is not null && key is not null && TableSort.Column(key).HasValue ? (card, key) : ((string, string)?)null;
         var changed = _headerHover != header; _headerHover = header;
         OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key, card: card);
-        if (changed) UpdateInteraction(Cards);
+        if (changed) UpdateInteraction();
         SyncTooltip();
     }
     internal void ClearCardHover()
     {
+        if (_disposed) return;
         _cardHover = null;
         if (_headerHover is null) return;
-        _headerHover = null; UpdateInteraction(Cards);
+        _headerHover = null; UpdateInteraction();
     }
     public void Select(string card, string key, BrushSelectMode mode = BrushSelectMode.Replace) => OverlayManager.Select(this, card, key, mode);
-    internal void RefreshInteraction() => UpdateInteraction(Cards);
+    internal void RefreshInteraction() => UpdateInteraction();
     internal void SetLinks(Link[] links)
     {
         _links = links; _linkBounds = BoundingBox.Empty;
@@ -205,10 +212,15 @@ internal sealed partial class OverlaySession : IDisposable
     {
         foreach (var link in _links) link.Pick(context, screen, cursor, Owner, ref best);
     }
-    private void UpdateInteraction(CardSpec[] cards)
+    private void UpdateInteraction()
     {
         if (_disposed) return;
-        try { Update(cards, true); View.Redraw(); }
+        OverlayManager.RequestInteraction(this);
+    }
+    internal void ApplyInteraction()
+    {
+        if (_disposed) return;
+        try { Update(Cards, true); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
     internal void Draw(DrawEventArgs e) => DrawCards(e, false);
@@ -216,6 +228,9 @@ internal sealed partial class OverlaySession : IDisposable
     private void DrawCards(DrawEventArgs e, bool floatingOnly)
     {
         if (_disposed || !Visible || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
+        // Direct ViewCapture/PDF can run before the next UI tick. Consume already committed interaction
+        // state synchronously, without pumping input or redrawing, before preparing capture-scale pixels.
+        if (e.Display.IsInViewCapture && OverlayManager.HasPendingInteraction(this)) Update(Cards, preserveGesture: true);
         // Display-mode background edits need not raise Rhino's UI appearance event.
         if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
         if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
@@ -291,6 +306,7 @@ internal sealed partial class OverlaySession : IDisposable
     {
         if (_disposed) return;
         _disposed = true; _conduit.Enabled = false;
+        OverlayManager.ForgetInteraction(this);
         HideTooltip(); _tooltipTimer.Dispose();
         _raster.Dispose();
     }

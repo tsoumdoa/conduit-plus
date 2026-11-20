@@ -21,10 +21,23 @@ internal sealed partial class OverlaySession
     private Point2 _cursor;
     private bool _cursorInView, _tooltipReady;
     private long _tooltipSince;
+    private Point? TooltipPosition
+    {
+        get
+        {
+            if (_tooltipBitmap is null) return null;
+            var margin = RasterDrawing.Margin(Theme, _tooltipTarget?.Dpi ?? UiContext.Dpi(View));
+            var point = TooltipPainter.Position(_cursor, new(_tooltipBitmap.Width - 2 * margin, _tooltipBitmap.Height - 2 * margin), ViewSize, UiContext.Dpi(View));
+            return new((int)Math.Round(point.X) - margin, (int)Math.Round(point.Y) - margin);
+        }
+    }
     internal void Cursor(Point2 point, bool inView)
     {
+        if (_disposed) return;
+        var previous = _tooltipReady ? TooltipPosition : null;
         _cursor = point; _cursorInView = inView && new Rect2(0, 0, ViewSize.Width, ViewSize.Height).Contains(point.X, point.Y);
-        if (!_cursorInView) HideTooltip();
+        if (!_cursorInView || OverlayManager.TooltipBlocked) HideTooltip();
+        else if (_tooltipReady && previous != TooltipPosition) OverlayManager.RequestInteractionRedraw(this);
     }
     internal void HideTooltip()
     {
@@ -32,16 +45,17 @@ internal sealed partial class OverlaySession
         _tooltipTimer.Stop(); _tooltipTarget = null; _tooltipLines = null; _tooltipReady = false;
         _tooltipDisplay?.Dispose(); _tooltipDisplay = null;
         _tooltipBitmap?.Dispose(); _tooltipBitmap = null;
-        if (visible && !_disposed) View.Redraw();
+        if (visible && !_disposed) OverlayManager.RequestInteractionRedraw(this);
     }
     private bool TooltipAllowed => !_disposed && Visible && _cursorInView && !OverlayManager.TooltipBlocked && !Command.InCommand();
     internal void SyncTooltip()
     {
+        if (_disposed) return;
         if (!TooltipAllowed) { HideTooltip(); return; }
         if (!OverlayManager.LocalHover(this)) { HideTooltip(); return; }
-        var model = OverlayManager.ModelHover(this);
-        var key = model ? _brush.HoverKey : _cardHover?.Key;
         var domain = OverlayManager.DomainSnapshot(this);
+        var model = OverlayManager.ModelHover(this);
+        var key = model ? domain?.HoverKey : _cardHover?.Key;
         var membership = domain?.Membership;
         CardSpec? card = null; string[]? lines = null;
         if (!string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key))
@@ -57,14 +71,16 @@ internal sealed partial class OverlaySession
         }
         if (lines is null || key is null) { HideTooltip(); return; }
         var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model, domain?.Version ?? 0);
-        if (_tooltipTarget == next) { if (_tooltipReady) View.Redraw(); return; }
+        if (_tooltipTarget == next) return;
         HideTooltip(); _tooltipTarget = next; _tooltipLines = lines;
         _tooltipSince = Stopwatch.GetTimestamp(); _tooltipTimer.Start();
     }
     private void TickTooltip()
     {
         // Also observe exits/commands when Rhino sends no more mouse moves.
-        if (!TooltipAllowed || !View.ScreenRectangle.Contains(System.Windows.Forms.Control.MousePosition)) { HideTooltip(); return; }
+        if (_disposed) return;
+        OverlayManager.ObserveInteractionPointer();
+        if (!TooltipAllowed || !OverlayManager.PointerInView(View, System.Windows.Forms.Control.MousePosition)) { HideTooltip(); return; }
         if (_tooltipTarget is not { } target) return;
         if (target.Dpi != UiContext.Dpi(View)) { SyncTooltip(); return; }
         if (_tooltipReady || Stopwatch.GetElapsedTime(_tooltipSince).TotalMilliseconds < 250) return;
@@ -72,7 +88,7 @@ internal sealed partial class OverlaySession
         {
             _tooltipBitmap = RasterDrawing.RenderTooltip(_tooltipLines!, Theme, target.Dpi);
             _tooltipDisplay = new(_tooltipBitmap); _tooltipReady = true;
-            View.Redraw();
+            OverlayManager.RequestInteractionRedraw(this);
         }
         catch (Exception ex) { HideTooltip(); RhinoApp.WriteLine($"Conduit+ tooltip: {ex.Message}"); }
     }
@@ -81,8 +97,6 @@ internal sealed partial class OverlaySession
         if (!TooltipAllowed) { HideTooltip(); return; }
         if (!_tooltipReady || _tooltipDisplay is null || _tooltipBitmap is null) return;
         // The bitmap includes the theme's shadow margin on every side; position the tooltip body, not the margin.
-        var margin = RasterDrawing.Margin(Theme, _tooltipTarget?.Dpi ?? UiContext.Dpi(View));
-        var point = TooltipPainter.Position(_cursor, new(_tooltipBitmap.Width - 2 * margin, _tooltipBitmap.Height - 2 * margin), ViewSize, UiContext.Dpi(View));
-        display.DrawBitmap(_tooltipDisplay, (int)Math.Round(point.X) - margin, (int)Math.Round(point.Y) - margin);
+        if (TooltipPosition is { } point) display.DrawBitmap(_tooltipDisplay, point.X, point.Y);
     }
 }
