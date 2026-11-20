@@ -27,7 +27,13 @@ public static partial class OverlayManager
             if (!_started || _stopping || session.IsDisposed) return;
             Redraws.Request(session.View.RuntimeSerialNumber); Wake();
         }
-        internal static void Updated(OverlaySession session) => Updates.Remove(session);
+        // An update satisfied outside the pump (solve, layout, capture) still owes the screen its redraw.
+        // Queue it rather than redrawing here: captures and layout may be inside a draw callback.
+        internal static void Updated(OverlaySession session)
+        {
+            if (!Updates.Contains(session)) return;
+            Updates.Remove(session); Redraw(session);
+        }
         internal static bool Pending(OverlaySession session) => Updates.Contains(session);
         internal static void Forget(OverlaySession session) => Updates.Remove(session);
         internal static void Reset() { Timer.Stop(); Updates.Clear(); Redraws.Clear(); }

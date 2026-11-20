@@ -31,10 +31,10 @@ public static partial class OverlayManager
             if (_gesture is { } gesture && (!PointerInView(gesture.Session.View, screen) ||
                 Command.InCommand() || (GetAsyncKeyState(0x01) & 0x8000) == 0 || (GetAsyncKeyState(0x1B) & 0x8000) != 0)) Cancel();
         }
-        public void Reset() { CancelPending(); Cancel(); _pressed = false; _buttonDown = false; }
+        public void Reset() { CancelPending(); _wheel.Clear(); Cancel(); _pressed = false; _buttonDown = false; }
         internal void CancelPending()
         {
-            _modelDwell.Cancel(); _scrollRest.Cancel(); _wheel.Clear();
+            _modelDwell.Cancel(); _scrollRest.Cancel(); // accepted wheel input survives: its message was already swallowed
             _pointer = null; _movePending = false; _clearScrollHover = false; _exitPending = false;
         }
         private void Cancel()
@@ -45,7 +45,6 @@ public static partial class OverlayManager
         }
         public void Forget(OverlaySession session)
         {
-            _wheel.RemoveWhere(key => key.Session == session);
             if (_pointer is { } pointer && SameView(pointer.View, session.View)) { _modelDwell.Cancel(); _scrollRest.Cancel(); _pointer = null; _movePending = false; }
             if (_emptyPress is { } press && SameView(press.View, session.View)) _emptyPress = null;
             if (_gesture?.Session == session) Cancel();
@@ -96,6 +95,8 @@ public static partial class OverlayManager
                 _exitPending = false;
                 ClearPointerHover();
             }
+            // Accepted deltas apply to surviving cards; only removed/hidden sessions drop theirs.
+            _wheel.RemoveWhere(key => key.Session.IsDisposed || !key.Session.Visible);
             var wheel = _wheel.Take();
             foreach (var (target, rows) in wheel)
                 if (!target.Session.IsDisposed && target.Session.Visible) target.Session.ScrollBy(target.Card, rows);
