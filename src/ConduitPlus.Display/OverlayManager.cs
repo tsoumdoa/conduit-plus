@@ -77,6 +77,7 @@ public static partial class OverlayManager
         {
             // A shutdown callback must not prevent the remaining native resources being released.
             Cleanup(Mouse.Reset);
+            Cleanup(InteractionPump.Reset);
             Cleanup(() => Mouse.Enabled = false);
             Cleanup(WheelHook.Uninstall);
             DisposeCoordinators(_ => true);
@@ -97,7 +98,9 @@ public static partial class OverlayManager
     private static void AppClosing(object? sender, EventArgs e) => Stop();
     private static void CommandStarted(object? sender, global::Rhino.Commands.CommandEventArgs e)
     {
-        foreach (var session in Sessions.Values.ToArray()) { session.HideTooltip(); CancelBrushHover(session); }
+        Mouse.CancelPending();
+        foreach (var session in Sessions.Values.ToArray())
+        { session.HideTooltip(); session.ClearCardHover(); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true); }
     }
     private static void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
     {
@@ -285,7 +288,7 @@ public static partial class OverlayManager
         lock (StateLock) return new(session.Owner.ToString("N"), model ? "model" : "card",
             States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state) ? state.Gesture : 0);
     }
-    internal static bool TooltipBlocked => Busy || Mouse.Interacting;
+    internal static bool TooltipBlocked => Busy || Mouse.Interacting || Mouse.HoverUnsettled;
     internal static void Hover(OverlaySession session, string? key, bool model = false, string? card = null)
     {
         var origin = Origin(session, model);
