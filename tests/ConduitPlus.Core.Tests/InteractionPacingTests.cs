@@ -81,9 +81,10 @@ public sealed class InteractionPacingTests
     public void PrecisionWheelRetainsFractionsAcrossFramesAndCancelsOppositeMotion()
     {
         var wheel = new WheelAccumulator<string>();
-        wheel.Add("a", -30); Assert.Empty(wheel.Take());
+        wheel.Add("a", -30); Assert.False(wheel.HasWhole); Assert.Empty(wheel.Take());
         wheel.Add("a", -60); Assert.Empty(wheel.Take());
-        wheel.Add("a", -60); Assert.Equal(3, Assert.Single(wheel.Take()).Rows);
+        wheel.Add("a", -60); Assert.True(wheel.HasWhole); Assert.Equal(3, Assert.Single(wheel.Take()).Rows);
+        Assert.False(wheel.HasWhole); // a fractional remainder must not keep the pump running
         wheel.Add("a", 30); Assert.Empty(wheel.Take());
         wheel.Add("a", 120); Assert.Equal(-3, Assert.Single(wheel.Take()).Rows);
         wheel.Add("a", -120); wheel.Add("a", 120); Assert.Empty(wheel.Take());

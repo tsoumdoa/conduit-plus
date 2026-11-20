@@ -57,6 +57,8 @@ public sealed class WheelAccumulator<TKey> where TKey : notnull
 {
     private readonly Dictionary<TKey, long> _deltas = [];
     public void Add(TKey key, int delta) => _deltas[key] = _deltas.GetValueOrDefault(key) + delta;
+    /// <summary>True while some card has at least one whole notch to apply; fractional remainders don't count.</summary>
+    public bool HasWhole => _deltas.Values.Any(delta => Math.Abs(delta) >= 120);
     public (TKey Key, int Rows)[] Take()
     {
         var rows = new List<(TKey, int)>();

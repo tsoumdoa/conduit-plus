@@ -22,7 +22,8 @@ public static partial class OverlayManager
         private readonly WheelAccumulator<(OverlaySession Session, string Card)> _wheel = new();
         private (RhinoView View, System.Drawing.Point Point)? _pointer;
         private bool _movePending, _clearScrollHover, _exitPending;
-        internal bool Pending => _exitPending || _movePending || _modelDwell.Pending || _scrollRest.Pending;
+        // Accepted wheel notches outlive hover cancellation (e.g. a Busy flush), so they keep the pump awake too.
+        internal bool Pending => _exitPending || _movePending || _modelDwell.Pending || _scrollRest.Pending || _wheel.HasWhole;
         private abstract record Gesture(OverlaySession Session);
         private sealed record ScrollDrag(OverlaySession Session, string CardId, double Grab) : Gesture(Session);
         private Gesture? _gesture; // null = idle; swallowed-up bookkeeping is independent of cancellation
