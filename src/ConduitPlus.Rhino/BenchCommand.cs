@@ -30,6 +30,8 @@ public sealed class ConduitPlusBench : Command
         var session = OverlayManager.Get(doc, view, owner);
         var updates = new List<double>();
         var hovers = new List<double>();
+        var tableHovers = new List<double>();
+        var tableScrolls = new List<double>();
         try
         {
             session.Update(StructuralDemo.Create());
@@ -56,11 +58,25 @@ public sealed class ConduitPlusBench : Command
                 Draw(session);
                 if (i >= 5) hovers.Add(ms);
             }
+            session.Update([RasterBenchmark.LargeTable()]);
+            // Fix this update-only measurement at 2x regardless of the monitor's DPI.
+            // No draw/layout runs between updates, so it cannot replace the benchmark scale.
+            session.PrepareUnit(2);
+            foreach (var scroll in new[] { false, true })
+                for (var i = 0; i < 65; i++)
+                {
+                    var previous = session.Cards[0];
+                    var timer = Stopwatch.StartNew();
+                    session.Update([scroll ? previous with { ScrollOffset = i } : previous with { HoverKey = $"r{i % 8}" }]);
+                    var ms = timer.Elapsed.TotalMilliseconds;
+                    if (i >= 5) (scroll ? tableScrolls : tableHovers).Add(ms);
+                }
+            Draw(session);
             File.WriteAllText(Path.Combine(OutputPaths.Root, "samples-raster.json"), CardJson.Serialize(new
             {
                 measured = DateTimeOffset.Now, rhino = RhinoApp.Version.ToString(), runtime = Environment.Version.ToString(),
                 os = Environment.OSVersion.ToString(), dpi = UiContext.Dpi(view), size = view.ActiveViewport.Size,
-                warmups = 5, count = 60, updates, hovers, frames = session.FrameCount,
+                warmups = 5, count = 60, updates, hovers, tableHovers, tableScrolls, tableScale = 2, frames = session.FrameCount,
                 includes = "spec/revision preparation + GDI+ paint + DisplayBitmap creation; excludes redraw, GPU completion and physical input latency"
             }));
             static string Stats(List<double> values)
@@ -71,9 +87,10 @@ public sealed class ConduitPlusBench : Command
             File.WriteAllText(Path.Combine(OutputPaths.Root, "results-rhino.md"),
                 $"# Raster benchmark\n\nMeasured {DateTimeOffset.Now:O}; Rhino {RhinoApp.Version}; .NET {Environment.Version}.\n\n" +
                 $"60 samples after 5 warmups; nearest-rank p50 / p95 milliseconds.\n\nMetric update: {Stats(updates)} ms.\n\nCompact bar hover: {Stats(hovers)} ms.\n\n" +
+                $"600×12 Table hover at 2x: {Stats(tableHovers)} ms.\n\n600×12 Table scroll at 2x: {Stats(tableScrolls)} ms.\n\n" +
                 picking + "\n" +
                 "Includes spec/revision work, GDI+ paint and DisplayBitmap creation; excludes redraw, GPU completion and physical input latency.\n" +
-                "Per-card allocation/paint samples (200 after 20 warmups at 2x) are in samples-raster-micro.json. Cache lifecycle checks are in raster-cache-check.json.\n" +
+                "Per-card allocation/paint samples (200 after 20 warmups at 2x) are in samples-raster-micro.json; the isolated 600×12 store/hits/raster updates are in samples-table-interaction.json. Cache lifecycle checks are in raster-cache-check.json.\n" +
                 "This harness does not measure interactive orbit performance, multi-view overhead, focus, mixed monitors or full-scene high-resolution capture.\n");
             RhinoApp.WriteLine($"Benchmark finished: {Path.Combine(OutputPaths.Root, "results-rhino.md")}");
         }

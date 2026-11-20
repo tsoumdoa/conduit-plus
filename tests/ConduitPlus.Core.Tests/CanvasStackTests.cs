@@ -103,6 +103,25 @@ public sealed class CanvasStackTests : IDisposable
     }
 
     [Fact]
+    public void DisjointStackSurfacesMatchEachStandaloneCard()
+    {
+        GdiCanvas.RegisterTextMetrics();
+        CardSpec[] cards = [Table("a"), Table("b")];
+        foreach (var theme in new[] { Theme.Paper, Theme.Night, Theme.Smoke, Theme.Blueprint })
+        {
+            var layout = new CanvasStackLayout(cards, theme);
+            using var stack = RasterDrawing.RenderStack(cards, theme, 2);
+            for (var i = 0; i < cards.Length; i++)
+            {
+                using var standalone = RasterDrawing.Render(cards[i], theme, 2);
+                using var crop = stack.Clone(new Rectangle((int)(layout.Cards[i].X * 2), (int)(layout.Cards[i].Y * 2),
+                    standalone.Width, standalone.Height), stack.PixelFormat);
+                AssertPixelsEqual(standalone, crop);
+            }
+        }
+    }
+
+    [Fact]
     public void TallSiblingsKeepSmallCardsAtFullDensityAndEachBitmapWithinBounds()
     {
         GdiCanvas.RegisterTextMetrics();

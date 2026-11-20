@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using ConduitPlus.Rendering;
@@ -33,7 +34,7 @@ public sealed class TableRasterTests
                     using (var graphics = Graphics.FromImage(expected))
                     {
                         graphics.ScaleTransform((float)scale, (float)scale);
-                        using var canvas = new GdiCanvas(graphics);
+                        using var canvas = new GdiCanvas(graphics, transparentBackground: true);
                         // Same paint commands and clips, with GDI's implicit ellipsis disabled.
                         // Pixel equality proves the real renderer drew every already-fitted string.
                         CardPainter.Paint(new NoImplicitEllipsis(canvas, graphics), card, Theme.Paper);
@@ -71,6 +72,8 @@ public sealed class TableRasterTests
                 Trimming = StringTrimming.None
             };
             var bounds = graphics.ClipBounds;
+            // Match the real canvas's gamma-correct glyph coverage over the card surface.
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
             graphics.DrawString(text, typeface, brush, new RectangleF((float)p.X, (float)p.Y,
                 bounds.Right - (float)p.X, Math.Max((float)(size * 1.5), bounds.Bottom - (float)p.Y)), format);
         }
