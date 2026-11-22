@@ -104,8 +104,10 @@ in this repository. Sign in once with `& 'C:\Program Files\Rhino 8\System\Yak.ex
 ./tools/Publish-Yak.ps1 -Server Public   # asks for confirmation; -WhatIf shows the steps only
 ```
 
-`Publish-Yak.ps1` publishes the candidate for the version in `Directory.Build.props`
-(or `-Version`). It never rebuilds. It first checks that the validation record is
+`Publish-Yak.ps1` publishes the Windows and macOS candidates for the version in
+`Directory.Build.props` (or `-Version`); pack both from the same commit with
+`./tools/Pack-Yak.ps1` and `./tools/Pack-Yak.ps1 -Platform mac`, or pass `-SkipMac`.
+`-NotesFile` puts release notes above the generated change list. It never rebuilds. It first checks that the validation record is
 clean, the checksum matches, `HEAD` is the candidate's source commit and the archive
 passes `Test-YakPackage.ps1`. `-Server Public` must run on `main`. It then, in order:
 

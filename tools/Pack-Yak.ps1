@@ -145,5 +145,5 @@ $files = foreach ($name in @($payload.Keys | Sort-Object)) {
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$destination.json" -Encoding utf8
 Write-Output "Local candidate: $destination"
 Write-Output "SHA-256: $hash"
-if ($Platform -eq 'mac') { Write-Output 'No package was published. Install this archive in Rhino for Mac and run the checklist in docs/macos.md; tools/Publish-Yak.ps1 publishes Windows candidates only.' }
+if ($Platform -eq 'mac') { Write-Output 'No package was published. Install this archive in Rhino for Mac and run the checklist in docs/macos.md; tools/Publish-Yak.ps1 publishes it together with the Windows candidate.' }
 else { Write-Output 'No package was published. Install this exact archive in Rhino, then publish it with tools/Publish-Yak.ps1 (see docs/releasing.md).' }

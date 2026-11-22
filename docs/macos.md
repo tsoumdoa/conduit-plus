@@ -58,7 +58,9 @@ first, then stages `artifacts/yak/stage-mac` and writes
 `Test-YakPackage.ps1 -Platform mac` checks the inventory, the manifest
 (`platform: mac`) and that no host assembly is a `net8.0-windows` build. The Mac
 package carries `packaging/README-mac.md` as its README. `Publish-Yak.ps1`
-still publishes Windows candidates only, so a Mac build can't be pushed by accident.
+publishes the Windows and Mac candidates of one version together (both must be
+packed from the same commit; `-SkipMac` publishes Windows only). The Mac package
+ships as an untested beta until this checklist passes on a Mac.
 
 ## Parity
 

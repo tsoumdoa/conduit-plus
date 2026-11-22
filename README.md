@@ -31,7 +31,8 @@ A docked Inspector is future work.
 - Windows and Rhino **8.20+**, running **.NET 8** (use Rhino's `SetDotNetRuntime`
   command if necessary). Grasshopper ships with Rhino.
 - **macOS (preview):** Rhino 8.20+ for Mac has a separate `rh8_20-mac` Yak package.
-  It is built and unit-tested on Windows but not yet verified on a Mac; see
+  It is published as a beta that is built and unit-tested on Windows but not yet
+  run on a Mac, so expect problems and please report them; see
   [docs/macos.md](docs/macos.md) for the parity table and the on-Mac checklist.
   On Mac, Command-click replaces Ctrl-click and Control-click is the secondary click.
 - Development: **.NET SDK 9 or 10**, the .NET 8 Windows Desktop runtime and

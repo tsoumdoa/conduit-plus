@@ -1,8 +1,12 @@
 # Conduit+ for Mac (preview)
 
-Viewport result cards for Rhino 8.20+ for Mac, running .NET 8. This is a preview
-build of the macOS distribution; please report anything that differs from the
-Windows behaviour.
+Viewport result cards for Rhino 8.20+ for Mac, running .NET 8.
+
+**Beta, untested on a Mac.** This package is built and unit-tested on Windows but
+has not yet been run in Rhino for Mac. Expect problems, from small display glitches
+to the plug-in not loading. Please report anything that fails or differs from
+Windows at https://github.com/tsoumdoa/conduit-plus/issues, with the report from
+`ConduitPlusPlatformCheck` if you can.
 
 Drop the `.yak` archive onto Rhino, accept installation, then restart Rhino.
 Open Grasshopper and find **Conduit+** → **Cards** and **Display**. Connect a
