@@ -18,7 +18,7 @@ public static partial class OverlayManager
         internal Size2 ObservedSize;
         internal double ObservedDpi;
         internal string? Signature;
-        internal readonly System.Windows.Forms.Timer Timer = new() { Interval = 120 };
+        internal readonly ConduitPlus.Platform.UiTimer Timer = new(120);
         public void Dispose() { foreach (var owner in Reports.Keys) OverflowChanged?.Invoke(owner, null); Timer.Dispose(); }
     }
     public static event Action<Guid, string?>? OverflowChanged;

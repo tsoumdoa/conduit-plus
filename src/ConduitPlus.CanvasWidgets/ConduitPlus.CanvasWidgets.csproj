@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <PropertyGroup><TargetFramework>$(ConduitPlusHostFramework)</TargetFramework><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
     <ProjectReference Include="../ConduitPlus.Display/ConduitPlus.Display.csproj" />

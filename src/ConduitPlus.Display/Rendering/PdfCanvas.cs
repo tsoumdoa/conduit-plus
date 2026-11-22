@@ -94,7 +94,7 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
         }
         if (text.Length == 0) return;
         var p = P(topLeft);
-        pdf.DrawText(page, text, p.X, p.Y, (float)(size * dotsPerCssPixel * 72 / (96 * dpi)), new global::Rhino.DocObjects.Font(font), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
+        pdf.DrawText(page, text, p.X, p.Y, (float)(size * dotsPerCssPixel * 72 / (96 * dpi)), new global::Rhino.DocObjects.Font(GdiCanvas.Family(font)), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     }
     public void DrawBitmap(Bitmap bitmap, Rect2 r)
     {

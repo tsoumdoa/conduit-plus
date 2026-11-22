@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using ConduitPlus.Core;
+using ConduitPlus.Platform;
 using ConduitPlus.Rendering;
 using Grasshopper.GUI;
 using Grasshopper.GUI.Canvas;
@@ -137,7 +138,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private CardInteractionFrame _gestureFrame = new([]);
     private readonly List<ScreenCard> _cards = [];
     private readonly Bitmap _icon = MakeIcon();
-    private readonly System.Windows.Forms.Timer _captureTimer = new() { Interval = 30 };
+    private readonly ConduitPlus.Platform.UiTimer _captureTimer = new(30);
     private Point? _hoverPoint;
     public override string Name => "Conduit+ cards";
     public override string Description => "Cards pinned to this Grasshopper canvas window";
@@ -160,7 +161,9 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private ICanvasOverlayDisplay[] Displays => CanvasOverlayHost.Displays.Where(d => ReferenceEquals(d.Document, _canvas?.Document) && (d is not IGH_DocumentObject obj || _canvas!.Document.Objects.Contains(obj))).OrderBy(d => d.OwnerId.ToString("N"), StringComparer.Ordinal).ToArray();
     private ICanvasOverlayDisplay[] ShownDisplays => Displays.Where(d => d.CardsVisible).ToArray();
     private bool Eligible => Visible && _canvas is { IsDisposed: false, DrawingMode: GH_CanvasMode.Control } && _canvas.Document is { Context: not (GH_DocumentContext.Close or GH_DocumentContext.Unloaded) };
-    private double Dpi => (_canvas?.DeviceDpi ?? 96) / 96d;
+    // macOS: GH control coordinates are AppKit points; layout at 1 and add density only to the rasters.
+    private double Dpi => HostInput.IsMac ? 1 : (_canvas?.DeviceDpi ?? 96) / 96d;
+    private double RasterScale => HostInput.IsMac ? Dpi * HostDisplay.PinnedRatio(_canvas) : Dpi;
     private Rect2 Client => _canvas is { } c ? new(0, 0, c.ClientSize.Width, c.ClientSize.Height) : new();
     private Rect2[] Exclusions()
     {
@@ -176,11 +179,18 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             if (child.Visible && child is ScrollBar) rectangles.Add(new(child.Left, child.Top, child.Width, child.Height));
         return rectangles.ToArray();
     }
-    private string Signature() => CardJson.Serialize(new
-    {
-        Client, Dpi, Exclusions = Exclusions(),
-        Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
-    });
+    private string Signature() => HostInput.IsMac
+        // macOS: moving between Retina and non-Retina displays changes only the raster density.
+        ? CardJson.Serialize(new
+        {
+            Client, Dpi, Raster = RasterScale, Exclusions = Exclusions(),
+            Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
+        })
+        : CardJson.Serialize(new
+        {
+            Client, Dpi, Exclusions = Exclusions(),
+            Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
+        });
     internal void Changed(bool cancel)
     {
         if (_faultMessage is { } fault)
@@ -221,7 +231,14 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             foreach (var card in _cards.Where(c => _geometryValid && c.Display.CardsVisible && Displays.Contains(c.Display)))
             {
                 var m = RasterDrawing.Margin(card.Theme, card.Scale);
-                graphics.DrawImageUnscaled(card.Image, (int)card.Transform.Body.X - m, (int)card.Transform.Body.Y - m);
+                if (!HostInput.IsMac || card.Scale == Dpi) graphics.DrawImageUnscaled(card.Image, (int)card.Transform.Body.X - m, (int)card.Transform.Body.Y - m);
+                else
+                {
+                    // macOS Retina: a denser raster drawn into the card's point-sized rectangle.
+                    var ratio = (float)(card.Scale / Dpi);
+                    graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    graphics.DrawImage(card.Image, new RectangleF((float)card.Transform.Body.X - m / ratio, (float)card.Transform.Body.Y - m / ratio, card.Image.Width / ratio, card.Image.Height / ratio));
+                }
             }
         }
         finally { graphics.Restore(saved); }
@@ -255,9 +272,10 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
                 var display = displays.Single(d => d.OwnerId == placement.Owner);
                 var snapshot = _frozen[display.OwnerId]; var spec = snapshot.Specs.Single(s => s.Id == placement.CardId); var theme = snapshot.Theme;
                 var bodySize = CardMeasure.Measure(spec, theme);
-                var plan = CanvasRasterPlan.Create(bodySize, Dpi, margin: theme.Shadow ? theme.ShadowExtent + 1 : 0);
+                var rasterScale = RasterScale;
+                var plan = CanvasRasterPlan.Create(bodySize, rasterScale, margin: theme.Shadow ? theme.ShadowExtent + 1 : 0);
                 // Pinned cards never silently reduce density. Half the budget leaves room for atomic replacement.
-                if (Math.Abs(plan.Scale - Dpi) > .000001 || bytes + plan.Bytes > CanvasRasterPlan.DocumentBudget / 2)
+                if (Math.Abs(plan.Scale - rasterScale) > .000001 || bytes + plan.Bytes > CanvasRasterPlan.DocumentBudget / 2)
                 { omitted.Add((display.OwnerId, spec.Id)); continue; }
                 var key = new PinnedRasterKey(display.OwnerId, spec.Id, spec.Rev, theme, bodySize, plan);
                 var previous = _cards.FirstOrDefault(c => c.Display == display && c.Key == key);
@@ -265,10 +283,10 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
                 if (image is null)
                 {
                     CanvasRasterCache.Reserve(this, plan.Bytes);
-                    image = RasterDrawing.Render(spec, theme, Dpi); WidgetService.Rasterized(); allocated.Add(image); _buildingBytes += plan.Bytes;
+                    image = RasterDrawing.Render(spec, theme, rasterScale); WidgetService.Rasterized(); allocated.Add(image); _buildingBytes += plan.Bytes;
                 }
                 bytes += plan.Bytes;
-                next.Add(new(display, spec, theme, Dpi, key, image, new(new(placement.X, placement.Y, bodySize.Width * Dpi, bodySize.Height * Dpi), Dpi, Client)));
+                next.Add(new(display, spec, theme, rasterScale, key, image, new(new(placement.X, placement.Y, bodySize.Width * Dpi, bodySize.Height * Dpi), Dpi, Client)));
                 if (rasterized) yield return true; // At most one new raster per UI message.
             }
             foreach (var old in _cards.Where(c => !next.Any(n => ReferenceEquals(c.Image, n.Image)))) old.Image.Dispose();
@@ -302,14 +320,10 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private ScreenCard? At(Point point) => Eligible && _geometryValid && !OtherWidgetAt(point)
         ? _cards.LastOrDefault(c => c.Display.CardsVisible && Displays.Contains(c.Display) && c.Transform.Contains(new(point.X, point.Y))) : null;
     public override bool Contains(Point control, PointF canvas) => Safe(() => At(control) is not null, false);
-    private static CardModifiers Modifiers
-    {
-        get
-        {
-            var keys = Control.ModifierKeys;
-            return ((keys & Keys.Shift) != 0 ? CardModifiers.Shift : 0) | ((keys & Keys.Control) != 0 ? CardModifiers.Control : 0) | ((keys & Keys.Alt) != 0 ? CardModifiers.Alt : 0);
-        }
-    }
+    // Windows: Shift/Ctrl/Alt from WinForms, as before. macOS: Command toggles; physical Control (secondary click) is Other.
+    private static CardModifiers Modifiers => HostInput.CardModifiers;
+    // The secondary-click modifier never blocks the card menu (macOS Control-click); Windows never reports Other here.
+    private static bool MenuModifiersNone => (Modifiers & ~CardModifiers.Other) == CardModifiers.None;
     private CardInteractionFrame Frame(ICanvasOverlayDisplay display) => new(_cards.Where(c => c.Display == display).Select(c =>
         new InteractionCard(c.Spec, c.Theme, new(c.Transform.Body.X / Dpi, c.Transform.Body.Y / Dpi, c.Transform.Body.Width / Dpi, c.Transform.Body.Height / Dpi), CardMeasure.Hits(c.Spec, c.Theme))).ToArray());
     private Point2 Logical(GH_CanvasMouseEvent e) => new(e.ControlX / Dpi, e.ControlY / Dpi);
@@ -325,7 +339,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     {
         var card = At(new(e.ControlX, e.ControlY));
         if (card is null || sender.IsActiveInteraction || (sender.ActiveWidget is { } other && other != this)) return GH_ObjectResponse.Ignore;
-        if (e.Button == MouseButtons.Right && Modifiers == CardModifiers.None)
+        if (e.Button == MouseButtons.Right && MenuModifiersNone)
         {
             var menu = new ContextMenuStrip();
             menu.Items.Add("Copy card as image", null, (_, _) => Safe(() =>
@@ -349,7 +363,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             return e.Button == MouseButtons.Left && Modifiers == CardModifiers.None ? GH_ObjectResponse.Handled : GH_ObjectResponse.Ignore;
         _gestureOwner = card.Display; _gestureFrame = Frame(card.Display);
         var result = _interaction.Down(_gestureFrame, Logical(e), ControlPoint(e), Modifiers,
-            e.Button == MouseButtons.Left && Control.MouseButtons == MouseButtons.Left, consumeBody: true);
+            e.Button == MouseButtons.Left && HostInput.MouseButtons == MouseButtons.Left, consumeBody: true);
         if (result.Response == CardResponse.Capture)
         {
             ClearHover(); sender.ActiveWidget = this; sender.Capture = true; _captureTimer.Start();
@@ -379,7 +393,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
     private void CheckCapture(object? sender, EventArgs e) => Safe(() =>
     {
         if (_interaction.Active && (!GestureEligible || _canvas?.ActiveWidget != this || _canvas.Capture != true)) Cancel();
-        if (!_interaction.Active && _interaction.OwnsRelease && (Control.MouseButtons & MouseButtons.Left) == 0)
+        if (!_interaction.Active && _interaction.OwnsRelease && (HostInput.MouseButtons & MouseButtons.Left) == 0)
         {
             // A release outside the control may not be dispatched by GH. Do not leave an idle active widget.
             _interaction.Up(new([]), new(), new(), CardModifiers.None, enabled: false); ReleaseCapture(); _gestureOwner = null;

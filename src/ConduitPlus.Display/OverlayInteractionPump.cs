@@ -10,7 +10,7 @@ public static partial class OverlayManager
     // redraw/domain callbacks may reenter, dispose a session, or stop the manager altogether.
     private static class InteractionPump
     {
-        private static readonly System.Windows.Forms.Timer Timer = new() { Interval = InteractionTiming.FrameMilliseconds };
+        private static readonly ConduitPlus.Platform.UiTimer Timer = new(InteractionTiming.FrameMilliseconds);
         private static readonly InteractionFrameQueue<OverlaySession> Updates = new();
         private static readonly InteractionFrameQueue<uint> Redraws = new();
         private static bool _flushing;

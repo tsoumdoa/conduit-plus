@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Bench', 'Capture', 'Pdf')][string]$Mode = 'Bench',
+    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck')][string]$Mode = 'Bench',
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
     [string]$Output = (Join-Path ([IO.Path]::GetTempPath()) ('ConduitPlus/bench-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
@@ -19,6 +19,7 @@ $assembly = Join-Path $PSScriptRoot "ConduitPlus.RhinoBench/bin/$Configuration/n
 $arguments = @('"' + $assembly + '"')
 if ($Mode -eq 'Capture') { $arguments += @('--capture', $Scale) }
 elseif ($Mode -eq 'Pdf') { $arguments += '--pdf' }
+elseif ($Mode -eq 'PlatformCheck') { $arguments += '--platform-check' }
 if ($Compact) { $arguments += '--compact' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {

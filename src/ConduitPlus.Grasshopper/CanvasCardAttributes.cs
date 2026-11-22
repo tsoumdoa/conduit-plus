@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using ConduitPlus.Core;
+using ConduitPlus.Platform;
 using ConduitPlus.Rendering;
 using Grasshopper.GUI;
 using Grasshopper.GUI.Canvas;
@@ -25,7 +26,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private RectangleF _body, _strip;
     private double _scale = 1;
     private readonly CardInteractionController _interaction = new();
-    private static CardModifiers Modifiers => CardHostModifiers.Read(Control.ModifierKeys);
+    private static CardModifiers Modifiers => CardHostModifiers.Read(HostInput.ModifierKeys);
     private CardInteractionFrame InteractionFrame => Frame is { } f ? CardInteractionFrame.Stack(f.Specs, f.Theme, f.Layout) : new([]);
     private PointF? _hoverPoint;
     private CanvasStackFrameKey? _failed;
@@ -78,11 +79,11 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     private void MouseLeft(object? sender, EventArgs e) { ClearHover(); }
     private void CanvasDisposed(object? sender, EventArgs e) => Detach();
     private void NavigationStarted(object? sender, MouseEventArgs e)
-    { if (e.Button != MouseButtons.Left || (Control.ModifierKeys != Keys.None && !(_interaction.IsSelectionGesture && _interaction.ModifiersValid(Modifiers))) || e.Delta != 0) { CancelGesture(); ClearHover(); } }
+    { if (e.Button != MouseButtons.Left || (HostInput.ModifierKeys != Keys.None && !(_interaction.IsSelectionGesture && _interaction.ModifiersValid(Modifiers))) || e.Delta != 0) { CancelGesture(); ClearHover(); } }
     private void CanvasMouseMoved(object? sender, MouseEventArgs e)
     {
         if (_interaction.Active) return;
-        if (!Interactive || _canvas?.IsActiveInteraction == true || e.Button != MouseButtons.None || Control.ModifierKeys != Keys.None)
+        if (!Interactive || _canvas?.IsActiveInteraction == true || e.Button != MouseButtons.None || HostInput.ModifierKeys != Keys.None)
         { ClearHover(); return; }
         if (_canvas is null) return;
         var ev = new GH_CanvasMouseEvent(_canvas.Viewport, e);
@@ -130,6 +131,8 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
             graphics.TransformPoints(CoordinateSpace.Device, CoordinateSpace.World, basis);
             var scale = CanvasCardGeometry.DeviceScale(new(basis[0].X, basis[0].Y), new(basis[1].X, basis[1].Y), new(basis[2].X, basis[2].Y));
             if (!double.IsFinite(scale) || scale <= 0) return;
+            // macOS Retina: raster at the backing factor into the same rectangle (Windows: × 1, unchanged).
+            if (HostInput.IsMac) scale *= HostDisplay.CanvasRatio(canvas, scale, canvas.Viewport.Zoom);
             var palette = GH_CapsuleRenderEngine.GetImpliedPalette(Component);
             var style = GH_CapsuleRenderEngine.GetImpliedStyle(palette, Selected, Disabled, false);
             var exportSize = Disabled ? Frame?.Key.Size ?? Component.BodySize : Component.BodySize;
@@ -141,7 +144,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
                 capsule.Render(graphics, style);
             }
             RenderComponentParameters(canvas, graphics, Component, style);
-            using (var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel))
+            using (var font = new Font(GdiCanvas.Family("Segoe UI"), 12, FontStyle.Regular, GraphicsUnit.Pixel))
             using (var brush = new SolidBrush(style.Text))
                 graphics.DrawString(Disabled ? "Canvas Card · Disabled" : "Canvas Card", font, brush, _strip.X + 8, _strip.Y + 5);
             if (export)
@@ -215,7 +218,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
         var style = global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedStyle(
             global::Grasshopper.GUI.Canvas.GH_CapsuleRenderEngine.GetImpliedPalette(Component), this);
         using var brush = new SolidBrush(style.Text);
-        using var font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var font = new Font(GdiCanvas.Family("Segoe UI"), 12, FontStyle.Regular, GraphicsUnit.Pixel);
         graphics.DrawString(Component.Placeholder, font, brush, new RectangleF(_body.X + 12, _body.Y + 16, _body.Width - 24, _body.Height - 28));
     }
     private static CanvasRasterPlan Plan(Size2 size, Theme theme, double scale, long budget = CanvasRasterPlan.BitmapBudget)
@@ -268,7 +271,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     public override GH_ObjectResponse RespondToMouseDown(GH_Canvas sender, GH_CanvasMouseEvent e)
     {
         var result = _interaction.Down(InteractionFrame, Local(e.CanvasLocation), new(e.ControlX, e.ControlY), Modifiers,
-            e.Button == MouseButtons.Left && Control.MouseButtons == MouseButtons.Left, Interactive, sender.IsActiveInteraction);
+            e.Button == MouseButtons.Left && HostInput.MouseButtons == MouseButtons.Left, Interactive, sender.IsActiveInteraction);
         if (result.Response == CardResponse.Pass) return base.RespondToMouseDown(sender, e);
         ClearHover(); sender.Capture = true; CanvasCardCache.Queue(this);
         return Apply(result);
@@ -293,7 +296,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     internal void CheckCapture()
     {
         if (_interaction.Active && (!Interactive || _canvas?.ActiveObject != Component || _canvas.Capture != true)) CancelGesture();
-        if (!_interaction.Active && _interaction.OwnsRelease && (Control.MouseButtons & MouseButtons.Left) == 0)
+        if (!_interaction.Active && _interaction.OwnsRelease && (HostInput.MouseButtons & MouseButtons.Left) == 0)
             Apply(_interaction.Up(new([]), new(), new(), CardModifiers.None, enabled: false));
     }
     internal void CancelGesture() { Component.State.CancelHover(); Apply(_interaction.Cancel()); }

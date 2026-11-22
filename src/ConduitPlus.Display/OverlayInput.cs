@@ -4,6 +4,7 @@ using Rhino.Display;
 using Rhino.Commands;
 using Rhino.UI;
 using System.Runtime.InteropServices;
+using ConduitPlus.Platform;
 
 namespace ConduitPlus.Rhino;
 
@@ -19,7 +20,8 @@ public static partial class OverlayManager
         internal bool HoverUnsettled => _modelDwell.Pending || _scrollRest.Pending;
         private readonly HoverDwell _modelDwell = new();
         private readonly ScrollHoverRest _scrollRest = new();
-        private readonly WheelAccumulator<(OverlaySession Session, string Card)> _wheel = new();
+        // macOS deltas are finer (trackpad points): one accumulator step per row instead of three rows per notch.
+        private readonly WheelAccumulator<(OverlaySession Session, string Card)> _wheel = HostInput.IsMac ? new(MacScroll.UnitsPerRow, 1) : new();
         private (RhinoView View, System.Drawing.Point Point)? _pointer;
         private bool _movePending, _clearScrollHover, _exitPending;
         // Accepted wheel notches outlive hover cancellation (e.g. a Busy flush), so they keep the pump awake too.
@@ -30,7 +32,7 @@ public static partial class OverlayManager
         internal void CheckScrollGesture(System.Drawing.Point screen)
         {
             if (_gesture is { } gesture && (!PointerInView(gesture.Session.View, screen) ||
-                Command.InCommand() || (GetAsyncKeyState(0x01) & 0x8000) == 0 || (GetAsyncKeyState(0x1B) & 0x8000) != 0)) Cancel();
+                Command.InCommand() || !HostInput.LeftButtonDown || HostInput.EscapeDown)) Cancel();
         }
         public void Reset() { CancelPending(); _wheel.Clear(); Cancel(); _pressed = false; _buttonDown = false; }
         internal void CancelPending()
@@ -72,6 +74,8 @@ public static partial class OverlayManager
                 s.Cursor(default, false); s.ClearCardHover(); ClearHover(s, false); ClearHover(s, true);
             }
         }
+        internal bool HasPointer => _pointer is not null;
+        internal System.Drawing.Point? PointerIn(RhinoView view) => _pointer is { } p && SameView(p.View, view) ? p.Point : null;
         internal void ObservePointerWindow(System.Drawing.Point screen)
         {
             if (_pointer is not { } p || PointerInView(p.View, screen)) return;
@@ -79,7 +83,7 @@ public static partial class OverlayManager
             _exitPending = true;
             InteractionPump.Wake();
         }
-        internal void QueueWheel(OverlaySession session, string card, System.Drawing.Point point, short delta)
+        internal void QueueWheel(OverlaySession session, string card, System.Drawing.Point point, int delta)
         {
             _wheel.Add((session, card), delta);
             _pointer = (session.View, point);
@@ -102,7 +106,7 @@ public static partial class OverlayManager
             foreach (var (target, rows) in wheel)
                 if (!target.Session.IsDisposed && target.Session.Visible) target.Session.ScrollBy(target.Card, rows);
             if (_pointer is not { } p) return;
-            var screen = System.Windows.Forms.Control.MousePosition;
+            var screen = HostView.PointerScreen;
             if (!PointerInView(p.View, screen)) { CancelPending(); ClearPointerHover(); return; }
             if (Interacting || Command.InCommand())
             {
@@ -111,7 +115,8 @@ public static partial class OverlayManager
                 return;
             }
             // Revalidate the actual cursor, even if Rhino didn't deliver its latest move (e.g. a window opened).
-            var actual = p.View.ScreenToClient(screen);
+            // macOS: if AppKit can't map the pointer, keep Rhino's own MouseCallback point.
+            var actual = HostView.ToClient(p.View, screen) ?? p.Point;
             if (actual != p.Point)
             {
                 _pointer = p = (p.View, actual); _movePending = true;
@@ -157,13 +162,14 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
+            if (HostInput.IsMac) MacView.Observe(e.View, e.ViewportPoint);
             if (_emptyPress is { } press && (!SameView(press.View, e.View) || !CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))) _emptyPress = null;
             if (_gesture is not null)
             {
                 e.Cancel = true;
                 if (!Valid(e)) return;
                 // MouseCallback has no capture/key event. Observe release outside or Escape on the next move.
-                if ((GetAsyncKeyState(0x01) & 0x8000) == 0 || (GetAsyncKeyState(0x1B) & 0x8000) != 0) { Cancel(); return; }
+                if (!HostInput.LeftButtonDown || HostInput.EscapeDown) { Cancel(); return; }
             }
             if (Busy) { CancelPending(); return; }
             if (_gesture is ScrollDrag drag)
@@ -178,7 +184,7 @@ public static partial class OverlayManager
             if (_buttonDown)
             {
                 // Native Rhino gestures aren't swallowed, but must not arm a model hover either.
-                _buttonDown = (GetAsyncKeyState(0x01) & 0x8000) != 0 || (GetAsyncKeyState(0x02) & 0x8000) != 0 || (GetAsyncKeyState(0x04) & 0x8000) != 0;
+                _buttonDown = HostInput.AnyButtonDown;
                 if (_buttonDown) { CancelPending(); return; }
             }
             MoveHover(e.View, e.ViewportPoint);
@@ -190,6 +196,16 @@ public static partial class OverlayManager
             _pointer = (view, point); _movePending = true;
             _modelDwell.Move(new(point.X, point.Y), Environment.TickCount64);
             InteractionPump.Wake();
+            if (HostInput.IsMac) MacInput.WatchPointer();
+        }
+        private static bool PrimaryButton(MouseCallbackEventArgs e) =>
+            HostInput.IsMac ? e.MouseButton == MouseButton.Left : e.Button == System.Windows.Forms.MouseButtons.Left;
+        /// <summary>Windows: Rhino's button and Ctrl/Shift. macOS: Command toggles; Control-click is a secondary click.</summary>
+        private static PointerIntent Intent(MouseCallbackEventArgs e)
+        {
+            if (!HostInput.IsMac) return PointerModifiers.Resolve(false, e.Button == System.Windows.Forms.MouseButtons.Left, e.ShiftKeyDown, e.CtrlKeyDown);
+            var (shift, command, control) = HostInput.MacModifiers();
+            return PointerModifiers.Resolve(true, e.MouseButton == MouseButton.Left, shift || e.ShiftKeyDown, e.CtrlKeyDown, command, control);
         }
         protected override void OnMouseDown(MouseCallbackEventArgs e)
         {
@@ -208,13 +224,14 @@ public static partial class OverlayManager
             _emptyPress = null;
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
-            if (Busy || e.Button != System.Windows.Forms.MouseButtons.Left)
+            var intent = Intent(e);
+            if (Busy || !intent.Primary)
             {
                 CancelPending();
                 foreach (var session in InView(e.View)) CancelBrushHover(session);
                 return;
             }
-            var mode = BrushSelection.FromModifiers(e.ShiftKeyDown, e.CtrlKeyDown);
+            var mode = BrushSelection.FromModifiers(intent.Shift, intent.Toggle);
             var sessions = InView(e.View);
             foreach (var s in sessions)
             {
@@ -247,7 +264,7 @@ public static partial class OverlayManager
             // Clicks always re-pick; dwell hover may still describe a previous cursor position.
             if (ModelPicking.Pick(e.View, sessions, e.ViewportPoint) is not { } picked)
             {
-                if (!e.ShiftKeyDown && !e.CtrlKeyDown) _emptyPress = (e.View, e.ViewportPoint);
+                if (!intent.Shift && !intent.Toggle) _emptyPress = (e.View, e.ViewportPoint);
                 return;
             }
             e.Cancel = true; _pressed = true;
@@ -265,9 +282,12 @@ public static partial class OverlayManager
         private void MouseUp(MouseCallbackEventArgs e)
         {
             if (HiddenHit(e.View,e.ViewportPoint.X,e.ViewportPoint.Y)) { e.Cancel=true; _pressed=false; Cancel(); return; }
-            if (e.Button != System.Windows.Forms.MouseButtons.Left) return;
+            // Release ownership follows the button alone: a modifier pressed mid-gesture (macOS Control) must not
+            // leave a captured press unfinished.
+            if (!PrimaryButton(e)) return;
+            var intent = Intent(e);
             var empty = _emptyPress; _emptyPress = null;
-            if (empty is { } press && !Busy && !Command.InCommand() && !e.ShiftKeyDown && !e.CtrlKeyDown &&
+            if (empty is { } press && !Busy && !Command.InCommand() && !intent.Shift && !intent.Toggle &&
                 SameView(press.View, e.View) && CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))
             {
                 var sessions = InView(e.View);
@@ -278,15 +298,18 @@ public static partial class OverlayManager
             if (!Busy) MoveHover(e.View, e.ViewportPoint);
             Enabled = Sessions.Count > 0;
         }
-        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int virtualKey);
     }
 
-    internal static void ObserveInteractionPointer() => Mouse.ObservePointerWindow(System.Windows.Forms.Control.MousePosition);
+    /// <summary>Which wheel/pointer route is active (diagnostics).</summary>
+    internal static string InputRoute => HostInput.IsMac ? $"AppKit local event monitor: {MacDiagnostics.MonitorStatus ?? "not installed"}"
+        : WheelHook.Installed ? "Win32 WH_GETMESSAGE hook installed" : "Win32 WH_GETMESSAGE hook not installed";
+    internal static void ObserveInteractionPointer() => Mouse.ObservePointerWindow(HostView.PointerScreen);
 
     // RhinoCommon 8.20 documents Handle as the window this view is bound to. Rectangle tests alone
     // also match editor/other windows floating over the view. Test both routing and the topmost window.
     internal static bool PointerInView(RhinoView view, System.Drawing.Point screen, IntPtr messageWindow = default)
     {
+        if (HostInput.IsMac) return MacView.InView(view, screen);
         var handle = view.Handle;
         return handle != IntPtr.Zero && view.ScreenRectangle.Contains(screen) &&
             BelongsToView(handle, WindowFromPoint(screen)) &&
@@ -307,6 +330,7 @@ public static partial class OverlayManager
         private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
         private static readonly HookProc Proc = OnMessage; // rooted for the hook's lifetime
         private static IntPtr _hook;
+        internal static bool Installed => _hook != IntPtr.Zero;
         public static void Install()
         {
             if (_hook != IntPtr.Zero) return;

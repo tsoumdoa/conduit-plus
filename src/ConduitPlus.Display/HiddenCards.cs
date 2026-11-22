@@ -32,7 +32,15 @@ public static partial class OverlayManager
 
         // Keep long titles inside the panel: measure in design units, then compare to the panel's inner width.
         var inner = (b.Width - 16 * g.Unit) / g.Unit;
-        void Text(string raw, double y, bool muted) => e.Display.Draw2dText(HiddenList.Fit(raw, inner, t => TextMetrics.Measurer(t, 12, "Segoe UI").Width), muted ? System.Drawing.Color.FromArgb(169,176,191) : System.Drawing.Color.White, new global::Rhino.Geometry.Point2d(b.X+8*g.Unit,y+4*g.Unit),false,Math.Max(1,(int)(12*g.Unit)));
+        void Text(string raw, double y, bool muted)
+        {
+            var text = HiddenList.Fit(raw, inner, t => TextMetrics.Measurer(t, 12, "Segoe UI").Width);
+            var color = muted ? System.Drawing.Color.FromArgb(169,176,191) : System.Drawing.Color.White;
+            var at = new global::Rhino.Geometry.Point2d(b.X+8*g.Unit,y+4*g.Unit);
+            // macOS has no Segoe UI: draw with the same family the fit was measured with.
+            if (OperatingSystem.IsMacOS()) e.Display.Draw2dText(text, color, at, false, Math.Max(1,(int)(12*g.Unit)), ConduitPlus.Rendering.GdiCanvas.Family("Segoe UI"));
+            else e.Display.Draw2dText(text, color, at, false, Math.Max(1,(int)(12*g.Unit)));
+        }
         Text("Hidden cards",b.Y,false);
         for(var i=0;i<g.Panel.Rows.Length;i++) Text((c.Shown == (g.Rows[i].Owner, g.Rows[i].CardId) ? "• " : "") + g.Rows[i].Text,g.Panel.Rows[i].Y,g.Rows[i].CardId is null);
         if(g.Panel.More>0 && b.Height>=44*g.Unit) Text($"+{g.Panel.More} more",b.Y+b.Height-22*g.Unit,true);

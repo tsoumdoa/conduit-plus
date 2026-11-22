@@ -2,7 +2,7 @@
 <# .SYNOPSIS
 Exercise the archive gate against a real candidate and deliberately damaged copies.
 #>
-param([Parameter(Mandatory)][string]$Package)
+param([Parameter(Mandatory)][string]$Package, [ValidateSet('win', 'mac')][string]$Platform = 'win')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -10,9 +10,9 @@ $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $validator = Join-Path $repo 'tools/Test-YakPackage.ps1'
 . (Join-Path $repo 'tools/ReleaseVersion.ps1')
 $version = Get-ReleaseVersion $repo
-$stage = Join-Path $repo 'artifacts/yak/stage'
+$stage = Join-Path $repo $(if ($Platform -eq 'mac') { 'artifacts/yak/stage-mac' } else { 'artifacts/yak/stage' })
 $Package = (Resolve-Path -LiteralPath $Package).Path
-& $validator -Package $Package -Version $version -SourceDirectory $stage
+& $validator -Package $Package -Version $version -SourceDirectory $stage -Platform $Platform
 $root = Join-Path $repo ('artifacts/yak/validation-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
 $cases = @(
@@ -41,7 +41,7 @@ try {
                 $text = switch ($case.Action) {
                     'manifest' { $text.Replace("version: $version", 'version: 999.0.0') }
                     'manifest-name' { $text.Replace('name: conduit-plus', 'name: wrong-package') }
-                    'manifest-platform' { $text.Replace('platform: win', 'platform: any') }
+                    'manifest-platform' { $text.Replace("platform: $Platform", 'platform: any') }
                     'manifest-guid' { $text.Replace('guid:b02874c1-57b6-43d2-871a-3cb89603f101', 'removed-guid') }
                 }
             } else { $text = 'intentionally invalid payload' }
@@ -54,7 +54,7 @@ try {
             }
         } finally { $zip.Dispose() }
         $rejected = $false
-        try { & $validator -Package $copy -Version $version -SourceDirectory $stage }
+        try { & $validator -Package $copy -Version $version -SourceDirectory $stage -Platform $Platform }
         catch {
             if ($_.Exception.Message -notlike "*$($case.Error)*") { throw }
             $rejected = $true
@@ -62,12 +62,12 @@ try {
         if (-not $rejected) { throw "Validator accepted $($case.Name)." }
         Write-Output "PASS: rejects $($case.Name)"
     }
-    $wrongTag = Join-Path $root ([IO.Path]::GetFileName($Package).Replace('-win.yak', '-any.yak'))
+    $wrongTag = Join-Path $root ([IO.Path]::GetFileName($Package).Replace("-$Platform.yak", '-any.yak'))
     Copy-Item -LiteralPath $Package -Destination $wrongTag
     $rejected = $false
-    try { & $validator -Package $wrongTag -Version $version }
+    try { & $validator -Package $wrongTag -Version $version -Platform $Platform }
     catch {
-        if ($_.Exception.Message -notlike '*Expected Windows/Rhino 8.20 archive name*') { throw }
+        if ($_.Exception.Message -notlike "*Expected $(if ($Platform -eq 'mac') { 'macOS' } else { 'Windows' })/Rhino 8.20 archive name*") { throw }
         $rejected = $true
     }
     if (-not $rejected) { throw 'Validator accepted an incorrect distribution tag.' }

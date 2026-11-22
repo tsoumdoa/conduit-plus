@@ -30,6 +30,11 @@ A docked Inspector is future work.
 
 - Windows and Rhino **8.20+**, running **.NET 8** (use Rhino's `SetDotNetRuntime`
   command if necessary). Grasshopper ships with Rhino.
+- **macOS (preview):** Rhino 8.20+ for Mac has a separate `rh8_20-mac` Yak package.
+  It is published as a beta that is built and unit-tested on Windows but not yet
+  run on a Mac, so expect problems and please report them; see
+  [docs/macos.md](docs/macos.md) for the parity table and the on-Mac checklist.
+  On Mac, Command-click replaces Ctrl-click and Control-click is the secondary click.
 - Development: **.NET SDK 9 or 10**, the .NET 8 Windows Desktop runtime and
   **PowerShell 7** for release packaging.
   No JavaScript toolchain is needed.
@@ -67,6 +72,7 @@ Build a local Yak package with an installed Rhino 8:
 ```powershell
 ./tools/Pack-Yak.ps1                  # package the current version
 ./tools/Pack-Yak.ps1 -Version 0.2.0   # or bump, commit "Release 0.2.0", then package
+./tools/Pack-Yak.ps1 -Platform mac    # separate macOS candidate (rh8_20-mac), see docs/macos.md
 ```
 
 This runs the Release build and tests, stages the three plugin assemblies,

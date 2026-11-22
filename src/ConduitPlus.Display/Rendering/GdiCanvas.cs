@@ -37,8 +37,38 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     }
     private Font FontOf(string font, double size)
     {
-        if (!_fonts.TryGetValue((font, size), out var result)) _fonts.Add((font, size), result = new Font(font, (float)size, FontStyle.Regular, GraphicsUnit.Pixel));
+        if (!_fonts.TryGetValue((font, size), out var result)) _fonts.Add((font, size), result = new Font(Family(font), (float)size, FontStyle.Regular, GraphicsUnit.Pixel));
         return result;
+    }
+    private static readonly Dictionary<string, string> Families = new(StringComparer.Ordinal);
+    /// <summary>
+    /// The installed family used to measure and paint <paramref name="font"/>. Windows: the name unchanged.
+    /// macOS (no Segoe UI): Helvetica Neue, so measurement and paint always agree on one real face.
+    /// </summary>
+    public static string Family(string font)
+    {
+        if (!OperatingSystem.IsMacOS()) return font;
+        lock (Families)
+        {
+            if (!Families.TryGetValue(font, out var family)) Families[font] = family = FontFallback.Resolve(font, true, Installed);
+            return family;
+        }
+    }
+    private static HashSet<string>? _installed;
+    private static bool Installed(string family)
+    {
+        if (_installed is null)
+        {
+            try
+            {
+                using var fonts = new InstalledFontCollection();
+                _installed = fonts.Families.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            catch { _installed = new(StringComparer.OrdinalIgnoreCase); }
+            // An empty or failing enumeration must not reject every family: Helvetica Neue ships with macOS.
+            if (_installed.Count == 0) _installed.Add(FontFallback.MacFamilies[0]);
+        }
+        return _installed.Contains(family);
     }
     private SolidBrush BrushOf(string color)
     {
