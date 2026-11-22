@@ -13,5 +13,22 @@
     <Deterministic>true</Deterministic>
     <!-- Keep local checkout and user paths out of released assemblies and PDBs. -->
     <PathMap Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)=/_/</PathMap>
+    <!-- Host flavour: win (default, net8.0-windows) or mac (-p:ConduitPlusPlatform=mac, plain net8.0 against
+         Rhino for Mac's WinForms/System.Drawing implementations). Mac builds keep their own bin/obj under
+         artifacts/mac so they never share intermediate files with the Windows build. -->
+    <ConduitPlusPlatform Condition="'$(ConduitPlusPlatform)' == ''">win</ConduitPlusPlatform>
+    <ConduitPlusHostFramework Condition="'$(ConduitPlusPlatform)' == 'mac'">net8.0</ConduitPlusHostFramework>
+    <ConduitPlusHostFramework Condition="'$(ConduitPlusPlatform)' != 'mac'">net8.0-windows</ConduitPlusHostFramework>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(ConduitPlusPlatform)' == 'mac'">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts/mac/bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts/mac/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <!-- Never glob the Windows flavour's generated sources (obj/) or outputs into the Mac build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <!-- Compile-time WinForms/System.Drawing reference for the Mac flavour. RhinoCommon's NuGet props enable this
+       ("Rhino includes a Windows Forms and System Drawing implementation for Mac"); nothing is copied to output. -->
+  <ItemGroup Condition="'$(ConduitPlusPlatform)' == 'mac' and '$(UseWindowsForms)' == 'true'">
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
 </Project>

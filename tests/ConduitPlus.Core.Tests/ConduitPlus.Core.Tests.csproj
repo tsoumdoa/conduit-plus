@@ -11,5 +11,7 @@
     <Compile Include="../../src/ConduitPlus.Display/Rendering/GdiCanvas.cs" Link="GdiCanvas.cs" />
     <Compile Include="../../src/ConduitPlus.Display/Rendering/RasterDrawing.cs" Link="RasterDrawing.cs" />
     <Compile Include="../../src/ConduitPlus.Display/Rendering/CardClipboard.cs" Link="CardClipboard.cs" />
+    <Compile Include="../../src/ConduitPlus.Display/Platform/MacNative.cs" Link="MacNative.cs" />
+    <Compile Include="../../src/ConduitPlus.Display/Platform/MacPasteboard.cs" Link="MacPasteboard.cs" />
   </ItemGroup>
 </Project>

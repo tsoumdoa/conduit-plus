@@ -12,7 +12,7 @@ internal sealed partial class OverlaySession
 {
     // Owner is implicit in the session. Cursor movement is deliberately absent from the cache identity.
     private sealed record TooltipTarget(string? Card, string Key, long Rev, double Dpi, bool Model, long DomainVersion);
-    private readonly System.Windows.Forms.Timer _tooltipTimer = new() { Interval = 50 };
+    private readonly ConduitPlus.Platform.UiTimer _tooltipTimer = new(50);
     private (string Card, string Key)? _cardHover;
     private TooltipTarget? _tooltipTarget;
     private string[]? _tooltipLines;
@@ -80,7 +80,7 @@ internal sealed partial class OverlaySession
         // Also observe exits/commands when Rhino sends no more mouse moves.
         if (_disposed) return;
         OverlayManager.ObserveInteractionPointer();
-        if (!TooltipAllowed || !OverlayManager.PointerInView(View, System.Windows.Forms.Control.MousePosition)) { HideTooltip(); return; }
+        if (!TooltipAllowed || !OverlayManager.PointerInView(View, ConduitPlus.Platform.HostView.PointerScreen)) { HideTooltip(); return; }
         if (_tooltipTarget is not { } target) return;
         if (target.Dpi != UiContext.Dpi(View)) { SyncTooltip(); return; }
         if (_tooltipReady || Stopwatch.GetElapsedTime(_tooltipSince).TotalMilliseconds < 250) return;

@@ -1,18 +1,24 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-Build, test and verify a local Windows Yak release candidate. Never publishes.
+Build, test and verify a local Windows (default) or macOS Yak release candidate. Never publishes.
 .DESCRIPTION
 With -Version, first bumps <Version> in Directory.Build.props and commits that change
 ("Release VERSION") on a clean working tree, then builds the candidate from that commit.
+-Platform mac additionally builds the host assemblies as plain net8.0 (-p:ConduitPlusPlatform=mac),
+stages them in artifacts/yak/stage-mac and builds the separate rh8_20-mac distribution. The Windows
+solution build and tests always run first; the Windows candidate and its staging are untouched.
 .EXAMPLE
 ./tools/Pack-Yak.ps1 -Version 0.2.0-beta.1
 .EXAMPLE
 ./tools/Pack-Yak.ps1   # repackage the version already in Directory.Build.props
+.EXAMPLE
+./tools/Pack-Yak.ps1 -Platform mac   # macOS candidate (rh8_20-mac) of the current version
 #>
 param(
     [string]$Version,
     [string]$YakPath = $(if ($env:YAK_PATH) { $env:YAK_PATH } else { 'C:\Program Files\Rhino 8\System\Yak.exe' }),
+    [ValidateSet('win', 'mac')][string]$Platform = 'win',
     [switch]$StageOnly,
     [switch]$AllowDirty
 )
@@ -55,16 +61,29 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot read source commit.' }
 if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
 & dotnet test (Join-Path $repo 'ConduitPlus.sln') -c Release --no-build --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
+if ($Platform -eq 'mac') {
+    # Separate bin/obj (artifacts/mac); Rhino for Mac supplies WinForms/System.Drawing at runtime.
+    foreach ($project in @('src/ConduitPlus.Rhino/ConduitPlus.Rhino.csproj', 'src/ConduitPlus.Grasshopper/ConduitPlus.Grasshopper.csproj')) {
+        & dotnet build (Join-Path $repo $project) -c Release --nologo -p:ConduitPlusPlatform=mac
+        if ($LASTEXITCODE -ne 0) { throw "macOS Release build failed: $project" }
+    }
+}
 
 $output = Join-Path $repo 'artifacts/yak'
-$stage = [IO.Path]::GetFullPath((Join-Path $output 'stage'))
+$stageName = if ($Platform -eq 'mac') { 'stage-mac' } else { 'stage' }
+$stage = [IO.Path]::GetFullPath((Join-Path $output $stageName))
 # Verify the resolved absolute workspace path before recursively replacing generated staging files.
-$expected = [IO.Path]::Combine([IO.Path]::GetFullPath($repo), 'artifacts', 'yak', 'stage')
+$expected = [IO.Path]::Combine([IO.Path]::GetFullPath($repo), 'artifacts', 'yak', $stageName)
 if ($stage -ne $expected -or -not $stage.StartsWith([IO.Path]::GetFullPath($repo) + [IO.Path]::DirectorySeparatorChar)) {
     throw "Unsafe staging path: $stage"
 }
-$rhinoOutput = Join-Path $repo 'src/ConduitPlus.Rhino/bin/Release/net8.0-windows'
-$ghOutput = Join-Path $repo 'src/ConduitPlus.Grasshopper/bin/Release/net8.0-windows'
+if ($Platform -eq 'mac') {
+    $rhinoOutput = Join-Path $repo 'artifacts/mac/bin/ConduitPlus.Rhino/Release/net8.0'
+    $ghOutput = Join-Path $repo 'artifacts/mac/bin/ConduitPlus.Grasshopper/Release/net8.0'
+} else {
+    $rhinoOutput = Join-Path $repo 'src/ConduitPlus.Rhino/bin/Release/net8.0-windows'
+    $ghOutput = Join-Path $repo 'src/ConduitPlus.Grasshopper/bin/Release/net8.0-windows'
+}
 $payload = @{
     'ConduitPlus.Rhino.rhp' = Join-Path $rhinoOutput 'ConduitPlus.Rhino.rhp'
     'ConduitPlus.Display.dll' = Join-Path $rhinoOutput 'ConduitPlus.Display.dll'
@@ -72,7 +91,7 @@ $payload = @{
     'ConduitPlus.Grasshopper.gha' = Join-Path $ghOutput 'ConduitPlus.Grasshopper.gha'
     'ConduitPlus.CanvasWidgets.dll' = Join-Path $ghOutput 'ConduitPlus.CanvasWidgets.dll'
     'LICENSE' = Join-Path $repo 'LICENSE'
-    'README.md' = Join-Path $repo 'packaging/README.md'
+    'README.md' = Join-Path $repo $(if ($Platform -eq 'mac') { 'packaging/README-mac.md' } else { 'packaging/README.md' })
     'icon.png' = Join-Path $repo 'assets/icon.png'
 }
 foreach ($source in $payload.Values) {
@@ -94,13 +113,13 @@ if ($StageOnly) {
 }
 Push-Location -LiteralPath $stage
 try {
-    & $YakPath build --platform win
+    & $YakPath build --platform $Platform
     if ($LASTEXITCODE -ne 0) { throw 'Yak build failed.' }
 } finally { Pop-Location }
 $packages = @(Get-ChildItem -LiteralPath $stage -Filter '*.yak' -File)
 if ($packages.Count -ne 1) { throw "Expected one Yak package, found $($packages.Count)." }
 $package = $packages[0].FullName
-& (Join-Path $PSScriptRoot 'Test-YakPackage.ps1') -Package $package -Version $version -SourceDirectory $stage
+& (Join-Path $PSScriptRoot 'Test-YakPackage.ps1') -Package $package -Version $version -SourceDirectory $stage -Platform $Platform
 $candidateOutput = if ($dirty) { Join-Path $output 'trials' } else { $output }
 New-Item -ItemType Directory -Path $candidateOutput -Force | Out-Null
 $destination = Join-Path $candidateOutput $packages[0].Name
@@ -115,9 +134,9 @@ $files = foreach ($name in @($payload.Keys | Sort-Object)) {
     sourceCommit = $commit
     dirty = $dirty
     builtAtUtc = [DateTime]::UtcNow.ToString('o')
-    platform = 'win'
+    platform = $Platform
     minimumRhino = '8.20'
-    runtime = 'net8.0-windows'
+    runtime = $(if ($Platform -eq 'mac') { 'net8.0' } else { 'net8.0-windows' })
     package = $packages[0].Name
     sha256 = $hash
     validation = 'Release build, unit tests, archive inventory, assembly versions and staged payload hashes passed'
@@ -126,4 +145,5 @@ $files = foreach ($name in @($payload.Keys | Sort-Object)) {
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$destination.json" -Encoding utf8
 Write-Output "Local candidate: $destination"
 Write-Output "SHA-256: $hash"
-Write-Output 'No package was published. Install this exact archive in Rhino, then publish it with tools/Publish-Yak.ps1 (see docs/releasing.md).'
+if ($Platform -eq 'mac') { Write-Output 'No package was published. Install this archive in Rhino for Mac and run the checklist in docs/macos.md; tools/Publish-Yak.ps1 publishes Windows candidates only.' }
+else { Write-Output 'No package was published. Install this exact archive in Rhino, then publish it with tools/Publish-Yak.ps1 (see docs/releasing.md).' }

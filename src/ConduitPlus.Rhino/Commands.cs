@@ -11,7 +11,11 @@ namespace ConduitPlus.Rhino;
 internal static class OutputPaths
 {
     public static string Root => Path.GetFullPath(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ConduitPlus"));
+        ?? Path.Combine(Documents, "ConduitPlus"));
+    // macOS: ~/Documents explicitly (SpecialFolder.MyDocuments maps to $HOME on some .NET Unix versions).
+    private static string Documents => OperatingSystem.IsMacOS()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents")
+        : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     public static string Captures { get { var path = Path.Combine(Root, "captures"); Directory.CreateDirectory(path); return path; } }
 }
 
@@ -43,22 +47,23 @@ public sealed class ConduitPlusDemo : Command
     {
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
-        return CommandRunner.Run(() =>
+        return CommandRunner.Run(() => Place(doc, view, Guid.Empty));
+    }
+    internal static void Place(RhinoDoc doc, RhinoView view, Guid owner)
+    {
+        var members = new List<(string Key, object Geometry)>();
+        // Five bays: lower chord, upper chord, posts and diagonals (M01–M20).
+        for (var i = 0; i < 5; i++)
         {
-            var members = new List<(string Key, object Geometry)>();
-            // Five bays: lower chord, upper chord, posts and diagonals (M01–M20).
-            for (var i = 0; i < 5; i++)
-            {
-                var x = i * 5d;
-                members.Add(($"M{i + 1:00}", new Line(new Point3d(x, 0, 0), new Point3d(x + 5, 0, 0))));
-                members.Add(($"M{i + 6:00}", new Line(new Point3d(x, 0, 5), new Point3d(x + 5, 0, 5))));
-                members.Add(($"M{i + 11:00}", new Line(new Point3d(x, 0, 0), new Point3d(x, 0, 5))));
-                members.Add(($"M{i + 16:00}", new Line(new Point3d(x, 0, 0), new Point3d(x + 5, 0, 5))));
-            }
-            var link = new Link(members.Select(m => m.Key), members) { ShowBase = true };
-            CardSpec[] cards = [.. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras()];
-            OverlayManager.Set(doc, view, Guid.Empty, cards.Select((c, i) => i == 0 ? c : c with { WiredSlot = null }), [link]);
-        });
+            var x = i * 5d;
+            members.Add(($"M{i + 1:00}", new Line(new Point3d(x, 0, 0), new Point3d(x + 5, 0, 0))));
+            members.Add(($"M{i + 6:00}", new Line(new Point3d(x, 0, 5), new Point3d(x + 5, 0, 5))));
+            members.Add(($"M{i + 11:00}", new Line(new Point3d(x, 0, 0), new Point3d(x, 0, 5))));
+            members.Add(($"M{i + 16:00}", new Line(new Point3d(x, 0, 0), new Point3d(x + 5, 0, 5))));
+        }
+        var link = new Link(members.Select(m => m.Key), members) { ShowBase = true };
+        CardSpec[] cards = [.. StructuralDemo.Create(), StructuralDemo.Line(), .. StructuralDemo.Extras()];
+        OverlayManager.Set(doc, view, owner, cards.Select((c, i) => i == 0 ? c : c with { WiredSlot = null }), [link]);
     }
 }
 
@@ -89,7 +94,7 @@ public sealed class ConduitPlusCapture : Command
 
     private static void Capture(RhinoDoc doc, RhinoView view, int multiplier) => CaptureToFile(doc, view, multiplier, false);
 
-    private static void CaptureToFile(RhinoDoc doc, RhinoView view, int multiplier, bool interactive)
+    internal static void CaptureToFile(RhinoDoc doc, RhinoView view, int multiplier, bool interactive)
     {
         UiContext.Ensure();
         OverlayManager.Start();

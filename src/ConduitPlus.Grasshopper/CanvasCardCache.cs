@@ -10,7 +10,7 @@ internal static class CanvasCardCache
     private static readonly HashSet<CanvasCardAttributes> Entries = [];
     private static readonly LinkedList<CanvasCardAttributes> QueueEntries = new();
     private static readonly Dictionary<CanvasCardAttributes, LinkedListNode<CanvasCardAttributes>> Queued = [];
-    private static System.Windows.Forms.Timer? _timer;
+    private static ConduitPlus.Platform.UiTimer? _timer;
     internal static void Register(CanvasCardAttributes entry)
     {
         Entries.Add(entry); CanvasRasterCache.Register(entry);
@@ -19,7 +19,7 @@ internal static class CanvasCardCache
     {
         Register(entry);
         if (entry.Pending && !Queued.ContainsKey(entry)) Queued.Add(entry, QueueEntries.AddLast(entry));
-        if (_timer is null) { _timer = new() { Interval = 16 }; _timer.Tick += Tick; }
+        if (_timer is null) { _timer = new(16); _timer.Tick += Tick; }
         _timer.Start();
     }
     internal static void Remove(CanvasCardAttributes entry)

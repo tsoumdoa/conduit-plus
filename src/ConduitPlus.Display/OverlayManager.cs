@@ -58,7 +58,7 @@ public static partial class OverlayManager
         RhinoApp.AppSettingsChanged += AppearanceChanged;
         RhinoApp.Closing += AppClosing; RhinoApp.EscapeKeyPressed += HiddenEscape;
         global::Rhino.Commands.Command.BeginCommand += CommandStarted;
-        WheelHook.Install();
+        if (ConduitPlus.Platform.HostInput.IsMac) MacInput.Install(); else WheelHook.Install();
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
     }
     internal static void Stop()
@@ -79,7 +79,7 @@ public static partial class OverlayManager
             Cleanup(Mouse.Reset);
             Cleanup(InteractionPump.Reset);
             Cleanup(() => Mouse.Enabled = false);
-            Cleanup(WheelHook.Uninstall);
+            Cleanup(ConduitPlus.Platform.HostInput.IsMac ? MacInput.Uninstall : WheelHook.Uninstall);
             DisposeCoordinators(_ => true);
             var sessions = Sessions.Values.ToArray(); Sessions.Clear();
             foreach (var s in sessions) Cleanup(s.Dispose);
@@ -133,6 +133,7 @@ public static partial class OverlayManager
     {
         ViewChanged(sender, e);
         var id = e.View.MainViewport.Id;
+        if (ConduitPlus.Platform.HostInput.IsMac) ConduitPlus.Platform.MacView.Forget(e.View);
         RemoveWhere(k => k.View == id, false);
         DisposeCoordinators(k => k.View == id);
         lock (StateLock)

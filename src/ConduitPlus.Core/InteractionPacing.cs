@@ -56,18 +56,25 @@ public sealed class HoverDwell
 public sealed class WheelAccumulator<TKey> where TKey : notnull
 {
     private readonly Dictionary<TKey, long> _deltas = [];
+    private readonly int _unitsPerStep, _rowsPerStep;
+    /// <summary>Windows default: 120 units (WHEEL_DELTA) per notch, three rows per notch.</summary>
+    public WheelAccumulator(int unitsPerStep = 120, int rowsPerStep = 3)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(unitsPerStep); ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rowsPerStep);
+        _unitsPerStep = unitsPerStep; _rowsPerStep = rowsPerStep;
+    }
     public void Add(TKey key, int delta) => _deltas[key] = _deltas.GetValueOrDefault(key) + delta;
     /// <summary>True while some card has at least one whole notch to apply; fractional remainders don't count.</summary>
-    public bool HasWhole => _deltas.Values.Any(delta => Math.Abs(delta) >= 120);
+    public bool HasWhole => _deltas.Values.Any(delta => Math.Abs(delta) >= _unitsPerStep);
     public (TKey Key, int Rows)[] Take()
     {
         var rows = new List<(TKey, int)>();
         foreach (var (key, delta) in _deltas.ToArray())
         {
-            var notches = delta / 120;
+            var notches = delta / _unitsPerStep;
             if (notches == 0) continue;
-            rows.Add((key, (int)Math.Clamp(-notches * 3, int.MinValue, int.MaxValue)));
-            _deltas[key] = delta % 120;
+            rows.Add((key, (int)Math.Clamp(-notches * _rowsPerStep, int.MinValue, int.MaxValue)));
+            _deltas[key] = delta % _unitsPerStep;
         }
         return rows.ToArray();
     }
