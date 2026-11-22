@@ -21,10 +21,11 @@ dependency:
 | Concern | Windows (unchanged) | macOS |
 |---|---|---|
 | Wheel over cards | `WH_GETMESSAGE` thread hook, swallows `WM_MOUSEWHEEL` | `NSEvent` local monitor (app windows only, main thread); returns nil for card-owned scroll events |
-| Trackpad | n/a | Gesture latched at `Began`/`MayBegin`, including momentum, to the card or to Rhino (`ScrollGestureLatch`) |
+| Trackpad | n/a | Gesture latched at `Began`/`MayBegin`, including momentum, to the card or to Rhino (`ScrollGestureLatch`). A claimed gesture stays consumed to its end even if a command starts; a gesture over a card is consumed whatever its direction |
+| Horizontal wheel | `WM_MOUSEHWHEEL` not hooked, goes to Rhino | phase-less events with no vertical delta go to Rhino |
 | Scroll units | 120 per notch → 3 rows | `scrollingDeltaY`: wheel line → 1 row; precise (trackpad) points → rows by theme row height |
 | Pointer leave / topmost window | `WindowFromPoint` + `IsChild`, hook sees `WM_MOUSELEAVE` | `windowNumberAtPoint` + `hitTest`/`isDescendantOf`, monitor moves/exits + 10 Hz watchdog while hovering |
-| Pointer position | `Control.MousePosition`, `RhinoView.ScreenToClient` | `NSEvent.mouseLocation` → window → NSView, scaled to `MainViewport.Size`, corrected by the offset learnt from MouseCallback points (`PointerCalibration`) |
+| Pointer position | `Control.MousePosition`, `RhinoView.ScreenToClient` | `NSEvent.mouseLocation` → window → NSView, scaled to `MainViewport.Size`, corrected by the offset learnt from MouseCallback points (`PointerCalibration`, which ignores single stale samples). If AppKit can't map the pointer, Rhino's own MouseCallback point is kept |
 | Buttons / Escape | `GetAsyncKeyState` | `NSEvent.pressedMouseButtons`; Escape from the monitor's keyDown/keyUp |
 | Modifiers | Rhino `CtrlKeyDown`, `Control.ModifierKeys` | `NSEvent.modifierFlags`: **Command** toggles; **Control-click is the secondary click** and never selects |
 | Viewport scale | `GetDpiForWindow / 96` | viewport pixels ÷ NSView points (Retina factor if Rhino works in backing pixels), quarter-snapped, `[1, 4]` |
@@ -102,7 +103,12 @@ still publishes Windows candidates only, so a Mac build can't be pushed by accid
    control coordinates are points. If they are the wrong size, set
    `CONDUITPLUS_MAC_CANVAS_RATIO=1` (or 2) to find the right factor, then change
    `WidgetService.Dpi` / `CanvasScale.Ratio` to match.
-4. **WinForms shim gaps.** Context menus (`ContextMenuStrip`) and GH canvas
+4. **Native handles.** `RhinoView.Handle` (and GH's `Control.Handle`) are only
+   messaged after they are found, by pointer comparison, among the app's
+   windows and view trees; only the handle's kind (view or window) is cached.
+   If the report says the handle was "not found", Conduit+ uses scale 1 and
+   leaves wheel input to Rhino rather than risk messaging an unknown pointer.
+5. **WinForms shim gaps.** Context menus (`ContextMenuStrip`) and GH canvas
    events come from Rhino's Mac implementation. The viewport adapter doesn't
    depend on them (it uses AppKit/Eto); the GH adapter does, by necessity.
 
@@ -179,3 +185,8 @@ wheel **and** a trackpad. Ideally also an external non-Retina display.
 23. Switch macOS to Dark mode with theme Auto. ✓ Cards follow Rhino's theme.
 
 Send `report.txt` from steps 3 and 15, plus screenshots of anything that differs.
+
+Known, intentional differences: Command replaces Ctrl; Control-click is the
+secondary click (on the hidden-cards chip it toggles the list, as a right-click
+does on Windows); a trackpad gesture that starts over a scrollable card is
+consumed in every direction; cards use Helvetica Neue.

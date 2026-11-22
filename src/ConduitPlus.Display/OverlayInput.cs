@@ -115,7 +115,8 @@ public static partial class OverlayManager
                 return;
             }
             // Revalidate the actual cursor, even if Rhino didn't deliver its latest move (e.g. a window opened).
-            var actual = HostView.ToClient(p.View, screen);
+            // macOS: if AppKit can't map the pointer, keep Rhino's own MouseCallback point.
+            var actual = HostView.ToClient(p.View, screen) ?? p.Point;
             if (actual != p.Point)
             {
                 _pointer = p = (p.View, actual); _movePending = true;
@@ -197,6 +198,8 @@ public static partial class OverlayManager
             InteractionPump.Wake();
             if (HostInput.IsMac) MacInput.WatchPointer();
         }
+        private static bool PrimaryButton(MouseCallbackEventArgs e) =>
+            HostInput.IsMac ? e.MouseButton == MouseButton.Left : e.Button == System.Windows.Forms.MouseButtons.Left;
         /// <summary>Windows: Rhino's button and Ctrl/Shift. macOS: Command toggles; Control-click is a secondary click.</summary>
         private static PointerIntent Intent(MouseCallbackEventArgs e)
         {
@@ -279,8 +282,10 @@ public static partial class OverlayManager
         private void MouseUp(MouseCallbackEventArgs e)
         {
             if (HiddenHit(e.View,e.ViewportPoint.X,e.ViewportPoint.Y)) { e.Cancel=true; _pressed=false; Cancel(); return; }
+            // Release ownership follows the button alone: a modifier pressed mid-gesture (macOS Control) must not
+            // leave a captured press unfinished.
+            if (!PrimaryButton(e)) return;
             var intent = Intent(e);
-            if (!intent.Primary) return;
             var empty = _emptyPress; _emptyPress = null;
             if (empty is { } press && !Busy && !Command.InCommand() && !intent.Shift && !intent.Toggle &&
                 SameView(press.View, e.View) && CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))

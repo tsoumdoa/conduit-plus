@@ -132,40 +132,43 @@ internal static class AppKit
         return ObjC.Send(content, ObjC.Sel("hitTest:"), p);
     }
 
-    private static readonly Dictionary<IntPtr, IntPtr> Resolved = [];
+    private enum HandleKind { View, Window }
+    private static readonly Dictionary<IntPtr, HandleKind> Kinds = [];
     private static readonly Dictionary<IntPtr, long> Unresolved = [];
 
     /// <summary>
-    /// Resolve an NSView from a Rhino/WinForms handle: the view itself, or an NSWindow's content view.
-    /// A handle is never messaged unless it is found, by pointer comparison only, among the app's windows and
-    /// their view trees: messaging a pointer that isn't an Objective-C object would crash Rhino.
+    /// Resolve an NSView from a Rhino/WinForms handle: the view itself, or an NSWindow's current content view.
+    /// A handle is never messaged unless it was found, by pointer comparison only, among the app's windows and
+    /// their view trees: messaging a pointer that isn't an Objective-C object would crash Rhino. Only the handle's
+    /// kind is cached (the caller's live RhinoView/Control owns the handle); derived views are read afresh each time.
     /// </summary>
     internal static IntPtr ViewOf(IntPtr handle)
     {
         if (handle == IntPtr.Zero) return IntPtr.Zero;
-        if (Resolved.TryGetValue(handle, out var view)) return view;
-        if (Unresolved.TryGetValue(handle, out var since) && Environment.TickCount64 - since < 1000) return IntPtr.Zero;
-        view = Find(handle);
-        if (view != IntPtr.Zero) { Resolved[handle] = view; Unresolved.Remove(handle); }
-        else Unresolved[handle] = Environment.TickCount64;
-        return view;
+        if (!Kinds.TryGetValue(handle, out var kind))
+        {
+            if (Unresolved.TryGetValue(handle, out var since) && Environment.TickCount64 - since < 1000) return IntPtr.Zero;
+            if (Find(handle) is not { } found) { Unresolved[handle] = Environment.TickCount64; return IntPtr.Zero; }
+            Kinds[handle] = kind = found; Unresolved.Remove(handle);
+        }
+        return kind == HandleKind.View ? handle : ObjC.Send(handle, ObjC.Sel("contentView"));
     }
-    internal static void Forget(IntPtr handle) { Resolved.Remove(handle); Unresolved.Remove(handle); }
+    internal static void Forget(IntPtr handle) { Kinds.Remove(handle); Unresolved.Remove(handle); }
 
-    private static IntPtr Find(IntPtr handle)
+    private static HandleKind? Find(IntPtr handle)
     {
         var app = ObjC.Send(ObjC.Class("NSApplication"), ObjC.Sel("sharedApplication"));
         var windows = app == IntPtr.Zero ? IntPtr.Zero : ObjC.Send(app, ObjC.Sel("windows"));
-        if (windows == IntPtr.Zero) return IntPtr.Zero;
+        if (windows == IntPtr.Zero) return null;
         var count = (long)ObjC.SendULong(windows, ObjC.Sel("count"));
         for (long i = 0; i < count; i++)
         {
             var window = ObjC.Send(windows, ObjC.Sel("objectAtIndex:"), (IntPtr)i);
+            if (window == handle) return HandleKind.Window;
             var content = ObjC.Send(window, ObjC.Sel("contentView"));
-            if (window == handle) return content;
-            if (content != IntPtr.Zero && Contains(content, handle, 0)) return handle;
+            if (content != IntPtr.Zero && Contains(content, handle, 0)) return HandleKind.View;
         }
-        return IntPtr.Zero;
+        return null;
     }
     private static bool Contains(IntPtr view, IntPtr target, int depth)
     {

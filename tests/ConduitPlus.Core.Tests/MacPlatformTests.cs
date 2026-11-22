@@ -183,6 +183,32 @@ public sealed class MacPlatformTests
         c.Reset(); Assert.Equal(default, c.Correction);
     }
 
+    [Fact]
+    public void CalibrationIgnoresASingleStaleSampleButFollowsARealShift()
+    {
+        var c = new PointerCalibration();
+        c.Observe(new(110, 70), new(100, 40));          // offset (10, 30)
+        c.Observe(new(150, 90), new(100, 40));          // one outlier (stalled cursor): ignored
+        Assert.Equal(new Point2(10, 30), c.Correction);
+        c.Observe(new(111, 71), new(100, 40));          // within tolerance: keeps tracking
+        Assert.Equal(new Point2(11, 31), c.Correction);
+        c.Observe(new(100, 100), new(100, 40));         // real shift (e.g. a title band appeared)...
+        c.Observe(new(101, 100), new(100, 41));         // ...confirmed by the next sample
+        Assert.Equal(new Point2(1, 59), c.Correction);
+    }
+
+    [Fact]
+    public void ClaimedGestureStaysClaimedWhenTheHitIsUnavailable()
+    {
+        // Suspended input (command/busy) decides with a null hit: a claimed gesture keeps its owner until it ends.
+        var latch = new ScrollGestureLatch<Target>();
+        var card = new Target("card");
+        latch.Decide(ScrollPhase.Began, ScrollPhase.None, () => card);
+        Assert.Same(card, latch.Decide(ScrollPhase.None, ScrollPhase.Changed, () => null));
+        Assert.Same(card, latch.Decide(ScrollPhase.None, ScrollPhase.Ended, () => null));
+        Assert.Null(latch.Decide(ScrollPhase.Began, ScrollPhase.None, () => null)); // a new gesture goes to Rhino
+    }
+
     [Theory]
     [InlineData(1.0, 1.0, 2.0, 2.0)]   // GH transform lacks Retina: add it
     [InlineData(2.0, 1.0, 2.0, 1.0)]   // transform already carries Retina

@@ -179,11 +179,18 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             if (child.Visible && child is ScrollBar) rectangles.Add(new(child.Left, child.Top, child.Width, child.Height));
         return rectangles.ToArray();
     }
-    private string Signature() => CardJson.Serialize(new
-    {
-        Client, Dpi, Raster = RasterScale, Exclusions = Exclusions(),
-        Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
-    });
+    private string Signature() => HostInput.IsMac
+        // macOS: moving between Retina and non-Retina displays changes only the raster density.
+        ? CardJson.Serialize(new
+        {
+            Client, Dpi, Raster = RasterScale, Exclusions = Exclusions(),
+            Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
+        })
+        : CardJson.Serialize(new
+        {
+            Client, Dpi, Exclusions = Exclusions(),
+            Owners = ShownDisplays.Select(d => new { d.OwnerId, d.State.Revision, d.Theme, d.Disabled, d.BrushEnabled })
+        });
     internal void Changed(bool cancel)
     {
         if (_faultMessage is { } fault)
@@ -224,7 +231,7 @@ internal sealed class PinnedWidget : GH_Widget, IDisposable, ICanvasRasterOwner
             foreach (var card in _cards.Where(c => _geometryValid && c.Display.CardsVisible && Displays.Contains(c.Display)))
             {
                 var m = RasterDrawing.Margin(card.Theme, card.Scale);
-                if (card.Scale == Dpi) graphics.DrawImageUnscaled(card.Image, (int)card.Transform.Body.X - m, (int)card.Transform.Body.Y - m);
+                if (!HostInput.IsMac || card.Scale == Dpi) graphics.DrawImageUnscaled(card.Image, (int)card.Transform.Body.X - m, (int)card.Transform.Body.Y - m);
                 else
                 {
                     // macOS Retina: a denser raster drawn into the card's point-sized rectangle.

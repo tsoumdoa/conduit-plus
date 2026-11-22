@@ -99,8 +99,12 @@ public static partial class OverlayManager
                     if (_started && !Busy && Sessions.Count > 0 && MacEscape.Down) Mouse.CheckScrollGesture(MacView.CurrentScreen());
                     return e;
                 }
+                if (type == AppKit.ScrollWheel)
+                {
+                    if (!_started || Sessions.Count == 0) { Latch.Reset(); return e; }
+                    return Scroll(e, Busy) ? IntPtr.Zero : e;
+                }
                 if (!_started || Busy || Sessions.Count == 0) return e;
-                if (type == AppKit.ScrollWheel) return Scroll(e) ? IntPtr.Zero : e;
                 MacDiagnostics.MoveEvents++;
                 var screen = MacView.CurrentScreen();
                 Mouse.CheckScrollGesture(screen);
@@ -110,19 +114,28 @@ public static partial class OverlayManager
             return e;
         }
 
-        private static bool Scroll(IntPtr e)
+        /// <param name="busy">A command/capture is preparing cards: new gestures go to Rhino, a claimed one is finished silently.</param>
+        private static bool Scroll(IntPtr e, bool busy)
         {
             MacDiagnostics.ScrollEvents++;
             var screen = MacView.CurrentScreen();
-            Mouse.CheckScrollGesture(screen);
+            if (!busy) Mouse.CheckScrollGesture(screen);
             var phase = (ScrollPhase)AppKit.Phase(e); var momentum = (ScrollPhase)AppKit.MomentumPhase(e);
             var dy = AppKit.ScrollingDeltaY(e); var precise = AppKit.HasPreciseScrollingDeltas(e);
-            if (Command.InCommand() || Mouse.Interacting) { Latch.Reset(); return false; }
+            var suspended = busy || Command.InCommand() || Mouse.Interacting;
+            var classic = phase == ScrollPhase.None && momentum == ScrollPhase.None;
+            // Classic wheel events stand alone, like WM_MOUSEWHEEL. Horizontal-only ones (tilt / Shift-wheel)
+            // pass to Rhino, as WM_MOUSEHWHEEL does on Windows.
+            if (classic && (suspended || dy == 0)) { Latch.Reset(); return false; }
             var window = AppKit.EventWindow(e); var location = AppKit.EventLocationInWindow(e);
-            var target = Latch.Decide(phase, momentum, () => Hit(window, location, screen));
-            MacDiagnostics.LastScroll = $"dy={dy:0.###} precise={precise} phase={phase} momentum={momentum} target={(target is null ? "Rhino" : target.CardId ?? "hidden-list")}";
+            // While suspended, a gesture already claimed by a card keeps being consumed (without scrolling) until it
+            // ends, so its tail never reaches Rhino as orbit/pan/zoom; any new gesture belongs to Rhino.
+            var target = suspended
+                ? Latch.Decide(phase, momentum, () => null)
+                : Latch.Decide(phase, momentum, () => Hit(window, location, screen));
+            MacDiagnostics.LastScroll = $"dy={dy:0.###} precise={precise} phase={phase} momentum={momentum} suspended={suspended} target={(target is null ? "Rhino" : target.CardId ?? "hidden-list")}";
             if (target is null) return false;
-            if (target.Session is { } session && target.CardId is { } card && !session.IsDisposed && session.Visible && session.Card(card) is not null)
+            if (!suspended && target.Session is { } session && target.CardId is { } card && !session.IsDisposed && session.Visible && session.Card(card) is not null)
             {
                 var units = MacScroll.Units(dy, precise, session.Theme.RowHeight);
                 if (units != 0) Mouse.QueueWheel(session, card, target.Client, units);

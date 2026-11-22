@@ -278,7 +278,7 @@ public sealed class ConduitPlusPlatformCheck : Command
             {
                 if (e.Viewport.Id != view.MainViewport.Id) return;
                 var screen = HostView.PointerScreen;
-                var mapped = HostView.ToClient(view, screen);
+                if (HostView.ToClient(view, screen) is not { } mapped) { report.Fail("pointer sample", "AppKit could not map the pointer"); return; }
                 var native = HostInput.IsMac ? MacView.Native(view, screen) : null;
                 if (HostInput.IsMac && native is { } n) MacView.Calibration(view).Observe(new(e.WindowPoint.X, e.WindowPoint.Y), n);
                 var error = Math.Sqrt(Math.Pow(mapped.X - e.WindowPoint.X, 2) + Math.Pow(mapped.Y - e.WindowPoint.Y, 2));

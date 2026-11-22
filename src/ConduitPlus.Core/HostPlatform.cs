@@ -164,17 +164,27 @@ public static class HostScale
 /// </summary>
 public sealed class PointerCalibration
 {
+    /// <summary>Offsets within this many pixels agree (rounding, sub-pixel motion between samples).</summary>
+    public const double Tolerance = 2;
+    private Point2? _candidate;
     public Point2 Correction { get; private set; }
     public int Samples { get; private set; }
     public double LastError { get; private set; }
+    /// <summary>
+    /// A sample pairs Rhino's event point with the live cursor, so one taken after a UI stall can be off. A changed
+    /// offset is adopted only once two consecutive samples agree on it; the first sample is adopted directly.
+    /// </summary>
     public void Observe(Point2 rhino, Point2 native)
     {
         var c = new Point2(rhino.X - native.X, rhino.Y - native.Y);
-        LastError = Math.Sqrt(Math.Pow(c.X - Correction.X, 2) + Math.Pow(c.Y - Correction.Y, 2));
-        Correction = c; Samples++;
+        LastError = Distance(c, Correction);
+        if (Samples == 0 || LastError <= Tolerance || _candidate is { } k && Distance(c, k) <= Tolerance) { Correction = c; _candidate = null; }
+        else _candidate = c;
+        Samples++;
     }
     public Point2 Apply(Point2 native) => new(native.X + Correction.X, native.Y + Correction.Y);
-    public void Reset() { Correction = default; Samples = 0; LastError = 0; }
+    public void Reset() { Correction = default; Samples = 0; LastError = 0; _candidate = null; }
+    private static double Distance(Point2 a, Point2 b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
 }
 
 public static class CanvasScale

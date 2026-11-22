@@ -82,29 +82,31 @@ internal static class MacEscape
 }
 
 /// <summary>
-/// UI-thread timer. Windows: the same System.Windows.Forms.Timer as before. macOS: Eto's UITimer, which is
-/// backed by an NSTimer on the main run loop. Start on a running timer is a no-op on both, like WinForms.
+/// UI-thread timer. Windows: a thin pass-through to the same System.Windows.Forms.Timer as before (its own
+/// Enabled/Start/Stop semantics, including when the native timer can't be created). macOS: Eto's UITimer,
+/// backed by an NSTimer on the main run loop, given the same no-op Start-while-running semantics.
 /// </summary>
 public sealed class UiTimer : IDisposable
 {
-    private interface IImpl : IDisposable { void Start(); void Stop(); int Interval { get; set; } }
+    private interface IImpl : IDisposable { bool Enabled { get; } void Start(); void Stop(); int Interval { get; set; } }
     private readonly IImpl _impl;
     public event EventHandler? Tick;
     public UiTimer(int intervalMilliseconds)
     {
         _impl = HostInput.IsMac ? new EtoImpl(this, intervalMilliseconds) : new WinImpl(this, intervalMilliseconds);
     }
-    public bool Enabled { get; private set; }
+    public bool Enabled => _impl.Enabled;
     public int Interval { get => _impl.Interval; set => _impl.Interval = value; }
-    public void Start() { if (Enabled) return; Enabled = true; _impl.Start(); }
-    public void Stop() { if (!Enabled) return; Enabled = false; _impl.Stop(); }
-    public void Dispose() { Enabled = false; _impl.Dispose(); }
-    private void Raise() { if (Enabled) Tick?.Invoke(this, EventArgs.Empty); }
+    public void Start() => _impl.Start();
+    public void Stop() => _impl.Stop();
+    public void Dispose() => _impl.Dispose();
+    private void Raise() => Tick?.Invoke(this, EventArgs.Empty);
 
     private sealed class WinImpl : IImpl
     {
         private readonly System.Windows.Forms.Timer _timer;
         public WinImpl(UiTimer owner, int interval) { _timer = new() { Interval = interval }; _timer.Tick += (_, _) => owner.Raise(); }
+        public bool Enabled => _timer.Enabled;
         public int Interval { get => _timer.Interval; set => _timer.Interval = value; }
         public void Start() => _timer.Start();
         public void Stop() => _timer.Stop();
@@ -114,16 +116,18 @@ public sealed class UiTimer : IDisposable
     {
         private readonly Eto.Forms.UITimer _timer;
         private int _interval;
+        public bool Enabled { get; private set; }
         public EtoImpl(UiTimer owner, int interval)
         {
             _interval = interval;
             _timer = new() { Interval = interval / 1000d };
-            _timer.Elapsed += (_, _) => { MacDiagnostics.TimerTicks++; owner.Raise(); };
+            // A tick already queued when Stop ran must not fire, matching WinForms.
+            _timer.Elapsed += (_, _) => { if (!Enabled) return; MacDiagnostics.TimerTicks++; owner.Raise(); };
         }
         public int Interval { get => _interval; set { _interval = value; _timer.Interval = value / 1000d; } }
-        public void Start() => _timer.Start();
-        public void Stop() => _timer.Stop();
-        public void Dispose() { _timer.Stop(); _timer.Dispose(); }
+        public void Start() { if (Enabled) return; Enabled = true; _timer.Start(); }
+        public void Stop() { if (!Enabled) return; Enabled = false; _timer.Stop(); }
+        public void Dispose() { Enabled = false; _timer.Stop(); _timer.Dispose(); }
     }
 }
 

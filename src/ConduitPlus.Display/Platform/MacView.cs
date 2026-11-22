@@ -70,15 +70,16 @@ internal static class MacView
         catch (Exception e) { MacDiagnostics.Fault("pointer calibration", e); }
     }
 
-    internal static System.Drawing.Point ToClient(RhinoView view, System.Drawing.Point screen)
+    /// <summary>Calibrated viewport point, or null when AppKit can't map it (callers keep Rhino's own point).</summary>
+    internal static System.Drawing.Point? ToClient(RhinoView view, System.Drawing.Point screen)
     {
         try
         {
-            if (Native(view, screen) is not { } native) return new(-1, -1);
+            if (Native(view, screen) is not { } native) return null;
             var p = Calibration(view).Apply(native);
             return new((int)Math.Round(p.X), (int)Math.Round(p.Y));
         }
-        catch (Exception e) { MacDiagnostics.Fault("screen to client", e); return new(-1, -1); }
+        catch (Exception e) { MacDiagnostics.Fault("screen to client", e); return null; }
     }
 
     /// <summary>Topmost-window and view hit test: the AppKit equivalent of WindowFromPoint + IsChild.</summary>
@@ -107,5 +108,5 @@ internal static class HostView
 {
     internal static System.Drawing.Point PointerScreen => HostInput.IsMac ? MacView.CurrentScreen() : WinPointer();
     private static System.Drawing.Point WinPointer() => System.Windows.Forms.Control.MousePosition;
-    internal static System.Drawing.Point ToClient(RhinoView view, System.Drawing.Point screen) => HostInput.IsMac ? MacView.ToClient(view, screen) : view.ScreenToClient(screen);
+    internal static System.Drawing.Point? ToClient(RhinoView view, System.Drawing.Point screen) => HostInput.IsMac ? MacView.ToClient(view, screen) : view.ScreenToClient(screen);
 }

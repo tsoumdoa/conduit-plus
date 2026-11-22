@@ -57,8 +57,9 @@ public sealed class WheelAccumulator<TKey> where TKey : notnull
 {
     private readonly Dictionary<TKey, long> _deltas = [];
     private readonly int _unitsPerStep, _rowsPerStep;
-    /// <summary>Windows default: 120 units (WHEEL_DELTA) per notch, three rows per notch.</summary>
-    public WheelAccumulator(int unitsPerStep = 120, int rowsPerStep = 3)
+    /// <summary>Windows: 120 units (WHEEL_DELTA) per notch, three rows per notch.</summary>
+    public WheelAccumulator() : this(120, 3) { }
+    public WheelAccumulator(int unitsPerStep, int rowsPerStep)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(unitsPerStep); ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rowsPerStep);
         _unitsPerStep = unitsPerStep; _rowsPerStep = rowsPerStep;
