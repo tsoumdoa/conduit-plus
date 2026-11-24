@@ -27,6 +27,16 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
     public void RoundedRect(Rect2 r, double radius, string fill)
     {
         if (radius <= 0) { Rect(r, fill); return; }
+        FillPolygon(RoundedPath(r, radius), fill);
+    }
+    internal void StrokeRoundedRect(Rect2 r, double radius, string stroke, double width)
+    {
+        var points = RoundedPath(r, radius);
+        points.Add(points[0]);
+        pdf.DrawPolyline(page, points.Select(P).ToArray(), Color.Transparent, C(stroke), (float)(width * dotsPerCssPixel));
+    }
+    private static List<Point2> RoundedPath(Rect2 r, double radius)
+    {
         // FilePdf exposes polylines, not Bezier paths: approximate each quarter circle by 12 segments.
         var rad = Math.Min(radius, Math.Min(r.Width, r.Height) / 2);
         var points = new List<Point2>();
@@ -37,7 +47,7 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
             var angle = (180 + corner * 90 + i * 90d / 12) * Math.PI / 180;
             points.Add(new(centers[corner].X + rad * Math.Cos(angle), centers[corner].Y + rad * Math.Sin(angle)));
         }
-        FillPolygon(points, fill);
+        return points;
     }
     public void FillPolygon(IReadOnlyList<Point2> points, string fill)
     {

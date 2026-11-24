@@ -21,10 +21,10 @@ internal static class OutputPaths
 
 internal static class CommandRunner
 {
-    internal const string EmptyViewMessage = "No Conduit+ cards in the active viewport. Click the viewport that shows them and run the command again.";
-    internal static bool HasCards(RhinoDoc doc, RhinoView view)
+    internal const string EmptyViewMessage = "No Conduit+ cards or labels in the active viewport. Click the viewport that shows them and run the command again.";
+    internal static bool HasExportContent(RhinoDoc doc, RhinoView view)
     {
-        if (OverlayManager.InView(doc, view).Any(s => s.Visible && s.Cards.Length > 0)) return true;
+        if (OverlayManager.InView(doc, view).Any(s => s.Visible && (s.Cards.Length > 0 || s.LabelScene is not null))) return true;
         RhinoApp.WriteLine(EmptyViewMessage);
         return false;
     }
@@ -74,7 +74,7 @@ public sealed class ConduitPlusCapture : Command
     {
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
-        if (!CommandRunner.HasCards(doc, view)) return Result.Cancel;
+        if (!CommandRunner.HasExportContent(doc, view)) return Result.Cancel;
         double multiplier = 2;
         var result = RhinoGet.GetNumber("Capture scale (1, 2 or 4)", true, ref multiplier, 1, 4);
         if (result != Result.Success) return result;
@@ -100,12 +100,15 @@ public sealed class ConduitPlusCapture : Command
         OverlayManager.Start();
         if (multiplier is not (1 or 2 or 4)) throw new ArgumentOutOfRangeException(nameof(multiplier));
         var sessions = OverlayManager.InView(doc, view);
-        if (!CommandRunner.HasCards(doc, view)) return;
+        if (!CommandRunner.HasExportContent(doc, view)) return;
         var size = view.ActiveViewport.Size;
         var visible = sessions.Where(s => s.Visible).ToArray();
+        using var labels = OverlaySession.SnapshotLabels(doc, view, multiplier, omitFloatingCards: true);
+        labels?.PrepareRaster();
         var before = visible.Select(s => s.FrameCount).ToArray();
         try
         {
+            visible[0].CaptureLabels = labels;
             // Every owner's cards use the requested resolution, including Grasshopper sessions.
             foreach (var session in sessions) session.CaptureMultiplier = multiplier;
             var capture = new ViewCapture
@@ -130,6 +133,7 @@ public sealed class ConduitPlusCapture : Command
         }
         finally
         {
+            visible[0].CaptureLabels = null;
             foreach (var session in sessions) session.CaptureMultiplier = 1;
             view.Redraw();
         }

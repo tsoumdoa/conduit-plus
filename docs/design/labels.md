@@ -65,4 +65,4 @@ During projection changes and for 120 ms after the last change, the foreground p
 - Testing is headless only, through Core tests and hidden RhinoCore with headless Grasshopper. Drop the ZBufferCapture route.
 - Both Rhino objects and Grasshopper preview must occlude labels, including geometry unrelated to a Link.
 
-The viewport foreground pass draws labels during live redraws. PNG, PDF and clipboard retain their existing output through PR 3. Label composition for export is scheduled for PR 5.
+PNG and PDF resolve a fresh settled layout at export scale. Copy card as image remains card-local.

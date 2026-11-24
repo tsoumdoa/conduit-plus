@@ -230,9 +230,10 @@ internal sealed partial class OverlaySession : IDisposable
         try { Update(Cards, true); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
-    internal void Draw(DrawEventArgs e) => DrawCards(e, false);
+    internal void Draw(DrawEventArgs e, bool highlights = true) => DrawCards(e, false, highlights);
+    internal void DrawCaptureHighlights(DisplayPipeline display) => DrawHighlights(display, false);
     internal void DrawFloating(DrawEventArgs e) => DrawCards(e, true);
-    private void DrawCards(DrawEventArgs e, bool floatingOnly)
+    private void DrawCards(DrawEventArgs e, bool floatingOnly, bool highlights = true)
     {
         if (_disposed || !Visible || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
         // Direct ViewCapture/PDF can run before the next UI tick. Consume already committed interaction
@@ -240,7 +241,7 @@ internal sealed partial class OverlaySession : IDisposable
         if (e.Display.IsInViewCapture && OverlayManager.HasPendingInteraction(this)) Update(Cards, preserveGesture: true);
         // Display-mode background edits need not raise Rhino's UI appearance event.
         if (!e.Display.IsInViewCapture) ResolveDrawTheme();
-        if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
+        if (!floatingOnly && highlights) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.

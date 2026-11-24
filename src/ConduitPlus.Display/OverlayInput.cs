@@ -23,9 +23,9 @@ public static partial class OverlayManager
         // macOS deltas are finer (trackpad points): one accumulator step per row instead of three rows per notch.
         private readonly WheelAccumulator<(OverlaySession Session, string Card)> _wheel = HostInput.IsMac ? new(MacScroll.UnitsPerRow, 1) : new();
         private (RhinoView View, System.Drawing.Point Point)? _pointer;
-        private bool _movePending, _clearScrollHover, _exitPending;
+        private bool _movePending, _labelRecheckPending, _clearScrollHover, _exitPending;
         // Accepted wheel notches outlive hover cancellation (e.g. a Busy flush), so they keep the pump awake too.
-        internal bool Pending => _exitPending || _movePending || _modelDwell.Pending || _scrollRest.Pending || _wheel.HasWhole;
+        internal bool Pending => _exitPending || _movePending || _labelRecheckPending || _modelDwell.Pending || _scrollRest.Pending || _wheel.HasWhole;
         private abstract record Gesture(OverlaySession Session);
         private sealed record ScrollDrag(OverlaySession Session, string CardId, double Grab) : Gesture(Session);
         private Gesture? _gesture; // null = idle; swallowed-up bookkeeping is independent of cancellation
@@ -39,7 +39,7 @@ public static partial class OverlayManager
         {
             if (closeLabels) CloseLabelHover();
             _modelDwell.Cancel(); _scrollRest.Cancel(); // accepted wheel input survives: its message was already swallowed
-            _pointer = null; _movePending = false; _clearScrollHover = false; _exitPending = false;
+            _pointer = null; _movePending = false; _labelRecheckPending = false; _clearScrollHover = false; _exitPending = false;
         }
         private OverlaySession? _labelHoverOwner;
         internal void CloseLabelHover()
@@ -57,7 +57,7 @@ public static partial class OverlayManager
         public void Forget(OverlaySession session)
         {
             if (_labelHoverOwner == session) CloseLabelHover();
-            if (_pointer is { } pointer && SameView(pointer.View, session.View)) { _modelDwell.Cancel(); _scrollRest.Cancel(); _pointer = null; _movePending = false; }
+            if (_pointer is { } pointer && SameView(pointer.View, session.View)) { _modelDwell.Cancel(); _scrollRest.Cancel(); _pointer = null; _movePending = false; _labelRecheckPending = false; }
             if (_emptyPress is { } press && SameView(press.View, session.View)) _emptyPress = null;
             if (_gesture?.Session == session) Cancel();
         }
@@ -94,7 +94,7 @@ public static partial class OverlayManager
         internal void RecheckLabelPointer(RhinoView view)
         {
             if (_pointer is not { } pointer || !SameView(view, pointer.View)) return;
-            _movePending = true;
+            _labelRecheckPending = true;
             InteractionPump.Wake();
         }
 
@@ -149,7 +149,10 @@ public static partial class OverlayManager
             // Scroll offsets are presented after this input phase. Re-hit only in a subsequent frame,
             // even when a blocked UI thread delivers the first wheel frame after the rest deadline.
             var scrollRested = _scrollRest.Take(now, wheel.Length > 0);
-            if (!_movePending && !scrollRested && !_modelDwell.Pending) return;
+            var recheckLabels = _labelRecheckPending;
+            _labelRecheckPending = false;
+            var labelOnly = recheckLabels && !_movePending && !scrollRested;
+            if (!_movePending && !scrollRested && !_modelDwell.Pending && !recheckLabels) return;
             _movePending = false;
             var sessions = InView(p.View);
             var hidden = HiddenHit(p.View, p.Point.X, p.Point.Y) ||
@@ -159,6 +162,24 @@ public static partial class OverlayManager
             var label = overCard || hidden || _scrollRest.Pending || HostInput.EscapeDown
                 ? null : OverlaySession.PickLabel(p.View, p.Point, retain: true);
             if (overCard || hidden || label.HasValue) _modelDwell.Cancel();
+            // A frame publish can move labels under a stationary pointer. It has no card or model input.
+            if (labelOnly)
+            {
+                if (_labelHoverOwner != label?.Owner) CloseLabelHover();
+                if (label is { } published && LabelInputEnabled(published.Owner))
+                {
+                    var origin = DomainSnapshot(published.Owner)?.HoverOrigin;
+                    if (origin is { } current && (current.Surface != "label" ||
+                        current.ParticipantId != published.Owner.Owner.ToString("N")))
+                    {
+                        CloseLabelHover();
+                        return;
+                    }
+                    _labelHoverOwner = published.Owner;
+                    SetLabelHover(published.Owner, published);
+                }
+                return;
+            }
             if (_labelHoverOwner != label?.Owner) CloseLabelHover();
             foreach (var s in Sessions.Values.ToArray())
             {
@@ -223,7 +244,7 @@ public static partial class OverlayManager
             }
             MoveHover(e.View, e.ViewportPoint);
         }
-        internal void ForgetPointerForChecks() => _pointer = null;
+        internal void ForgetPointerForChecks() { _pointer = null; _labelRecheckPending = false; }
 
         internal TimeSpan MoveForChecks(RhinoView view, System.Drawing.Point point)
         {

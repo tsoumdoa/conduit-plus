@@ -344,6 +344,18 @@ internal static class LabelsBench
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey is null, "Empty pointer starts without a hover owner");
         viewportForPointer.SetCameraLocations(targetBefore, locationBefore);
         view.Redraw();
+        OverlayManager.Hover(scopedHit.Owner, "point-member", model: true);
+        Check(OverlayManager.DomainSnapshot(scopedHit.Owner)?.HoverOrigin?.Surface == "model", "Model-origin fixture owns hover before recheck");
+        OverlayManager.RecheckLabelPointer(view);
+        OverlayManager.RecheckPointerForChecks();
+        Check(OverlayManager.DomainSnapshot(scopedHit.Owner)?.HoverOrigin?.Surface == "model",
+            "A label arriving under a stationary pointer preserves model hover");
+        OverlayManager.ClearHover(scopedHit.Owner, model: true);
+        viewportForPointer.SetCameraLocations(targetBefore + pan, locationBefore + pan);
+        view.Redraw();
+        viewportForPointer.SetCameraLocations(targetBefore, locationBefore);
+        view.Redraw();
+        OverlayManager.RecheckLabelPointer(view);
         OverlayManager.RecheckPointerForChecks();
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey == "point-member" &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).HoverKey == "point-member", "Label hover shares Scope across displays");

@@ -74,6 +74,14 @@ internal sealed partial class OverlaySession
             OverlayManager.RequestInteractionRedraw(owner);
         }
 
+        private void PublishLabelInput()
+        {
+            _frameComplete = true;
+            if (!_repickOnPublish) return;
+            _repickOnPublish = false;
+            OverlayManager.RecheckLabelPointer(_view);
+        }
+
         private void InvalidateLabelInput()
         {
             _repickOnPublish = true;

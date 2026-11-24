@@ -15,7 +15,7 @@ public sealed class ConduitPlusPdf : Command
     {
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
-        if (!CommandRunner.HasCards(doc, view)) return Result.Cancel;
+        if (!CommandRunner.HasExportContent(doc, view)) return Result.Cancel;
         return CommandRunner.Run(() => RunAutomated(doc, view));
     }
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
@@ -24,8 +24,9 @@ public sealed class ConduitPlusPdf : Command
         OverlayManager.Start();
         RhinoApp.WriteLine("ConduitPlusPdf is experimental.");
         var sessions = OverlayManager.InView(doc, view);
-        if (!CommandRunner.HasCards(doc, view)) return;
+        if (!CommandRunner.HasExportContent(doc, view)) return;
         OverlayManager.Settle(doc, view);
+        using var labels = OverlaySession.SnapshotLabels(doc, view, 1);
         var snapshots = sessions.Select(s => (Layouts: OverlayManager.Placements(s, false), Unit: s.Unit)).ToArray();
         var omitted = sessions.Where(s => s.Visible).Select((s) => s.Cards.Length - snapshots[Array.IndexOf(sessions, s)].Layouts.Length).Sum();
         if (omitted > 0) RhinoApp.WriteLine($"Conduit+ PDF: {omitted} hidden cards omitted.");
@@ -46,8 +47,9 @@ public sealed class ConduitPlusPdf : Command
             };
             Console.WriteLine("PDF: capturing vector viewport page.");
             var page = pdf.AddPage(settings);
-            Console.WriteLine($"PDF: page {page}; painting vector cards.");
+            Console.WriteLine($"PDF: page {page}; painting vector labels and cards.");
             if (page < 0) throw new InvalidOperationException("Rhino PDF failed to capture the active viewport.");
+            labels?.DrawPdf(pdf, page);
             for (var i = 0; i < sessions.Length; i++)
             {
                 if (!visible[i]) continue;

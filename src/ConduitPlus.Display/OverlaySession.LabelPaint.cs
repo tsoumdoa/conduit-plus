@@ -360,12 +360,7 @@ internal sealed partial class OverlaySession
             }
             else _popover = null;
             _frameHud = reserved;
-            _frameComplete = true;
-            if (_repickOnPublish)
-            {
-                _repickOnPublish = false;
-                OverlayManager.RecheckLabelPointer(_view);
-            }
+            PublishLabelInput();
 
             void DrawPopover((OverlaySession Owner, LabelPlacement Placement) popover, Rect2 dot)
             {
