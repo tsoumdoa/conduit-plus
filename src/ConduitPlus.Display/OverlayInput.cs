@@ -217,7 +217,6 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
-            if (!AcceptHoverPointer(e.View)) return;
             if (HostInput.IsMac) MacView.Observe(e.View, e.ViewportPoint);
             if (_emptyPress is { } press && (!SameView(press.View, e.View) || !CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))) _emptyPress = null;
             if (_gesture is not null)
@@ -243,7 +242,8 @@ public static partial class OverlayManager
                 _buttonDown = HostInput.AnyButtonDown;
                 if (_buttonDown) { CancelPending(); return; }
             }
-            MoveHover(e.View, e.ViewportPoint);
+            // Gestures above keep their own validation; only hover intake needs the pointer to be over this view.
+            if (AcceptHoverPointer(e.View)) MoveHover(e.View, e.ViewportPoint);
         }
         internal void ForgetPointerForChecks() { _pointer = null; _labelRecheckPending = false; }
 
