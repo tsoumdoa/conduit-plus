@@ -9,6 +9,7 @@
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <Reference Update="RhinoCommon"><Private>false</Private></Reference>
     <InternalsVisibleTo Include="ConduitPlus.Rhino" />
+    <InternalsVisibleTo Include="ConduitPlus.RhinoBench" />
     <InternalsVisibleTo Include="ConduitPlus.Grasshopper" />
   </ItemGroup>
 </Project>

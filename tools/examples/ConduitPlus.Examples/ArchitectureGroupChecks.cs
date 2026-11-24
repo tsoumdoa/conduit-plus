@@ -44,6 +44,7 @@ internal static class ArchitectureGroupChecks
             Call(session, "Select", "model", CardMeasure.ClearKey, BrushSelectMode.Replace);
         }
         Call(session, "Sort", table.Id, 1); // contiguous category rows; keep display-order reveal meaningful
+        Call(session, "ApplyInteraction");
         var events = new List<OverlayInteraction>();
         void OnAction(OverlayInteraction action) { if (action.Owner == owner) events.Add(action); }
         OverlayManager.Interaction += OnAction;
@@ -53,6 +54,7 @@ internal static class ArchitectureGroupChecks
             Call(session, "Select", target.Id, groupKey, BrushSelectMode.Toggle);
             Require(events.Count == 1 && events[0].TargetKind == BrushTargetKind.Group && events[0].AffectedKeys.SequenceEqual(members), "Group must emit exactly one member-based event.");
             Require(OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual(members), "Group Selection contains tokens or misses members.");
+            Call(session, "ApplyInteraction");
             var selectedTable = Cards().Single(c => c.Id == table.Id);
             Require(selectedTable.SelectedKeys.Order(StringComparer.Ordinal).SequenceEqual(members), "Table did not project every selected member.");
             Require(Cards().Single(c => c.Id == legend.Id).GroupStates[groupKey].IsFullySelected, "Legend full state missing.");
@@ -72,6 +74,7 @@ internal static class ArchitectureGroupChecks
                 Call(session, "SetHover", null, null);
             }
             Call(session, "Select", table.Id, members[0], BrushSelectMode.Toggle);
+            Call(session, "ApplyInteraction");
             Require(Cards().Single(c => c.Id == target.Id).GroupStates[groupKey].IsPartiallySelected, "Partial state missing.");
             if (captureState == "grouppartial")
             {

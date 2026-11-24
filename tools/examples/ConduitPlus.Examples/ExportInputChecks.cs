@@ -7,6 +7,34 @@ using Rhino.Display;
 
 internal static class ExportInputChecks
 {
+    internal static void CheckFailedLabelCapture(RhinoDoc doc, RhinoView view, object session)
+    {
+        var original = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS");
+        var invalidDirectory = Path.GetTempFileName();
+        try
+        {
+            Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", invalidDirectory);
+            var capture = typeof(ConduitPlusCapture).GetMethod("Capture", BindingFlags.NonPublic | BindingFlags.Static)!;
+            try
+            {
+                capture.Invoke(null, [doc, view, 2]);
+                throw new InvalidOperationException("Capture should fail when its output root is a file.");
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException is IOException) { }
+            var type = session.GetType();
+            if (type.GetProperty("CaptureLabels", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session) is not null ||
+                (double)type.GetProperty("CaptureMultiplier")!.GetValue(session)! != 1 ||
+                !(bool)type.GetProperty("Visible")!.GetValue(session)!)
+                throw new InvalidOperationException("A failed label capture leaked export state.");
+            Console.WriteLine("Failed label PNG restored live visibility, capture scale and label frame.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", original);
+            File.Delete(invalidDirectory);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void Run(RhinoDoc doc, RhinoView view)
     {

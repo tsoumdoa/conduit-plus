@@ -31,6 +31,9 @@ public sealed partial class Link
         if (declared.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("Link keys must be nonempty.");
         Keys = Array.AsReadOnly(declared);
         var geometry = new List<GeometryBase>();
+        var anchorSources = new Dictionary<string, (GeometryBase Geometry, string Location)>(StringComparer.Ordinal);
+        _labelAnchors = new(() => anchorSources.ToDictionary(pair => pair.Key,
+            pair => FindAnchor(pair.Value.Geometry, pair.Value.Location), StringComparer.Ordinal));
         var wires = new List<(string Key, Wires Wire)>();
         var picks = new List<(string Key, PickProxy Proxy)>();
         var bounds = BoundingBox.Empty;
@@ -44,6 +47,7 @@ public sealed partial class Link
                     var copy = Duplicate(value);
                     geometry.Add(copy);
                     if (!copy.IsValid) throw new ArgumentException("Invalid geometry.");
+                    anchorSources.TryAdd(key, (copy, location));
                     bounds.Union(copy.GetBoundingBox(true));
                     var wire = Prepare(copy);
                     wires.Add((key, wire));

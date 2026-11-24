@@ -201,6 +201,25 @@ The Preview menu, Hide/Show Selected, preview shortcuts and native undo/redo all
 Hidden is saved in the definition; older files without that flag open visible.
 GH's document-wide preview mode (off or selected only) does not control these cards.
 
+Connect Geometry and Keys to a **Link**, wire it to Overlay, then turn on
+**Show Link keys** in Overlay's menu. For styled labels, wire **Labels** to
+Overlay's **Labels** input. **Labels** takes either a **Link** with optional
+**Text** overrides, or **Points** and **Text** with optional **Keys**. Use
+**Short text**, **Colours** and **Priority** to set the compact name, swatch
+and placement order. A styled specification takes precedence over automatic
+labels for the same Link. See [room-areas.gh](examples/room-areas.gh) for
+swatches driven by Colour Scale.
+
+Labels avoid cards and nearby labels, falling back to short text, dots or
+suppression. Filled Rhino geometry and shaded Grasshopper preview can hide
+anchors. Selected hidden labels appear faded where they fit. Hover a dot to
+expand it. Click a keyed label to select its member using the card selection
+modifiers, including across displays wired to the same Scope. Use
+**Clear selection** in Overlay's menu to clear it.
+
+PNG capture and vector PDF include settled labels for visible Overlays,
+retain selection and omit hover. **Copy card as image** remains card-only.
+
 ## Canvas Overlay
 
 Use **Conduit+ → Display → Canvas Overlay** for cards that stay fixed in the Grasshopper

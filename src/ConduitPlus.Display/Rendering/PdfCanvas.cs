@@ -8,6 +8,21 @@ namespace ConduitPlus.Rendering;
 /// <summary>FilePdf takes positions/strokes in page dots, but font heights in points (72/in).</summary>
 internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, double dotsPerCssPixel, double dpi) : ICanvas2D, IDisposable
 {
+    private PdfOpacityGroup? _group;
+
+    internal void PaintGroup(Rect2 bounds, double opacity, Action paint)
+    {
+        if (opacity == 1) { paint(); return; }
+        // Rhino exposes its PDF document implementation, but FilePdf has no group drawing API.
+        var scale = dotsPerCssPixel * 72 / (96 * dpi);
+        var group = new PdfOpacityGroup(pdf.PdfDocumentImplementation(), page, scale,
+            x * 72 / (96 * dpi), y * 72 / (96 * dpi), bounds, opacity);
+        _group = group;
+        try { paint(); }
+        finally { _group = null; }
+        group.Draw();
+    }
+
     private readonly Bitmap _measureBitmap = new(1, 1);
     private Rect2 _clip = new(-100000, -100000, 200000, 200000);
     private PointF P(Point2 p) => new((float)(x + p.X * dotsPerCssPixel), (float)(y + p.Y * dotsPerCssPixel));
@@ -27,6 +42,17 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
     public void RoundedRect(Rect2 r, double radius, string fill)
     {
         if (radius <= 0) { Rect(r, fill); return; }
+        FillPolygon(RoundedPath(r, radius), fill);
+    }
+    internal void StrokeRoundedRect(Rect2 r, double radius, string stroke, double width)
+    {
+        var points = RoundedPath(r, radius);
+        if (_group is { } group) { group.Path(points, C(stroke), width); return; }
+        points.Add(points[0]);
+        pdf.DrawPolyline(page, points.Select(P).ToArray(), Color.Transparent, C(stroke), (float)(width * dotsPerCssPixel));
+    }
+    private static List<Point2> RoundedPath(Rect2 r, double radius)
+    {
         // FilePdf exposes polylines, not Bezier paths: approximate each quarter circle by 12 segments.
         var rad = Math.Min(radius, Math.Min(r.Width, r.Height) / 2);
         var points = new List<Point2>();
@@ -37,7 +63,7 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
             var angle = (180 + corner * 90 + i * 90d / 12) * Math.PI / 180;
             points.Add(new(centers[corner].X + rad * Math.Cos(angle), centers[corner].Y + rad * Math.Sin(angle)));
         }
-        FillPolygon(points, fill);
+        return points;
     }
     public void FillPolygon(IReadOnlyList<Point2> points, string fill)
     {
@@ -47,7 +73,9 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
         Cut(p => _clip.X + _clip.Width - p.X);
         Cut(p => p.Y - _clip.Y);
         Cut(p => _clip.Y + _clip.Height - p.Y);
-        if (clipped.Count >= 3) pdf.DrawPolyline(page, clipped.Append(clipped[0]).Select(P).ToArray(), C(fill), Color.Transparent, 0);
+        if (clipped.Count < 3) return;
+        if (_group is { } group) group.Path(clipped, C(fill));
+        else pdf.DrawPolyline(page, clipped.Append(clipped[0]).Select(P).ToArray(), C(fill), Color.Transparent, 0);
         void Cut(Func<Point2, double> distance)
         {
             var input = clipped; clipped = [];
@@ -93,6 +121,7 @@ internal sealed class PdfCanvas(FilePdf pdf, int page, double x, double y, doubl
             text = MeasureText("…", size, font).Width <= available ? text + "…" : "";
         }
         if (text.Length == 0) return;
+        if (_group is { } group) { group.Text(text, topLeft, size, C(color), GdiCanvas.Family(font)); return; }
         var p = P(topLeft);
         pdf.DrawText(page, text, p.X, p.Y, (float)(size * dotsPerCssPixel * 72 / (96 * dpi)), new global::Rhino.DocObjects.Font(GdiCanvas.Family(font)), C(color), Color.Transparent, 0, 0, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     }

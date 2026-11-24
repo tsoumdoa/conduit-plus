@@ -21,12 +21,13 @@ internal static class Program
         SetDllDirectory(RhinoSystem);
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
-            foreach (var folder in new[] { pluginDirectory, Path.Combine(RhinoSystem, "netcore"), RhinoSystem })
+            foreach (var folder in new[] { pluginDirectory, Path.Combine(RhinoSystem, "netcore"), RhinoSystem, Path.GetFullPath(Path.Combine(RhinoSystem, "..", "Plug-ins", "Grasshopper")) })
             {
                 var path = Path.Combine(folder, name.Name + ".dll");
                 if (File.Exists(path)) return AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
             }
-            return null;
+            var gha = Path.Combine(root.FullName, "src", "ConduitPlus.Grasshopper", "bin", Configuration, "net8.0-windows", name.Name + ".gha");
+            return File.Exists(gha) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(gha) : null;
         };
         try { return Run(pluginDirectory, args); }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
@@ -43,17 +44,42 @@ internal static class Program
             ?? throw new InvalidOperationException("Could not create benchmark viewport.");
         doc.Views.ActiveView = view;
         var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(pluginDirectory, "ConduitPlus.Rhino.rhp"));
+        if (args.Contains("--label-occlusion"))
+        {
+            if (AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name is "Grasshopper" or "GH_IO") ||
+                assembly.GetReferencedAssemblies().Any(a => a.Name is "Grasshopper" or "GH_IO"))
+                throw new InvalidOperationException("Loading the Rhino plug-in resolved Grasshopper.");
+        }
         var captureIndex = Array.IndexOf(args, "--capture");
         var type = captureIndex >= 0 ? "ConduitPlusCapture" : args.Contains("--pdf") ? "ConduitPlusPdf" : args.Contains("--platform-check") ? "ConduitPlusPlatformCheck" : "ConduitPlusBench";
-        var entry = assembly.GetType("ConduitPlus.Rhino." + type)!.GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.Static)!;
+
         var arguments = captureIndex >= 0
             ? new object[] { doc, view, int.Parse(args[captureIndex + 1], System.Globalization.CultureInfo.InvariantCulture), args.Contains("--compact") }
             : [doc, view];
         try
         {
-            core.InvokeInHostContext(() => { entry.Invoke(null, arguments); return true; });
+            core.InvokeInHostContext(() =>
+            {
+                if (args.Contains("--label-occlusion")) RunLabels(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); });
+                else if (args.Contains("--labels") || args.Contains("--label-input"))
+                    RunLabelWiring(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); Rhino.RhinoApp.Wait(); },
+                        benchmark: args.Contains("--labels"));
+                else
+                {
+                    var entry = assembly.GetType("ConduitPlus.Rhino." + type)!
+                        .GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+                    try { entry.Invoke(null, arguments); }
+                    catch (TargetInvocationException e) { Console.Error.WriteLine(e.InnerException); throw; }
+                }
+                return true;
+            });
             Console.WriteLine("Benchmark workload completed successfully.");
             return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
         }
         finally
         {
@@ -63,5 +89,13 @@ internal static class Program
             Console.WriteLine("Overlay and floating viewport disposed; shutting down RhinoCore.");
         }
     }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RunLabels(Rhino.RhinoDoc doc, Rhino.Display.RhinoView view, Action pump) =>
+        ConduitPlus.Rhino.LabelOcclusionBench.RunAutomated(doc, view, pump);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RunLabelWiring(Rhino.RhinoDoc doc, Rhino.Display.RhinoView view, Action pump, bool benchmark) =>
+        ConduitPlus.Rhino.LabelsBench.Run(doc, view, pump, benchmark);
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool SetDllDirectory(string path);
 }

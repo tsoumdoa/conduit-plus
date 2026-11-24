@@ -88,7 +88,7 @@ internal static class MacView
         try
         {
             var ns = NsView(view);
-            if (ns == IntPtr.Zero) return true; // Unknown handle kind: rely on Rhino's MouseCallback stream.
+            if (ns == IntPtr.Zero) return true; // Unknown handle kind: rely on Rhino's MouseCallback stream (else all hover would stop).
             var window = AppKit.Window(ns);
             if (window == IntPtr.Zero) return false;
             var global = Decode(screen);
