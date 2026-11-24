@@ -14,9 +14,13 @@ public sealed class OcclusionSchedule(int count)
     private long _scene = -1;
 
     public int Classify(OccluderIndex index, long scene, long projection,
-        ReadOnlySpan<OcclusionSegment?> segments, ReadOnlySpan<int> active, Func<bool> timeRemaining, int minimumBackgroundSlots = 0)
+        ReadOnlySpan<OcclusionSegment?> segments, ReadOnlySpan<int> active, Func<bool> timeRemaining, int? minimumBackgroundSlots = null)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(segments.Length, _entries.Length);
+        foreach (var slot in active)
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)slot, (uint)count);
+        var reserve = minimumBackgroundSlots ?? (count / 4 + (count % 4 == 0 ? 0 : 1));
+        ArgumentOutOfRangeException.ThrowIfNegative(reserve);
         if (_scene != scene)
         {
             Array.Clear(_entries);
@@ -30,7 +34,7 @@ public sealed class OcclusionSchedule(int count)
             if (Visit(slot, index, projection, segments[slot])) visited++;
         }
         // Reserve a caller-selected amount of round-robin progress even after an expensive frame.
-        for (var scanned = 0; scanned < count && (scanned < minimumBackgroundSlots || timeRemaining()); scanned++)
+        for (var scanned = 0; scanned < count && (timeRemaining() || scanned < reserve); scanned++)
         {
             var slot = _cursor;
             _cursor = (_cursor + 1) % count;

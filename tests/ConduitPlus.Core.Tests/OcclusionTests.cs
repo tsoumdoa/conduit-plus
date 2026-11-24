@@ -104,7 +104,7 @@ public sealed class OcclusionTests
         var last = new int[segments.Length];
         for (var frame = 1; frame <= 12; frame++)
         {
-            schedule.Classify(index, 1, frame, segments, [0], () => false, minimumBackgroundSlots: 2);
+            schedule.Classify(index, 1, frame, segments, [0], () => false);
             for (var i = 0; i < segments.Length; i++)
             {
                 if (schedule.Answer(i, 1, frame).Current) last[i] = frame;
@@ -112,5 +112,19 @@ public sealed class OcclusionTests
             }
         }
     }
+    [Fact]
+    public void InvalidActiveSlotDoesNotResetSceneOrClassifyEarlierSlots()
+    {
+        var index = OccluderIndex.Build([]);
+        var schedule = new OcclusionSchedule(2);
+        OcclusionSegment?[] segments = [Segment(-1), Segment(-1)];
+        schedule.Classify(index, 1, 1, segments, [], () => true);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            schedule.Classify(index, 2, 2, segments, [0, -1], () => true));
+        Assert.True(schedule.Answer(0, 1, 1).Current);
+        Assert.False(schedule.Answer(0, 2, 2).Current);
+    }
+
 }
 

@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Reflection;
 using System.Text.Json;
 using ConduitPlus.Core;
+using ConduitPlus.Grasshopper;
 using Grasshopper;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Parameters;
@@ -17,7 +18,7 @@ namespace ConduitPlus.Rhino;
 
 internal static class LabelOcclusionBench
 {
-    internal static void RunAutomated(RhinoDoc doc, RhinoView view)
+    internal static void RunAutomated(RhinoDoc doc, RhinoView view, Action pump)
     {
         var destination = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")
             ?? throw new InvalidOperationException("Set CONDUITPLUS_RESULTS.");
@@ -25,16 +26,23 @@ internal static class LabelOcclusionBench
         var cases = new List<BenchmarkCase>();
         var viewport = view.ActiveViewport;
         Camera(viewport, 0);
-        var changes = RunFixtures(doc, viewport, checks);
+        var changes = RunFixtures(doc, viewport, checks, pump);
         foreach (var parallel in new[] { false, true })
         {
             if (parallel) viewport.ChangeToParallelProjection(true);
             foreach (var divisions in new[] { 158, 500 })
             {
                 var triangles = Grid(divisions);
-                var timer = Stopwatch.StartNew();
-                var index = Task.Run(() => OccluderIndex.Build(triangles)).GetAwaiter().GetResult();
-                var buildMs = timer.Elapsed.TotalMilliseconds;
+                var (index, build) = Task.Run(() =>
+                {
+                    var start = GC.GetAllocatedBytesForCurrentThread();
+                    var stopwatch = Stopwatch.StartNew();
+                    var tree = OccluderIndex.Build(triangles);
+                    using var process = Process.GetCurrentProcess();
+                    return (tree, new BuildMetrics(stopwatch.Elapsed.TotalMilliseconds,
+                        GC.GetAllocatedBytesForCurrentThread() - start, process.PeakWorkingSet64));
+                }).GetAwaiter().GetResult();
+                var timer = new Stopwatch();
                 foreach (var deviceScale in new[] { 1, 2 })
                 foreach (var count in new[] { 500, 5000 })
                 {
@@ -47,10 +55,13 @@ internal static class LabelOcclusionBench
                     var query = new double[600];
                     var total = new double[600];
                     var last = new int[count];
+                    var active = Enumerable.Range(0, count).Reverse().ToArray();
+                    var knownInView = 0;
                     var maxGap = 0;
                     var mismatches = 0;
                     var settledFrames = 0;
-                    var budget = count == 500 ? 1.6 : 3.5;
+                    // Leave time for the scheduler's guaranteed background slots after active work.
+                    var budget = count == 500 ? 1.2 : 2.4;
                     Func<bool> timeRemaining = () => timer.Elapsed.TotalMilliseconds < budget;
                     for (var frame = -100; frame < 604; frame++)
                     {
@@ -61,7 +72,7 @@ internal static class LabelOcclusionBench
                         for (var i = 0; i < count; i++)
                             segments[i] = projector.Project(anchors[i]);
                         var projected = timer.Elapsed.TotalMilliseconds;
-                        schedule.Classify(index, 1, revision, segments, [], timeRemaining, (count + 3) / 4);
+                        schedule.Classify(index, 1, revision, segments, active, timeRemaining);
                         var elapsed = timer.Elapsed.TotalMilliseconds;
                         var allCurrent = true;
                         for (var i = 0; i < count; i++)
@@ -71,7 +82,13 @@ internal static class LabelOcclusionBench
                             if (answer.Current)
                             {
                                 last[i] = frame;
-                                if (answer.Occluded != Expected(segments[i])) mismatches++;
+                                // Rotate the oracle sample across candidate slots; check every slot when settled.
+                                if (frame >= 599 || (i + frame + 100) % 32 == 0)
+                                {
+                                    var expected = Oracle(viewport, anchors[i]);
+                                    if (expected.Visible && frame >= 0) knownInView++;
+                                    if (answer.Visible != expected.Visible || answer.Occluded != expected.Occluded) mismatches++;
+                                }
                             }
                             if (frame >= 0 && frame < 600 && segments[i].HasValue)
                                 maxGap = Math.Max(maxGap, frame - last[i]);
@@ -86,10 +103,10 @@ internal static class LabelOcclusionBench
                     }
                     var totals = Stats(total);
                     var stalls = total.Count(ms => ms >= 16);
-                    cases.Add(new(parallel, deviceScale, count, triangles.Length, buildMs,
-                        Stats(projection), Stats(query), totals, maxGap, mismatches, settledFrames, stalls,
+                    cases.Add(new(parallel, deviceScale, count, triangles.Length, build,
+                        Stats(projection), Stats(query), totals, maxGap, mismatches, settledFrames, stalls, knownInView,
                         totals.p95 <= (count == 500 ? 2 : 5) && totals.p99 <= (count == 500 ? 4 : 8)
-                            && stalls < 2 && maxGap < 4 && mismatches == 0 && settledFrames is > 0 and <= 4));
+                            && knownInView > 0 && stalls < 2 && maxGap < 4 && mismatches == 0 && settledFrames is > 0 and <= 4));
                 }
             }
         }
@@ -101,7 +118,7 @@ internal static class LabelOcclusionBench
             throw new InvalidOperationException("One or more occlusion gates failed. See label-occlusion.json.");
     }
 
-    private static Dictionary<string, object> RunFixtures(RhinoDoc doc, RhinoViewport viewport, Dictionary<string, bool> checks)
+    private static Dictionary<string, object> RunFixtures(RhinoDoc doc, RhinoViewport viewport, Dictionary<string, bool> checks, Action pump)
     {
         var changes = new Dictionary<string, object>();
         using var gh = new GH_Document { Enabled = true, PreviewMode = GH_PreviewMode.Shaded };
@@ -112,16 +129,39 @@ internal static class LabelOcclusionBench
         var parse = typeof(GH_ComponentServer).GetMethod("ParseGHA", BindingFlags.NonPublic | BindingFlags.Instance,
             null, [typeof(Assembly), typeof(string), typeof(GH_LoadingMechanism)], null)!;
         parse.Invoke(server, [nativeAssembly, nativeAssembly.Location, GH_LoadingMechanism.Direct]);
-        var proxy = server.ObjectProxies.First(p => p.Guid == LabelOcclusionScene.CustomPreviewGuid);
+        var proxy = server.ObjectProxies.First(p => p.Guid == GhLabelOcclusionSources.CustomPreviewGuid);
         Console.WriteLine($"Native Custom Preview GUID {proxy.Guid}");
         var shaded = DisplayModeDescription.GetDisplayMode(DisplayModeDescription.ShadedId);
         var wire = DisplayModeDescription.GetDisplayMode(DisplayModeDescription.WireframeId);
         viewport.DisplayMode = shaded;
-        using var scene = new LabelOcclusionScene(doc, viewport, [gh]);
+        var definitions = new List<GH_Document> { gh };
+        using var scene = new LabelOcclusionScene(doc, viewport, new GhLabelOcclusionSources(() => definitions));
         var layer = doc.Layers.Add(new Layer { Name = "Label occlusion fixture" });
         using var box = new BoundingBox(new Point3d(-8, -8, -1), new Point3d(8, 8, 1)).ToBrep();
         var id = doc.Objects.AddBrep(box, new ObjectAttributes { LayerIndex = layer });
         Check("Rhino box", true);
+        var lockModeId = DisplayModeDescription.CopyDisplayMode(shaded.Id, $"Label lock fixture {Guid.NewGuid()}");
+        try
+        {
+            var lockMode = DisplayModeDescription.GetDisplayMode(lockModeId);
+            doc.Objects.Lock(id, true);
+            lockMode.DisplayAttributes.GhostLockedObjects = false;
+            DisplayModeDescription.UpdateDisplayMode(lockMode);
+            viewport.DisplayMode = DisplayModeDescription.GetDisplayMode(lockModeId);
+            Check("Locked Rhino box shown", true);
+            lockMode.DisplayAttributes.GhostLockedObjects = true;
+            lockMode.DisplayAttributes.LockedObjectTransparency = 1;
+            DisplayModeDescription.UpdateDisplayMode(lockMode);
+            viewport.DisplayMode = DisplayModeDescription.GetDisplayMode(lockModeId);
+            Check("Locked Rhino box hidden", false);
+        }
+        finally
+        {
+            viewport.DisplayMode = shaded;
+            doc.Objects.Unlock(id, true);
+            DisplayModeDescription.DeleteDisplayMode(lockModeId);
+        }
+        Check("Unlocked Rhino box", true);
         var beforeOrbit = scene.Snapshot;
         Camera(viewport, 60);
         scene.Refresh();
@@ -175,25 +215,65 @@ internal static class LabelOcclusionBench
         Check("GH selected-only selected", true);
         custom.Locked = true;
         Check("GH owner disabled", false);
+        custom.Locked = false;
+        gh.PreviewFilter = GH_PreviewFilter.None;
+        custom.Attributes.Selected = false;
+        using var secondPanel = mesh.DuplicateMesh();
+        secondPanel.Translate(18, 0, 0);
+        floating.PersistentData.Append(new GH_Mesh(secondPanel));
+        floating.ExpireSolution(false);
+        var colors = new Param_Colour();
+        colors.PersistentData.Append(new GH_Colour(Color.White));
+        colors.PersistentData.Append(new GH_Colour(Color.FromArgb(0, 255, 255, 255)));
+        gh.AddObject(colors, false);
+        custom.Params.Input[1].AddSource(colors);
+        gh.NewSolution(false);
+        Check("Custom Preview opaque and transparent panels", true,
+            clearPoint: new Point3d(18, 0, -4));
+
+        custom.Hidden = true;
+        viewport.DisplayMode = shaded;
+        using var large = new Mesh();
+        var grid = Grid(500);
+        foreach (var triangle in grid)
+        {
+            var start = large.Vertices.Count;
+            foreach (var vertex in new[] { triangle.A, triangle.B, triangle.C })
+                large.Vertices.Add(vertex.X * 0.65, vertex.Y * 0.65, vertex.Z);
+            large.Faces.AddFace(start, start + 1, start + 2);
+        }
+        var largeId = doc.Objects.AddMesh(large);
+        Check("500k triangle Rhino mesh", true);
+        checks["Large Rhino UI slice < 8 ms"] = scene.LongestUiSliceMilliseconds < 8;
+        doc.Objects.Delete(largeId, true);
+
+        var many = new MeshProducer(mesh, 4000);
+        gh.AddObject(many, false);
+        gh.NewSolution(false);
+        Check("4k mesh GH output", true);
+        checks["Many-item GH UI slice < 8 ms"] = scene.LongestUiSliceMilliseconds < 8;
+        many.ExpireSolution(false);
+        gh.NewSolution(false);
+        Check("Definition removed during pending build", false, definitions.Clear);
         return changes;
 
-        void Check(string name, bool blocked)
+        void Check(string name, bool blocked, Action? afterRefresh = null, Point3d? clearPoint = null)
         {
             Camera(viewport, 0);
             var timer = Stopwatch.StartNew();
-            var copy = new List<double>();
-            do
+            scene.LongestUiSliceMilliseconds = 0;
+            scene.Refresh();
+            afterRefresh?.Invoke();
+            while (!scene.Snapshot.HasValue && timer.ElapsedMilliseconds < 5000)
             {
-                var start = timer.Elapsed.TotalMilliseconds;
-                scene.Refresh();
-                copy.Add(timer.Elapsed.TotalMilliseconds - start);
-                if (scene.Snapshot.HasValue) break;
+                pump();
                 Thread.Sleep(1);
-            } while (timer.ElapsedMilliseconds < 5000);
-            changes[name] = new { harvestAndCopy = Stats(copy.ToArray()), publicationMs = timer.Elapsed.TotalMilliseconds,
-                workerMs = scene.LastWorkerMilliseconds };
+            }
+            changes[name] = new { longestUiSliceMs = scene.LongestUiSliceMilliseconds,
+                publicationMs = timer.Elapsed.TotalMilliseconds, workerMs = scene.LastWorkerMilliseconds };
             var snapshot = scene.Snapshot ?? throw new TimeoutException(name);
-            var points = new[] { new Point3d(0, 0, -4), new Point3d(16, 0, -4) };
+            Camera(viewport, 0);
+            var points = new[] { new Point3d(0, 0, -4), clearPoint ?? new Point3d(16, 0, -4) };
             var rays = points.Select(new LabelOcclusionScene.Projection(viewport, 1).Project).ToArray();
             var schedule = new OcclusionSchedule(2);
             schedule.Classify(snapshot.Index, snapshot.Generation, 1, rays, [0], () => true);
@@ -202,17 +282,17 @@ internal static class LabelOcclusionBench
             checks[name] = inside.Visible && inside.Occluded == blocked && inside.HasHit(true)
                 && inside.HasHit(false) == !blocked && inside.Opacity(true) == (blocked ? 0.45 : 1)
                 && clear.HasHit(false);
-            Console.WriteLine($"{name}: {checks[name]} ({inside}, clear {clear})");
+            Console.WriteLine($"{name}: {checks[name]} ({inside}, clear {clear}), max UI slice {scene.LongestUiSliceMilliseconds:F3} ms");
         }
     }
 
-    private sealed class MeshProducer(Mesh mesh) : GH_Component("Fixture Mesh", "Fixture", "Headless mesh fixture", "Test", "Test")
+    private sealed class MeshProducer(Mesh mesh, int count = 1) : GH_Component("Fixture Mesh", "Fixture", "Headless mesh fixture", "Test", "Test")
     {
         public override Guid ComponentGuid => new("ed2d4eb4-5102-4758-90fa-020b7c83062a");
         protected override void RegisterInputParams(GH_InputParamManager p) { }
         protected override void RegisterOutputParams(GH_OutputParamManager p) =>
-            p.AddMeshParameter("Mesh", "M", "Fixture mesh", GH_ParamAccess.item);
-        protected override void SolveInstance(IGH_DataAccess da) => da.SetData(0, new GH_Mesh(mesh));
+            p.AddMeshParameter("Mesh", "M", "Fixture mesh", GH_ParamAccess.list);
+        protected override void SolveInstance(IGH_DataAccess da) => da.SetDataList(0, Enumerable.Range(0, count).Select(_ => new GH_Mesh(mesh)));
     }
 
     private static void Camera(RhinoViewport viewport, int frame)
@@ -245,16 +325,25 @@ internal static class LabelOcclusionBench
         return triangles;
     }
 
-    private static bool Expected(OcclusionSegment? segment)
+    private static (bool Visible, bool Occluded) Oracle(RhinoViewport viewport, Point3d anchor)
     {
-        if (segment is not { } ray || ray.Anchor.Z >= 0 || ray.Near.Z < 0) return false;
-        var point = ray.Near + (ray.Anchor - ray.Near) * (ray.Near.Z / (ray.Near.Z - ray.Anchor.Z));
-        return Math.Abs(point.X) <= 16 && Math.Abs(point.Y) <= 16;
+        var pixel = viewport.WorldToClient(anchor);
+        var size = viewport.Size;
+        if (!(pixel.X >= 0 && pixel.Y >= 0 && pixel.X < size.Width && pixel.Y < size.Height) ||
+            !viewport.GetFrustumLine(pixel.X, pixel.Y, out var line)) return default;
+        var forward = viewport.CameraDirection;
+        if (line.Direction * forward < 0) line.Flip();
+        if ((anchor - line.From) * forward < 0 || (line.To - anchor) * forward < 0) return default;
+        if (anchor.Z >= 0 || line.From.Z < 0) return (true, false);
+        var point = line.From + (anchor - line.From) * (line.From.Z / (line.From.Z - anchor.Z));
+        return (true, Math.Abs(point.X) <= 16 && Math.Abs(point.Y) <= 16);
     }
 
-    private sealed record BenchmarkCase(bool parallel, int deviceScale, int count, int triangles, double buildMs,
+    private sealed record BenchmarkCase(bool parallel, int deviceScale, int count, int triangles, BuildMetrics build,
         Percentiles projection, Percentiles queries, Percentiles total, int maxGap, int mismatches,
-        int settledFrames, int stalls, bool passed);
+        int settledFrames, int stalls, int knownInView, bool passed);
+
+    private sealed record BuildMetrics(double milliseconds, long allocatedBytes, long processPeakWorkingSetBytes);
 
     private sealed record Percentiles(double p50, double p95, double p99);
 

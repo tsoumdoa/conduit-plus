@@ -36,13 +36,13 @@ public sealed class OccluderIndex
         var leaves = triangles.Where(t => double.IsFinite(t.A.Magnitude + t.B.Magnitude + t.C.Magnitude)
                 && (t.B - t.A).Cross(t.C - t.A).Magnitude > 0)
             .Select(t => new Node(Bounds.Around(t), t, null, null)).ToArray();
-        return new(Build(leaves, 0, leaves.Length));
+        return new(Build(leaves, 0, leaves.Length, packTriangles: true));
     }
 
     public static OccluderIndex Combine(IEnumerable<OccluderIndex> sources)
     {
         var roots = sources.Select(s => s._root).OfType<Node>().ToArray();
-        return new(Build(roots, 0, roots.Length));
+        return new(Build(roots, 0, roots.Length, packTriangles: false));
     }
 
     public bool AnyHit(OcclusionPoint origin, OcclusionPoint unitDirection, double limit) =>
@@ -65,20 +65,16 @@ public sealed class OccluderIndex
     {
         if (node.Left is not { } left)
         {
-            var triangle = node.Triangle;
-            var ab = triangle.B - triangle.A;
-            var ac = triangle.C - triangle.A;
-            var cross = ray.Direction.Cross(ac);
-            var determinant = ab.Dot(cross);
-            if (determinant == 0) return limit;
-            var offset = ray.Origin - triangle.A;
-            var u = offset.Dot(cross) / determinant;
-            if (u < 0 || u > 1) return limit;
-            var q = offset.Cross(ab);
-            var v = ray.Direction.Dot(q) / determinant;
-            if (v < 0 || u + v > 1) return limit;
-            var t = ac.Dot(q) / determinant;
-            return t >= 0 && t < limit ? t : limit;
+            if (node.Leaves is not { } leaves) return VisitTriangle(node.Triangle, ray, limit);
+            foreach (var leaf in leaves.AsSpan(node.Start, node.Count))
+            {
+                if (leaf.Box.Entry(ray, limit) >= limit) continue;
+                var distance = VisitTriangle(leaf.Triangle, ray, limit);
+                if (distance >= limit) continue;
+                if (any) return distance;
+                limit = distance;
+            }
+            return limit;
         }
 
         var right = node.Right!;
@@ -94,24 +90,62 @@ public sealed class OccluderIndex
         return second < hit ? Visit(right, ray, hit, any) : hit;
     }
 
-    private static Node? Build(Node[] nodes, int start, int count)
+    private static double VisitTriangle(in OcclusionTriangle triangle, in Ray ray, double limit)
+    {
+        var ab = triangle.B - triangle.A;
+        var ac = triangle.C - triangle.A;
+        var cross = ray.Direction.Cross(ac);
+        var determinant = ab.Dot(cross);
+        if (determinant == 0) return limit;
+        var offset = ray.Origin - triangle.A;
+        var u = offset.Dot(cross) / determinant;
+        if (u < 0 || u > 1) return limit;
+        var q = offset.Cross(ab);
+        var v = ray.Direction.Dot(q) / determinant;
+        if (v < 0 || u + v > 1) return limit;
+        var t = ac.Dot(q) / determinant;
+        return t >= 0 && t < limit ? t : limit;
+    }
+
+    private static Node? Build(Node[] nodes, int start, int count, bool packTriangles)
     {
         if (count == 0) return null;
         if (count == 1) return nodes[start];
         var box = nodes[start].Box;
         for (var i = start + 1; i < start + count; i++) box = box.Union(nodes[i].Box);
+        if (packTriangles && count <= 8) return new(box, default, null, null, nodes, start, count);
         var extent = box.Max - box.Min;
         var axis = extent.X >= extent.Y && extent.X >= extent.Z ? 0 : extent.Y >= extent.Z ? 1 : 2;
-        Array.Sort(nodes, start, count, AxisOrder[axis]);
         var half = count / 2;
-        return new(box, default, Build(nodes, start, half), Build(nodes, start + half, count - half));
+        PartitionMedian(nodes, start, start + count - 1, start + half, axis);
+        return new(box, default, Build(nodes, start, half, packTriangles), Build(nodes, start + half, count - half, packTriangles));
     }
 
-    private static readonly IComparer<Node>[] AxisOrder = Enumerable.Range(0, 3).Select(axis =>
-        Comparer<Node>.Create((a, b) => (a.Box.Min.Axis(axis) + a.Box.Max.Axis(axis))
-            .CompareTo(b.Box.Min.Axis(axis) + b.Box.Max.Axis(axis)))).ToArray();
+    private static void PartitionMedian(Node[] nodes, int low, int high, int median, int axis)
+    {
+        double Center(Node node) => node.Box.Min.Axis(axis) + node.Box.Max.Axis(axis);
+        while (low < high)
+        {
+            var pivot = Center(nodes[low + (high - low) / 2]);
+            var left = low;
+            var right = high;
+            while (left <= right)
+            {
+                while (Center(nodes[left]) < pivot) left++;
+                while (Center(nodes[right]) > pivot) right--;
+                if (left > right) break;
+                (nodes[left], nodes[right]) = (nodes[right], nodes[left]);
+                left++;
+                right--;
+            }
+            if (median <= right) high = right;
+            else if (median >= left) low = left;
+            else break;
+        }
+    }
 
-    private sealed record Node(Bounds Box, OcclusionTriangle Triangle, Node? Left, Node? Right);
+    private sealed record Node(Bounds Box, OcclusionTriangle Triangle, Node? Left, Node? Right,
+        Node[]? Leaves = null, int Start = 0, int Count = 0);
     private readonly record struct Ray(OcclusionPoint Origin, OcclusionPoint Direction, OcclusionPoint Inverse);
 
     private readonly record struct Bounds(OcclusionPoint Min, OcclusionPoint Max)
