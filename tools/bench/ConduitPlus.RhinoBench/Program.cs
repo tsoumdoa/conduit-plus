@@ -61,6 +61,7 @@ internal static class Program
             core.InvokeInHostContext(() =>
             {
                 if (args.Contains("--label-occlusion")) RunLabels(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); });
+                else if (args.Contains("--labels")) RunLabelWiring(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); });
                 else
                 {
                     var entry = assembly.GetType("ConduitPlus.Rhino." + type)!
@@ -89,6 +90,10 @@ internal static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void RunLabels(Rhino.RhinoDoc doc, Rhino.Display.RhinoView view, Action pump) =>
         ConduitPlus.Rhino.LabelOcclusionBench.RunAutomated(doc, view, pump);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RunLabelWiring(Rhino.RhinoDoc doc, Rhino.Display.RhinoView view, Action pump) =>
+        ConduitPlus.Rhino.LabelsBench.Run(doc, view, pump);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool SetDllDirectory(string path);
 }

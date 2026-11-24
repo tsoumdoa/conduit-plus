@@ -24,6 +24,9 @@ internal sealed class LabelOcclusionScene : IDisposable
     private int _membershipChanged;
     private readonly UiTimer _continuation = new(15);
     private bool _redrawPending;
+    private bool _membershipRequested;
+    private long _lastMembershipCheck;
+    internal void RequestMembershipCheck() => _membershipRequested = true;
     private bool _checkBeforePublish;
     internal double LongestUiSliceMilliseconds { get; set; }
     private readonly RhinoViewport _view;
@@ -109,7 +112,14 @@ internal sealed class LabelOcclusionScene : IDisposable
 
     private void OnIdle(object? sender, EventArgs e)
     {
-        if (!_disposed && !_continuation.Enabled) Advance(checkMembership: false);
+        if (_disposed || _continuation.Enabled) return;
+        var checkMembership = _membershipRequested && Stopwatch.GetElapsedTime(_lastMembershipCheck).TotalMilliseconds >= 100;
+        if (checkMembership)
+        {
+            _membershipRequested = false;
+            _lastMembershipCheck = Stopwatch.GetTimestamp();
+        }
+        Advance(checkMembership);
     }
 
     private void Continue(object? sender, EventArgs e)
@@ -443,4 +453,3 @@ internal sealed class LabelOcclusionScene : IDisposable
 
     private sealed record BuildResult(long Generation, Dictionary<object, OccluderIndex> Trees, OccluderIndex Index, double WorkerMilliseconds);
 }
-

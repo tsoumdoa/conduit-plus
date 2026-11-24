@@ -404,7 +404,7 @@ public sealed class LinkComponent : GH_Component
                 try { items.Add((keys[mapping[branch][index]], Normalize(tree.Branches[branch][index]), $"Geometry path {tree.Paths[branch]}, item [{index}]")); }
                 catch (ArgumentException e) { throw new ArgumentException($"Geometry path {tree.Paths[branch]}, item [{index}]: {e.Message}", e); }
             }
-            da.SetData(0, new GH_ObjectWrapper(new Link(keys, items)));
+            da.SetData(0, new GH_ObjectWrapper(new Link(keys, items) { LabelSource = new(InstanceGuid, da.ParameterTargetPath(0).ToString()) }));
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }
     }
@@ -447,11 +447,18 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     private MembershipIndex? _membership;
     private readonly object _publishLock = new();
     private bool _publishScheduled;
-    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled, string? RequestedView, double Size);
+    private sealed record PendingPublish(CardSpec[] Cards, Link[] Links, LabelAnchor[] Labels, Theme Theme, bool Interaction, uint? DocumentSerial, Guid? ViewId, long Generation, ScopeBinding? Scope, bool BrushEnabled, string? RequestedView, double Size);
     private PendingPublish? _pending;
     private bool _solveScheduled, _interactionSolve;
     private bool _active;
     private bool _followActiveView = true, _activeViewPending;
+    internal bool ShowLinkKeys { get; private set; }
+    internal void ToggleLinkKeys()
+    {
+        RecordUndoEvent("Show Link keys");
+        ShowLinkKeys = !ShowLinkKeys;
+        ExpireSolution(true);
+    }
     private Bitmap? _icon;
     private DisplayVisibility Visibility => DisplayVisibility.Evaluate(Hidden, Locked);
     public OverlayComponent() : base("Overlay", "Overlay", "Display cards following the active Rhino viewport by default, or in a named viewport; click bars/rows for keyed selection")
@@ -475,6 +482,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     {
         writer.SetString("ConduitPlus.Theme", _menuTheme.Name);
         writer.SetBoolean("ConduitPlus.FollowActiveView", _followActiveView);
+        writer.SetBoolean("ConduitPlus.ShowLinkKeys", ShowLinkKeys);
         return base.Write(writer);
     }
     public override bool Read(GH_IReader reader)
@@ -484,6 +492,8 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         var themeFound = reader.TryGetString("ConduitPlus.Theme", ref themeName);
         _menuTheme = Theme.ReadSelection(themeFound ? themeName : null);
         _selectedTheme = _menuTheme;
+        var showLinkKeys = false;
+        ShowLinkKeys = reader.TryGetBoolean("ConduitPlus.ShowLinkKeys", ref showLinkKeys) && showLinkKeys;
         var followActiveView = true;
         _followActiveView = !reader.TryGetBoolean("ConduitPlus.FollowActiveView", ref followActiveView) || followActiveView;
         Params.Input[0].Optional = true;
@@ -493,6 +503,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalComponentMenuItems(menu);
+        Menu_AppendItem(menu, "Show Link keys", (_, _) => ToggleLinkKeys(), true, ShowLinkKeys);
         var copy = Menu_AppendItem(menu, "Copy card as image");
         copy.Enabled = false;
         try
@@ -629,6 +640,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         p.AddGenericParameter("Scope", "S", "Optional explicit selection Scope; exactly one token across the tree", GH_ParamAccess.tree); p[3].Optional = true;
         p.AddParameter(new Param_TextOption { OptionsProvider = ViewOptions }, "View", "V", "Active viewport or a named standard Rhino viewport", GH_ParamAccess.item); p[4].Optional = true;
         p.AddParameter(new Param_SizeOption(), "Size", "Z", "Card size multiplier, 0.75 to 1.5 (default 1)", GH_ParamAccess.item); p[5].Optional = true;
+        p.AddGenericParameter("Labels", "Lb", "Optional Link or Labels specifications", GH_ParamAccess.tree); p[6].Optional = true;
     }
     private readonly Dictionary<string, (GH_RuntimeMessageLevel Level, string Text)> _notices = [];
     private readonly List<(GH_RuntimeMessageLevel Level, string Text)> _solveMessages = [];
@@ -848,9 +860,38 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         var wrappedLinks = linkTree?.AllData(false).ToArray() ?? [];
         var cards = ReadDisplayItems<CardSpec>(wrapped, 0, "Cards", "card", c => c.Id, c => c.Validate());
         var links = ReadDisplayItems<Link>(wrappedLinks, 1, "Links", "Link", null, null);
+        da.GetDataTree(6, out GH_Structure<IGH_Goo> labelTree);
+        var specs = new List<LabelSpec>();
+        var direct = new List<Link>();
+        if (labelTree is not null)
+        {
+            for (var branch = 0; branch < labelTree.PathCount; branch++)
+            for (var i = 0; i < labelTree.Branches[branch].Count; i++)
+            {
+                switch (labelTree.Branches[branch][i]?.ScriptVariable())
+                {
+                    case LabelSpec spec: specs.Add(spec); break;
+                    case Link link: direct.Add(link); break;
+                    default:
+                        AddRuntimeMessage(GH_RuntimeMessageLevel.Error,
+                            $"Labels path {labelTree.Paths[branch]}, item [{i}] must be a Link or Labels specification.");
+                        break;
+                }
+            }
+        }
+        var explicitLinks = specs.Select(s => s.Link).OfType<Link>().ToHashSet();
+        foreach (var link in direct.Concat(ShowLinkKeys ? links : []).Distinct())
+        {
+            if (explicitLinks.Contains(link)) continue;
+            var spec = LabelSpec.FromLink(link, link.LabelSource);
+            specs.Add(spec);
+            foreach (var remark in spec.Remarks) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
+        }
+        var labels = specs.SelectMany(s => s.Anchors).DistinctBy(a => a.Identity(InstanceGuid)).ToArray();
+        links = links.Concat(direct).Concat(explicitLinks).Distinct().ToArray();
         _diagnosticCards = cards;
         _diagnosticGeometryKeys = links.SelectMany(l => l.LinkedGeometryKeys).ToArray();
-        _diagnosticLinksWired = Params.Input[1].SourceCount > 0;
+        _diagnosticLinksWired = Params.Input[1].SourceCount > 0 || direct.Count != 0 || explicitLinks.Count != 0;
         if (_scope is { } scope)
         {
             var suspendedInteraction = _rhinoSuspended && _interactionSolve;
@@ -859,14 +900,14 @@ public sealed class OverlayComponent : PreviewDisplayComponent
             catch (ArgumentException e)
             {
                 if (scope.BeginPublication() is { } ticket) scope.Stage(ticket, null);
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); QueuePublish([], []); return;
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); QueuePublish([], [], []); return;
             }
             da.SetDataList(0, scope.Current.SelectedKeys);
             da.SetDataList(1, scope.Current.Events.Select(e => CardJson.Serialize(OverlayInteraction.From(e))));
             Message = $"{scope.Current.SelectedKeys.Count} selected";
             scope.RecordOutputs(); scope.ReportDiagnostics();
             RefreshLinkDiagnostics(scope.Current.Membership);
-            QueuePublish(cards, links); return;
+            QueuePublish(cards, links, labels); return;
         }
         var snapshot = OverlayManager.Snapshot(InstanceGuid);
         var membership = _membership = MembershipIndex.Create([new BrushRegistration("private", cards, links.SelectMany(l => l.Keys))], _membership);
@@ -878,7 +919,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         Message = $"{selection.Length} selected";
         da.SetDataList(0, selection);
         lock (_publishLock) da.SetDataList(1, _events.ToArray());
-        QueuePublish(cards, links);
+        QueuePublish(cards, links, labels);
     }
     private CardSpec[] _diagnosticCards = [];
     private string[] _diagnosticGeometryKeys = [];
@@ -933,12 +974,12 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         return valid.ToArray();
     }
     private double _size = 1;
-    private void QueuePublish(CardSpec[] cards, Link[] links)
+    private void QueuePublish(CardSpec[] cards, Link[] links, LabelAnchor[] labels)
     {
         var binding = OverlayManager.Binding(InstanceGuid);
         lock (_publishLock)
         {
-            _pending = new(cards, links, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid, _requestedView, _size);
+            _pending = new(cards, links, labels, _selectedTheme, _interactionSolve || (_pending?.Interaction ?? false), binding?.DocumentSerial, binding?.ViewId, _generation, _scope, _scopeValid, _requestedView, _size);
             _interactionSolve = false;
             if (_publishScheduled) return;
             _publishScheduled = true;
@@ -958,7 +999,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         try
         {
             SetNotice("publish", GH_RuntimeMessageLevel.Error, null);
-            if (pending.Cards.Length == 0) { SetNotice("view", GH_RuntimeMessageLevel.Warning, null); OverlayManager.Remove(InstanceGuid); _lastPublish = null; return; }
+            if (pending.Cards.Length == 0 && pending.Labels.Length == 0) { SetNotice("view", GH_RuntimeMessageLevel.Warning, null); OverlayManager.Remove(InstanceGuid); _lastPublish = null; return; }
             // A closed binding must not redirect a queued interaction to another active document.
             if (pending.Interaction && (pending.DocumentSerial is null || _rhinoSuspended)) return;
             var doc = pending.DocumentSerial is { } serial ? RhinoDoc.FromRuntimeSerialNumber(serial) : RhinoDoc.ActiveDoc;
@@ -980,7 +1021,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
                 {
                     _originals = pending.Cards;
                     _rhinoSuspended = false;
-                    OverlayManager.Set(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size, NickName, visible: Visibility.Shown);
+                    OverlayManager.SetWithLabels(doc, view, InstanceGuid, _originals, pending.Links, _selectedTheme, pending.Scope, pending.BrushEnabled, pending.Size, NickName, Visibility.Shown, pending.Labels);
                     _lastPublish = pending with { DocumentSerial = doc.RuntimeSerialNumber, ViewId = view.MainViewport.Id };
                 }
             }

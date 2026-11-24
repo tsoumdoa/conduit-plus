@@ -150,7 +150,12 @@ public static partial class OverlayManager
         Mouse.Enabled = Sessions.Count > 0 || Mouse.Pressed;
         return s;
     }
-    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1, string? label = null, bool visible = true)
+    public static void Set(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards, IEnumerable<Link>? links = null, Theme? theme = null, IBrushBinding? domain = null, bool brushEnabled = true, double size = 1, string? label = null, bool visible = true) =>
+        SetWithLabels(doc, view, owner, cards, links, theme, domain, brushEnabled, size, label, visible, []);
+
+    internal static void SetWithLabels(RhinoDoc doc, RhinoView view, Guid owner, IEnumerable<CardSpec> cards,
+        IEnumerable<Link>? links, Theme? theme, IBrushBinding? domain, bool brushEnabled, double size,
+        string? label, bool visible, LabelAnchor[] labels)
     {
         UiContext.Ensure();
         Start();
@@ -176,6 +181,7 @@ public static partial class OverlayManager
         session.Visible = visible;
         session.Size = size; session.Label = label ?? "Overlay";
         session.SetLinks(linked);
+        session.SetLabels(labels);
         session.Update(specs, theme: theme ?? Theme.Paper);
         Settle(doc, view);
         view.Redraw();
@@ -258,6 +264,7 @@ public static partial class OverlayManager
         foreach (var session in sessions)
         {
             session.Visible = visible;
+            session.RefreshLabelScene();
             if (!visible)
             {
                 // Private domains are skipped by CancelBrushHover; a hidden owner clears its own hover too.
@@ -338,6 +345,8 @@ public static partial class OverlayManager
         if (!sessions.Contains(source)) sessions = [source];
         if (sessions[0] != source) return;
         if (sessions.Contains(source) && Sessions.Values.Contains(source)) CheckFrame(source);
+        if (!e.Display.IsInViewCapture)
+            foreach (var session in sessions) session.ClassifyLabels();
         foreach (var session in sessions) session.Draw(e);
         if (!e.Display.IsInViewCapture) foreach (var session in sessions.Where(s => ShownId(s) is not null)) session.DrawFloating(e);
         if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && CurrentFrame(source.View, coordinator) is { Chip: { } chip } frame)
@@ -353,5 +362,3 @@ public static partial class OverlayManager
     }
 
 }
-
-

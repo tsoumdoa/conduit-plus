@@ -201,6 +201,11 @@ The Preview menu, Hide/Show Selected, preview shortcuts and native undo/redo all
 Hidden is saved in the definition; older files without that flag open visible.
 GH's document-wide preview mode (off or selected only) does not control these cards.
 
+Wire a **Link** or a **Labels** specification into Overlay’s optional **Labels** input.
+Labels accepts a Link for member-key anchors or points with authored text. Right-click
+Overlay and choose **Show Link keys** to prepare default labels for its Links.
+Viewport label drawing arrives in a later release.
+
 ## Canvas Overlay
 
 Use **Conduit+ → Display → Canvas Overlay** for cards that stay fixed in the Grasshopper
