@@ -58,15 +58,30 @@ internal static class LabelsBench
         overlay.Params.Input[6].AddSource(labels.Params.Output[0]);
         overlay.ExpireSolution(false);
         gh.NewSolution(false);
+        var second = new OverlayComponent();
+        gh.AddObject(second, false);
+        second.Params.Input[6].AddSource(link.Params.Output[0]);
+        gh.NewSolution(false);
+        var otherSession = OverlayManager.Get(doc, view, second.InstanceGuid);
+        var scene = session.LabelScene ?? throw new InvalidOperationException("Missing label scene");
+        Check(otherSession.Cards.Length == 0 && ReferenceEquals(scene, otherSession.LabelScene), "Labels-only owners share a viewport scene");
+
         for (var i = 0; i < 100; i++)
         {
             pump();
-            session.ClassifyLabels();
-            if (session.InspectLabels().Any(l => l.Answer.Current)) break;
+            view.Redraw();
+            if (session.InspectLabels().Single().Answer.Current && otherSession.InspectLabels().Single().Answer.Current)
+                break;
             Thread.Sleep(10);
         }
         var resolved = session.InspectLabels().Single();
         Check(resolved.Anchor.Style.Text == "Explicit caption" && resolved.Answer is { Current: true, Visible: true }, "Explicit supersession and classified anchor");
+
+        Check(otherSession.InspectLabels().Single().Answer is { Current: true, Visible: true } &&
+            scene.HarvestCount == 1, "One harvest and combined classification through the viewport conduit");
+        gh.RemoveObject(second, false);
+        Check(otherSession.LabelScene is null && ReferenceEquals(session.LabelScene, scene) &&
+            !scene.IsDisposed, "Removing one owner keeps the shared scene alive");
 
         var saved = new GH_Archive();
         Check(saved.AppendObject(gh, "Definition"), "Save Labels definition");
@@ -74,6 +89,14 @@ internal static class LabelsBench
         Check(saved.ExtractObject(reopened, "Definition"), "Reopen Labels definition");
         var restored = reopened.Objects.OfType<OverlayComponent>().Single();
         Check(restored.ShowLinkKeys && restored.Params.Input[6].SourceCount == 2, "Restore toggle and Labels wires");
+
+        overlay.Params.Input[6].RemoveAllSources();
+        overlay.ToggleLinkKeys();
+        overlay.ExpireSolution(false);
+        gh.NewSolution(false);
+        Check(session.InspectLabels().Length == 0 && session.LabelScene is null && scene.IsDisposed &&
+            OverlayManager.Binding(overlay.InstanceGuid) is null,
+            "Publication without labels releases the last owner and disposes the viewport scene");
 
         var pointLabels = new LabelsComponent();
         gh.AddObject(pointLabels, false);
@@ -93,13 +116,25 @@ internal static class LabelsBench
         Check(frozen.ReadFromFile(Path.Combine("examples", "hello.gh")) && frozen.ExtractObject(legacy, "Definition"), "Open pre-label fixture");
         var old = legacy.Objects.OfType<OverlayComponent>().Single();
         Check(!old.ShowLinkKeys && old.Params.Input.Count == 7 && old.Params.Input[6].Optional, "Append optional Labels when reopening");
-        var wires = old.Params.Input.Take(6).Select(p => p.Sources.Select(s => s.InstanceGuid).ToArray()).ToArray();
-        Check(wires[0].Length > 0 && wires[1].Length > 0, "Preserve frozen Cards and Links wires");
+        // Ordered Source entries from the frozen archive's param_input chunks.
+        Guid[][] wires =
+        [
+            [new("aafb7038-ca42-4e52-99ec-37f2d0291665")],
+            [new("aca4dea7-6a40-4468-b57f-775271abc82e")],
+            [],
+            [new("3ea64dc0-fc4f-47e7-9332-a64b77dbfa48")],
+            [],
+            []
+        ];
+        Check(MatchesFrozenWires(old), "First read preserves all six frozen input source lists");
         var roundTrip = new GH_Archive();
         using var legacyReopened = new GH_Document();
         Check(roundTrip.AppendObject(legacy, "Definition") && roundTrip.ExtractObject(legacyReopened, "Definition"), "Round-trip pre-label fixture");
-        Check(legacyReopened.Objects.OfType<OverlayComponent>().Single().Params.Input.Take(6)
-            .Select((p, i) => p.Sources.Select(s => s.InstanceGuid).SequenceEqual(wires[i])).All(same => same), "Retain the same wire sources");
+        Check(MatchesFrozenWires(legacyReopened.Objects.OfType<OverlayComponent>().Single()),
+            "Resave preserves all six frozen input source lists");
+
+        bool MatchesFrozenWires(OverlayComponent component) => component.Params.Input.Take(6)
+            .Select((p, i) => p.Sources.Select(s => s.InstanceGuid).SequenceEqual(wires[i])).All(same => same);
     }
 
     private static void CheckAnchors()
@@ -112,9 +147,19 @@ internal static class LabelsBench
         Check(holeAnchor.IsValid && Math.Abs(holeAnchor.DistanceTo(Point3d.Origin) - 3) < 1e-5, "Holed trimmed face projects to inner rim");
         using var box = new BoundingBox(new Point3d(-2, -3, -4), new Point3d(2, 3, 4)).ToBrep();
         var solid = Link.FindAnchor(box, "closed box").Point;
-        Check(solid.IsValid && Math.Abs(Math.Abs(solid.X) - 2) < 1e-5, "Closed solid projects to nearest face");
-        using var mesh = Mesh.CreateFromBrep(box, MeshingParameters.FastRenderMesh).First();
-        Check(Link.FindAnchor(mesh, "box face mesh").Point.IsValid, "Mesh centroid projects onto a triangle");
+        Check(solid.DistanceTo(new Point3d(2, 0, 0)) < 1e-5, "Closed solid projects to the first nearest face (+X)");
+        using var mesh = new Mesh();
+        // Equal parallel triangles put the centroid midway between the two faces.
+        foreach (var z in new[] { 2, -2 })
+        {
+            var first = mesh.Vertices.Count;
+            mesh.Vertices.Add(0, 0, z);
+            mesh.Vertices.Add(6, 0, z);
+            mesh.Vertices.Add(0, 3, z);
+            mesh.Faces.AddFace(first, first + 1, first + 2);
+        }
+        Check(Link.FindAnchor(mesh, "parallel triangles").Point.DistanceTo(new Point3d(2, 1, 2)) < 1e-5,
+            "Off-surface mesh centroid projects to the first nearest triangle");
         var link = new Link(["empty", "multi"], [("multi", (object)new Point3d(4, 3, 2)), ("multi", new Point3d(9, 9, 9))]);
         var spec = LabelSpec.FromLink(link, default);
         Check(spec.Anchors.Single().Point == new Point3d(4, 3, 2) && spec.Remarks.Single().Contains("1 Link"), "Multipart first anchor and empty-key diagnostic");

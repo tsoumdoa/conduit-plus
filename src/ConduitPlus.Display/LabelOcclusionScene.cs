@@ -38,6 +38,8 @@ internal sealed class LabelOcclusionScene : IDisposable
     internal double LastWorkerMilliseconds { get; private set; }
     private string? _meshSettings;
     private bool _disposed;
+    internal bool IsDisposed => _disposed;
+    internal int HarvestCount { get; private set; }
 
     internal LabelOcclusionScene(RhinoDoc document, RhinoViewport view, ILabelOcclusionSources? preview = null)
     {
@@ -256,7 +258,10 @@ internal sealed class LabelOcclusionScene : IDisposable
                 _trees.Remove(key);
         }
         if (!Snapshot.HasValue && _worker is null && _sources is null)
+        {
+            HarvestCount++;
             _sources = sources.GetEnumerator();
+        }
     }
 
     private void StartWorker(MeshingParameters settings)

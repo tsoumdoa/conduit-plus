@@ -310,7 +310,7 @@ internal sealed partial class OverlaySession : IDisposable
         _disposed = true; _conduit.Enabled = false;
         OverlayManager.ForgetInteraction(this);
         HideTooltip(); _tooltipTimer.Dispose();
-        RefreshLabelScene();
+        SetLabels([]);
         _raster.Dispose();
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit
