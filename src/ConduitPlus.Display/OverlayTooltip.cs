@@ -119,6 +119,7 @@ internal sealed partial class OverlaySession
     {
         if (!TooltipAllowed) { HideTooltip(); return; }
         if (!_tooltipReady || _tooltipDisplay is null || _tooltipBitmap is null) return;
+        if (!OverlayManager.PointerInView(View, ConduitPlus.Platform.HostView.PointerScreen)) { HideTooltip(); return; }
         // The bitmap includes the theme's shadow margin on every side; position the tooltip body, not the margin.
         if (TooltipPosition is { } point) display.DrawBitmap(_tooltipDisplay, point.X, point.Y);
     }

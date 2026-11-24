@@ -82,7 +82,7 @@ internal sealed partial class OverlaySession : IDisposable
         _brush = OverlayManager.Snapshot(this);
         specs = ApplyViewState(specs, domain is null ? _brush.SelectedKeys.ToHashSet(StringComparer.Ordinal) : domain.SelectedMemberKeys);
         if (domain is not null)
-        { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.HoveredKeys; }
+        { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.ModelHoveredKeys; }
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);

@@ -359,6 +359,16 @@ internal static class LabelsBench
         OverlayManager.RecheckPointerForChecks();
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey == "point-member" &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).HoverKey == "point-member", "Label hover shares Scope across displays");
+        var outside = new System.Drawing.Point(view.ScreenRectangle.Left - 1, view.ScreenRectangle.Top);
+        OverlayManager.RecheckLabelPointer(view);
+        Check(!OverlayManager.ApplyOutsidePointerForChecks(outside) &&
+            OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey is null,
+            "An outside screen pointer cancels a retained label hover and queued recheck");
+        OverlayManager.MovePointerForChecks(view, new System.Drawing.Point(-10, -10), retainPointer: true);
+        Check(!OverlayManager.ApplyOutsidePointerForChecks(outside) &&
+            OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey is null,
+            "An outside screen pointer drops a pending model dwell");
+        OverlayManager.MovePointerForChecks(view, scopedPointer);
         Check(OverlayManager.ClickForChecks(view, scopedPointer, PointerModifiers.Resolve(true, true, true, false, command: true)) == (true, true), "Scope label click routes to its owner");
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&

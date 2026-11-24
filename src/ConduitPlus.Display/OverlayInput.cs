@@ -85,7 +85,7 @@ public static partial class OverlayManager
         }
         internal void PrepareLabelPointerDispatch()
         {
-            Action<long, bool> apply = ApplyPending;
+            Action<long, bool, System.Drawing.Point?> apply = ApplyPending;
             Action<RhinoView, System.Drawing.Point> move = MoveHover;
             System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(apply.Method.MethodHandle);
             System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(move.Method.MethodHandle);
@@ -117,7 +117,7 @@ public static partial class OverlayManager
             _movePending = true;
             InteractionPump.Wake();
         }
-        internal void ApplyPending(long now, bool syntheticPointer = false)
+        internal void ApplyPending(long now, bool syntheticPointer = false, System.Drawing.Point? screenOverride = null)
         {
             if (_exitPending)
             {
@@ -130,7 +130,7 @@ public static partial class OverlayManager
             foreach (var (target, rows) in wheel)
                 if (!target.Session.IsDisposed && target.Session.Visible) target.Session.ScrollBy(target.Card, rows);
             if (_pointer is not { } p) return;
-            var screen = HostView.PointerScreen;
+            var screen = screenOverride ?? HostView.PointerScreen;
             if (!syntheticPointer && !PointerInView(p.View, screen)) { CancelPending(); ClearPointerHover(); return; }
             if (Interacting || Command.InCommand())
             {
@@ -217,6 +217,7 @@ public static partial class OverlayManager
         }
         protected override void OnMouseMove(MouseCallbackEventArgs e)
         {
+            if (!AcceptHoverPointer(e.View)) return;
             if (HostInput.IsMac) MacView.Observe(e.View, e.ViewportPoint);
             if (_emptyPress is { } press && (!SameView(press.View, e.View) || !CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))) _emptyPress = null;
             if (_gesture is not null)
@@ -252,6 +253,14 @@ public static partial class OverlayManager
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
             ApplyPending(Environment.TickCount64, syntheticPointer: true);
             return System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        }
+
+        private bool AcceptHoverPointer(RhinoView view)
+        {
+            var screen = HostView.PointerScreen;
+            if (PointerInView(view, screen)) return true;
+            ObservePointerWindow(screen);
+            return false;
         }
 
         private void MoveHover(RhinoView view, System.Drawing.Point point)
@@ -382,7 +391,7 @@ public static partial class OverlayManager
             Cancel();
             var consumed = _pressed;
             _pressed = false;
-            if (!Busy) MoveHover(view, point);
+            if (!Busy && AcceptHoverPointer(view)) MoveHover(view, point);
             Enabled = Sessions.Count > 0;
             return consumed;
         }
@@ -424,6 +433,11 @@ public static partial class OverlayManager
     }
 
     internal static void RecheckPointerForChecks() => Mouse.ApplyPending(Environment.TickCount64, syntheticPointer: true);
+    internal static bool ApplyOutsidePointerForChecks(System.Drawing.Point screen)
+    {
+        Mouse.ApplyPending(Environment.TickCount64 + 1000, screenOverride: screen);
+        return Mouse.HasPointer;
+    }
 
     /// <summary>Which wheel/pointer route is active (diagnostics).</summary>
     internal static string InputRoute => HostInput.IsMac ? $"AppKit local event monitor: {MacDiagnostics.MonitorStatus ?? "not installed"}"

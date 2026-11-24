@@ -47,6 +47,7 @@ internal static class ScopeHostChecks
         Flush();
         Require(binding.Current.HoverOrigin?.Surface == "canvas", "Canvas hover origin missing.");
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).HoveredKeys.Contains("R01"), "Canvas hover did not reach Overlay.");
+        Require(!ModelMembers("_hoveredMembers").Contains("R01"), "Canvas hover reached model geometry or label activity.");
         state.CancelHover();
         var labels = (LabelPlacement[])scene.GetType().GetMethod("InspectFrame", Internal)!.Invoke(scene, [])!;
         var dpi = (double)typeof(OverlayManager).Assembly.GetType("ConduitPlus.Rhino.UiContext")!
@@ -63,6 +64,11 @@ internal static class ScopeHostChecks
         CheckStationary("model", () => hover.Invoke(null, [labelSession, "R01", true, null]),
             () => clearHover.Invoke(null, [labelSession, true]));
         CheckStationary(null, () => { }, () => { });
+        hover.Invoke(null, [labelSession, "R01", true, null]);
+        Flush();
+        Require(ModelMembers("_hoveredMembers").Contains("R01"), "Viewport model hover did not reach model geometry and label activity.");
+        clearHover.Invoke(null, [labelSession, true]);
+        completed.Add("Canvas hover reaches Overlay cards while only viewport hover reaches model geometry and label activity");
         completed.Add("Stationary pointer acquires a published label only when Canvas, card and model hovers leave it unclaimed");
 
         void CheckStationary(string? surface, Action claim, Action release)
@@ -88,6 +94,7 @@ internal static class ScopeHostChecks
         Require(solves == before && binding.Current.SelectedKeys.SequenceEqual(["R01"]), "Canvas action did not commit without solving.");
         Flush();
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).SelectedKeys.SequenceEqual(["R01"]), "Canvas selection did not repaint Overlay.");
+        Require(ModelMembers("_selectedMembers").Contains("R01"), "Canvas selection did not reach model geometry and label activity.");
         gh.NewSolution(false);
         Require(solves == before + 1, "Canvas action did not coalesce into one solution.");
         Require(Output(canvas, 0).SequenceEqual(["R01"]) && Output(overlay, 0).SequenceEqual(["R01"]), "Scope Selection output differs between hosts.");
@@ -334,6 +341,8 @@ internal static class ScopeHostChecks
             Require(canvasOrigin == "canvas" && overlayHovered.Contains("R01"),
                 $"Label frame or export displaced Canvas hover (origin {canvasOrigin}, Overlay keys {string.Join(", ", overlayHovered)}).");
         }
+        IReadOnlySet<string> ModelMembers(string field) =>
+            (IReadOnlySet<string>)labelSession.GetType().GetField(field, Internal)!.GetValue(labelSession)!;
         void ForgetPointer() => manager.GetMethod("MovePointerForChecks", Static)!.Invoke(null, [view, empty, false]);
         void Flush() => typeof(OverlayManager).GetNestedType("InteractionPump", Static)!
             .GetMethod("Flush", Static)!.Invoke(null, [true]);

@@ -28,6 +28,9 @@ public sealed record BrushDomainSnapshot(long Version, long SelectionRevision, l
 {
     public long MembershipRevision => Membership.Revision;
 
+    public FrozenSet<string> ModelHoveredKeys => HoverOrigin?.Surface is "model" or "card" or "label"
+        ? HoveredKeys : FrozenSet<string>.Empty;
+
     public CardSpec[] Project(IEnumerable<CardSpec> cards) => cards.Select(c =>
     {
         var keys = BrushState.Keys(c).ToArray();
