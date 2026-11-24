@@ -15,6 +15,23 @@ namespace ConduitPlus.Rhino;
 
 internal static class LabelsBench
 {
+    /// <summary>A GH-editor-like topmost window inside the view's screen rectangle must own the pointer.</summary>
+    private static void CheckFrontmostWindowOverView(RhinoView view)
+    {
+        var rect = view.ScreenRectangle;
+        var inside = new System.Drawing.Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+        using var editor = new System.Windows.Forms.Form
+        {
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.None, ShowInTaskbar = false, TopMost = true,
+            StartPosition = System.Windows.Forms.FormStartPosition.Manual, Bounds = new(inside.X - 20, inside.Y - 20, 40, 40),
+        };
+        editor.Show();
+        RhinoApp.Wait();
+        Check(rect.Contains(inside) && !OverlayManager.PointerInView(view, inside) && !OverlayManager.AcceptHoverForChecks(view, inside),
+            "A window in front of the view rejects pointer ownership and hover intake inside the view rectangle");
+        editor.Close();
+    }
+
     internal static void Run(RhinoDoc doc, RhinoView view, Action pump, bool benchmark = true)
     {
         CheckAnchors();
@@ -359,7 +376,10 @@ internal static class LabelsBench
         OverlayManager.RecheckPointerForChecks();
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey == "point-member" &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).HoverKey == "point-member", "Label hover shares Scope across displays");
-        var outside = new System.Drawing.Point(view.ScreenRectangle.Left - 1, view.ScreenRectangle.Top);
+        // Far outside every screen on both platforms (macOS decodes quarter-point AppKit coordinates).
+        var outside = new System.Drawing.Point(-1_000_000, -1_000_000);
+        Check(!OverlayManager.AcceptHoverForChecks(view, outside), "Hover intake rejects a move whose live pointer is outside the view");
+        CheckFrontmostWindowOverView(view);
         OverlayManager.RecheckLabelPointer(view);
         Check(!OverlayManager.ApplyOutsidePointerForChecks(outside) &&
             OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey is null,

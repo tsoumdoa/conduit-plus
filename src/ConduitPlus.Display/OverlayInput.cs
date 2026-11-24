@@ -255,9 +255,9 @@ public static partial class OverlayManager
             return System.Diagnostics.Stopwatch.GetElapsedTime(started);
         }
 
-        private bool AcceptHoverPointer(RhinoView view)
+        internal bool AcceptHoverPointer(RhinoView view, System.Drawing.Point? screenOverride = null)
         {
-            var screen = HostView.PointerScreen;
+            var screen = screenOverride ?? HostView.PointerScreen;
             if (PointerInView(view, screen)) return true;
             ObservePointerWindow(screen);
             return false;
@@ -433,6 +433,8 @@ public static partial class OverlayManager
     }
 
     internal static void RecheckPointerForChecks() => Mouse.ApplyPending(Environment.TickCount64, syntheticPointer: true);
+    /// <summary>Hover intake for a MouseCallback move whose live screen pointer is <paramref name="screen"/>.</summary>
+    internal static bool AcceptHoverForChecks(RhinoView view, System.Drawing.Point screen) => Mouse.AcceptHoverPointer(view, screen);
     internal static bool ApplyOutsidePointerForChecks(System.Drawing.Point screen)
     {
         Mouse.ApplyPending(Environment.TickCount64 + 1000, screenOverride: screen);
