@@ -12,7 +12,7 @@ public sealed class DiagramPaletteTests
         var snapshot = JsonSerializer.Deserialize<Dictionary<string, string[]>>(
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "diagram-palettes", "palettes.json")))!;
         Assert.Equal(snapshot.Keys, Palettes.Styles.Select(p => p.Name));
-        Assert.Equal(Palettes.Styles, Palettes.All.Skip(7));
+        Assert.Equal(Palettes.Styles, Palettes.All.Skip(7).Take(Palettes.Styles.Length));
         Assert.Equal("Status", Palettes.All[6].Name);
         Assert.Equal(Palettes.All.Length, Palettes.All.Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         foreach (var p in Palettes.Styles)

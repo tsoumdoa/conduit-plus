@@ -38,7 +38,7 @@ public static partial class OverlayManager
         internal static void Forget(OverlaySession session) => Updates.Remove(session);
         internal static void Reset() { Timer.Stop(); Updates.Clear(); Redraws.Clear(); }
 
-        internal static void Flush()
+        internal static void Flush(bool syntheticPointer = false)
         {
             if (_flushing) return;
             Timer.Stop();
@@ -48,7 +48,7 @@ public static partial class OverlayManager
             {
                 // Commands/captures can pump Windows messages. Leave their synchronous raster state alone.
                 if (Busy) { Mouse.CancelPending(); return; }
-                Mouse.ApplyPending(Environment.TickCount64);
+                Mouse.ApplyPending(Environment.TickCount64, syntheticPointer);
                 foreach (var session in Updates.Take())
                 {
                     if (!_started || _stopping) return;

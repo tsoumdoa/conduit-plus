@@ -82,7 +82,7 @@ internal sealed partial class OverlaySession : IDisposable
         _brush = OverlayManager.Snapshot(this);
         specs = ApplyViewState(specs, domain is null ? _brush.SelectedKeys.ToHashSet(StringComparer.Ordinal) : domain.SelectedMemberKeys);
         if (domain is not null)
-        { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.HoveredKeys; }
+        { _selectedMembers = domain.SelectedMemberKeys; _hoveredMembers = domain.ModelHoveredKeys; }
         var dirty = _store.Update(specs, Theme);
         var next = _store.Snapshot;
         if (!preserveGesture && (dirty.Count > 0 || !Cards.Select(c => c.Id).SequenceEqual(next.Select(c => c.Id)))) OverlayManager.CancelGesture(this);
@@ -102,6 +102,11 @@ internal sealed partial class OverlaySession : IDisposable
         if (_disposed || Theme == ResolveTheme()) return;
         Update(Cards);
         OverlayManager.Settle(Document, View);
+    }
+
+    internal void ResolveDrawTheme()
+    {
+        if (Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
     }
 
     private Theme ResolveTheme() => RhinoTheme.ForViewport(_themeSelection, View.MainViewport, Document);
@@ -225,17 +230,18 @@ internal sealed partial class OverlaySession : IDisposable
         try { Update(Cards, true); }
         catch (Exception e) { RhinoApp.WriteLine($"Conduit+ interaction: {e.Message}"); }
     }
-    internal void Draw(DrawEventArgs e) => DrawCards(e, false);
+    internal void Draw(DrawEventArgs e, bool highlights = true) => DrawCards(e, false, highlights);
+    internal void DrawCaptureHighlights(DisplayPipeline display) => DrawHighlights(display, false);
     internal void DrawFloating(DrawEventArgs e) => DrawCards(e, true);
-    private void DrawCards(DrawEventArgs e, bool floatingOnly)
+    private void DrawCards(DrawEventArgs e, bool floatingOnly, bool highlights = true)
     {
         if (_disposed || !Visible || e.RhinoDoc.RuntimeSerialNumber != Document.RuntimeSerialNumber || e.Viewport.Id != View.MainViewport.Id) return;
         // Direct ViewCapture/PDF can run before the next UI tick. Consume already committed interaction
         // state synchronously, without pumping input or redrawing, before preparing capture-scale pixels.
         if (e.Display.IsInViewCapture && OverlayManager.HasPendingInteraction(this)) Update(Cards, preserveGesture: true);
         // Display-mode background edits need not raise Rhino's UI appearance event.
-        if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
-        if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
+        if (!e.Display.IsInViewCapture) ResolveDrawTheme();
+        if (!floatingOnly && highlights) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);
         // Rhino's viewport Size remains the source view size during ViewCapture.
@@ -310,6 +316,7 @@ internal sealed partial class OverlaySession : IDisposable
         _disposed = true; _conduit.Enabled = false;
         OverlayManager.ForgetInteraction(this);
         HideTooltip(); _tooltipTimer.Dispose();
+        SetLabels([]);
         _raster.Dispose();
     }
     private sealed class SessionConduit(OverlaySession session) : DisplayConduit

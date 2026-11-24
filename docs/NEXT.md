@@ -38,8 +38,9 @@ For the full Canvas Card checks, wire each card kind from these files into its o
 2. **Use it on a real project.** Build a dashboard from real analysis output (e.g. Karamba) and note what's awkward. That feedback should drive the next items more than this list does.
 3. **Small fixes the testing will probably ask for** (open findings: [ux-notes.md](ux-notes.md))
    - Bar: optional "worst first" sort and a "show top N" limit for long member lists.
-4. **Pins.** Labels anchored to 3D points (e.g. a utilisation tag at each member's midpoint), drawn by the same raster path and clickable through Link keys.
-5. **Release 0.2.0 (stable), after the live checks.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
+4. **Release 0.2.0 (stable), after the live checks.** Run `./tools/Pack-Yak.ps1 -Version 0.2.0` (bumps, commits, builds, tests, packages) and test the exact `.yak` locally. Follow [the release workflow](releasing.md), including its checksum/validation record. (Never run `tools/Publish-Yak.ps1 -Server Public` without the owner's go-ahead.)
+
+Pins are implemented as [Labels](design/labels.md), with Link keys, explicit 3D anchors and viewport export.
 
 ## Later (v1 interactive, from PLAN.md)
 - **Inputs.** Viewport controls bound to GH sliders/toggles (commit on release, one undo step).

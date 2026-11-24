@@ -201,6 +201,25 @@ The Preview menu, Hide/Show Selected, preview shortcuts and native undo/redo all
 Hidden is saved in the definition; older files without that flag open visible.
 GH's document-wide preview mode (off or selected only) does not control these cards.
 
+Connect Geometry and Keys to a **Link**, wire it to Overlay, then turn on
+**Show Link keys** in Overlay's menu. For styled labels, wire **Labels** to
+Overlay's **Labels** input. **Labels** takes either a **Link** with optional
+**Text** overrides, or **Points** and **Text** with optional **Keys**. Use
+**Short text**, **Colours** and **Priority** to set the compact name, swatch
+and placement order. A styled specification takes precedence over automatic
+labels for the same Link. See [room-areas.gh](examples/room-areas.gh) for
+swatches driven by Colour Scale.
+
+Labels avoid cards and nearby labels, falling back to short text, dots or
+suppression. Filled Rhino geometry and shaded Grasshopper preview can hide
+anchors. Selected hidden labels appear faded where they fit. Hover a dot to
+expand it. Click a keyed label to select its member using the card selection
+modifiers, including across displays wired to the same Scope. Use
+**Clear selection** in Overlay's menu to clear it.
+
+PNG capture and vector PDF include settled labels for visible Overlays,
+retain selection and omit hover. **Copy card as image** remains card-only.
+
 ## Canvas Overlay
 
 Use **Conduit+ → Display → Canvas Overlay** for cards that stay fixed in the Grasshopper
@@ -337,20 +356,25 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
 
 Maps numbers to colours and a finished ordinary Legend. Colours can also feed
-Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
-of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
+Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Set either bound by typing or wiring;
 set both for a legend with no Values. Out-of-range values use the end colours unless
 you set **Below** and/or **Above**. Each supplied colour adds an outward triangular
 cap to that end of the legend. Values equal to Min/Max still use the gradient endpoints.
 Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
 a remark. Constant finite data gets a single-colour legend at that value.
 
+Right-click **Colour Scale → Range** to choose how unset Min and Max are found.
+**Auto (rounded)** uses the outer nice ticks of the finite data (3.2–37 becomes 0–40) and is the default. **Exact data min/max** uses
+finite data extrema. **Clip outliers** uses the selected **Clip at** percentile
+at each end (1%, 2% by default, or 5%). Explicit bounds still set their own ends.
+The range settings are saved with the component and support Undo.
+
 | Colour Scale input | Nick | Access | Default / meaning |
 |---|---|---|---|
 | Values | V | Number tree, optional | Numbers to colour; one scale across branches. |
 | Palette | P | Text tree, flattened, optional | Blue; right-click a name, or wire 2–32 colours. |
-| Min | Mn | Number, optional | Nice floor of the finite data; value at the first colour. |
-| Max | Mx | Number, optional | Nice ceiling of the finite data; value at the last colour. |
+| Min | Mn | Number, optional | Value at the first colour. The Range menu supplies the default. |
+| Max | Mx | Number, optional | Value at the last colour. The Range menu supplies the default. |
 | Mid | Md | Number, optional | Centre, except diverging/Status ranges spanning zero use 0. Must be strictly between Min and Max. |
 | Unit | U | Text | Empty; shown on the legend. |
 | Title | T | Text | Legend. |
@@ -425,6 +449,12 @@ To use a GH Gradient, wire its sampled colours and set the same Min/Max explicit
 | Blue–Red | `#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726` |
 | Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
 | Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
+
+The Palette input menu also includes these ordered groups:
+
+- **Perceptual** — Viridis, Magma, Cividis, Greys, Greens.
+- **Diverging** — Red–Yellow–Green, Brown–Teal, Orange–Purple, Spectral.
+- **Analysis-style** — Daylight, Solar, Comfort, Wind.
 
 **Diagram styles / Colour Palette (`ColPal`)**
 

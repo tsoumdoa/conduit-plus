@@ -96,7 +96,11 @@ public static partial class OverlayManager
                 if (type is AppKit.KeyDown or AppKit.KeyUp)
                 {
                     if (AppKit.KeyCode(e) == AppKit.EscapeKeyCode) MacEscape.Down = type == AppKit.KeyDown;
-                    if (_started && !Busy && Sessions.Count > 0 && MacEscape.Down) Mouse.CheckScrollGesture(MacView.CurrentScreen());
+                    if (_started && !Busy && Sessions.Count > 0 && MacEscape.Down)
+                    {
+                        Mouse.CloseLabelHover();
+                        Mouse.CheckScrollGesture(MacView.CurrentScreen());
+                    }
                     return e;
                 }
                 if (type == AppKit.ScrollWheel)

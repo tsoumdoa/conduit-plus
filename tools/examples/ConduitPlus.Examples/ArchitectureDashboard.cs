@@ -119,15 +119,19 @@ internal static class ArchitectureDashboard
                     finally { session.GetType().GetMethod("SetLinks", Instance)!.Invoke(session, [links]); }
                 }
                 // Last row starts outside the room table's visible range. Selection must reveal it after a sort too.
+                void PresentInteraction() => session.GetType().GetMethod("ApplyInteraction", Instance)!.Invoke(session, null);
                 var table = cards.Single(c => c.Kind == CardKind.Table);
                 var key = centres[^1].Key;
                 session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]);
+                PresentInteraction();
                 var selectedTable = ((CardSpec[])Get(session, "Cards")).Single(c => c.Id == table.Id);
                 Require(TableSort.Rows(selectedTable).Skip(TableScroll.Offset(selectedTable)).Take(TableScroll.Visible(selectedTable)).Any(r => r.Key == key), "Model selection did not reveal table row.");
                 session.GetType().GetMethod("Sort", Instance)!.Invoke(session, [table.Id, 0]);
                 session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]); // deselect
+                PresentInteraction();
                 session.GetType().GetMethod("ScrollTo", Instance)!.Invoke(session, [table.Id, 0]);
                 session.GetType().GetMethod("Select", Instance)!.Invoke(session, ["model", key, BrushSelectMode.Toggle]);
+                PresentInteraction();
                 selectedTable = ((CardSpec[])Get(session, "Cards")).Single(c => c.Id == table.Id);
                 Require(TableSort.Rows(selectedTable).Skip(TableScroll.Offset(selectedTable)).Take(TableScroll.Visible(selectedTable)).Any(r => r.Key == key), "Sorted table did not reveal selection.");
                 // Exercise the reverse direction too: a table row toggles the same model key.
@@ -143,6 +147,11 @@ internal static class ArchitectureDashboard
                 }
                 var result = Path.Combine(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!, name); Directory.CreateDirectory(result);
                 File.WriteAllText(Path.Combine(result, "example.json"), CardJson.Serialize(new { path, objects = gh.ObjectCount, warnings = messages, theme = theme.Name, cards = cards.Select(c => c.Title), metrics = metrics.Select(c => new { c.Title, c.Value }), faceInteriorHits = centres.Length, proxyFaceInteriorHits = rooms ? 0 : 2, selectionRevealed = key, tableToModelSelection = true }));
+                if (rooms && args.Contains("--review-capture-checks") && !args.Contains("--exports"))
+                {
+                    ExportInputChecks.CheckFailedLabelCapture(doc, view, session);
+                    return;
+                }
                 var groupState = args[Array.IndexOf(args, "--state") + 1];
                 if (args.Contains("--exports") && groupState != "scope" && !groupState.StartsWith("group", StringComparison.Ordinal))
                 {
@@ -158,12 +167,24 @@ internal static class ArchitectureDashboard
                         // The selected face centre is far from any edge: neutral alpha proves the white wash.
                         var point = centres[^1].Point; point.Transform(view.ActiveViewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen));
                         using var png = new Bitmap(Path.Combine(result, "captures", $"raster-{scale}x.png"));
+                        if (rooms)
+                        {
+                            var dot = png.GetPixel((int)Math.Round(point.X * scale), (int)Math.Round(point.Y * scale));
+                            Require(dot.A > 220, "Missing label dot at selected room anchor.");
+                            Console.WriteLine($"PNG {scale}x selected room label dot at ({point.X:F2}, {point.Y:F2}): {dot}.");
+                            point.Y += 14;
+                        }
                         var pixel = png.GetPixel((int)Math.Round(point.X * scale), (int)Math.Round(point.Y * scale));
                         Require(Math.Abs(pixel.A - (rooms ? 51 : 92)) <= 10 && Math.Abs(pixel.R - pixel.G) <= 3 && Math.Abs(pixel.G - pixel.B) <= 3,
                             "Selected face interior needs a neutral 20% white wash.");
                         File.WriteAllText(Path.Combine(result, "surface-check.json"), CardJson.Serialize(new { key, x = point.X, y = point.Y, pixel.R, pixel.G, pixel.B, pixel.A }));
                     }
                     finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); foreach (var g in geometry) g.Dispose(); }
+                }
+                if (rooms && args.Contains("--exports"))
+                {
+                    ExportInputChecks.Run(doc, view);
+                    if (args.Contains("--review-capture-checks")) return;
                 }
                 if (rooms) ScopeHostChecks.Run(gh, doc, view, result, args.Contains("--exports") && groupState == "scope");
                 session = ((Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!).Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
@@ -212,6 +233,15 @@ internal static class ArchitectureDashboard
 
         if (rooms)
         {
+            typeof(ConduitPlus.Grasshopper.OverlayComponent).GetProperty("ShowLinkKeys", Instance)!.SetValue(overlay, true);
+            var colours = Add(new ConduitPlus.Grasshopper.ColourScaleComponent(), 1050, 540);
+            Wire(colours, 0, demo.Params.Output[3]);
+            var labels = Add(new ConduitPlus.Grasshopper.LabelsComponent(), 1050, 660);
+            Wire(labels, 0, link.Params.Output[0]);
+            Wire(labels, 5, colours.Params.Output[0]);
+            Wire(labels, 6, demo.Params.Output[3]);
+            Wire(overlay, 6, labels.Params.Output[0]);
+            Group("Room labels - area margin", [colours, labels]);
             var scope = Add(new ConduitPlus.Grasshopper.ScopeComponent(), 1340, 1030);
             Text(scope, 0, "Room review"); Wire(overlay, 3, scope.Params.Output[0]);
             var canvas = Add(new ConduitPlus.Grasshopper.CanvasCardComponent(), 1700, 750);

@@ -27,17 +27,74 @@ internal static class ScopeHostChecks
         var binding = (ScopeBinding)canvas.GetType().GetField("_scope", Internal)!.GetValue(canvas)!;
         var original = state.Spec!;
         var completed = new List<string>();
+        var labelSession = Session(overlay);
+        var scene = labelSession.GetType().GetField("_labelView", Internal)!.GetValue(labelSession)!;
+        var frameComplete = scene.GetType().GetField("_frameComplete", Internal)!;
+        for (var i = 0; i < 100 && !(bool)frameComplete.GetValue(scene)!; i++)
+        {
+            RhinoApp.Wait();
+            view.Redraw();
+            Thread.Sleep(10);
+        }
+        Require((bool)frameComplete.GetValue(scene)!, "Initial label frame did not publish.");
+        var empty = new System.Drawing.Point(view.MainViewport.Size.Width / 2, 1);
+        var manager = typeof(OverlayManager);
         var solves = 0; gh.SolutionEnd += (_, _) => solves++;
         state.Activate(CardMeasure.ClearKey, BrushSelectMode.Toggle); gh.NewSolution(false);
         var before = solves;
         state.Hover("R01"); state.Scroll(2); state.Activate(TableSort.Key(0), BrushSelectMode.Toggle);
         Require(solves == before, "Hover/sort/scroll solved synchronously.");
+        Flush();
         Require(binding.Current.HoverOrigin?.Surface == "canvas", "Canvas hover origin missing.");
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).HoveredKeys.Contains("R01"), "Canvas hover did not reach Overlay.");
+        Require(!ModelMembers("_hoveredMembers").Contains("R01"), "Canvas hover reached model geometry or label activity.");
+        state.CancelHover();
+        var labels = (LabelPlacement[])scene.GetType().GetMethod("InspectFrame", Internal)!.Invoke(scene, [])!;
+        var dpi = (double)typeof(OverlayManager).Assembly.GetType("ConduitPlus.Rhino.UiContext")!
+            .GetMethod("Dpi")!.Invoke(null, [view])!;
+        var pick = labelSession.GetType().GetMethod("PickLabel", Static)!;
+        var pointer = labels.Select(label => new System.Drawing.Point((int)Math.Round((label.Dot.X + label.Dot.Width / 2) * dpi),
+                (int)Math.Round((label.Dot.Y + label.Dot.Height / 2) * dpi)))
+            .First(point => pick.Invoke(null, [view, point, false]) is not null);
+        var hover = manager.GetMethod("Hover", Static)!;
+        var clearHover = manager.GetMethod("ClearHover", Static)!;
+        CheckStationary("canvas", () => state.Hover("R01"), state.CancelHover);
+        CheckStationary("card", () => hover.Invoke(null, [labelSession, "R01", false, original.Id]),
+            () => clearHover.Invoke(null, [labelSession, false]));
+        CheckStationary("model", () => hover.Invoke(null, [labelSession, "R01", true, null]),
+            () => clearHover.Invoke(null, [labelSession, true]));
+        CheckStationary(null, () => { }, () => { });
+        hover.Invoke(null, [labelSession, "R01", true, null]);
+        Flush();
+        Require(ModelMembers("_hoveredMembers").Contains("R01"), "Viewport model hover did not reach model geometry and label activity.");
+        clearHover.Invoke(null, [labelSession, true]);
+        completed.Add("Canvas hover reaches Overlay cards while only viewport hover reaches model geometry and label activity");
+        completed.Add("Stationary pointer acquires a published label only when Canvas, card and model hovers leave it unclaimed");
+
+        void CheckStationary(string? surface, Action claim, Action release)
+        {
+            Call(scene, "InvalidateLabelInput");
+            manager.GetMethod("MovePointerForChecks", Static)!.Invoke(null, [view, pointer, true]);
+            Require(pick.Invoke(null, [view, pointer, false]) is null, "Label input was already published.");
+            claim();
+            var previous = binding.Current.HoverOrigin;
+            if (surface is not null) Require(previous is not null && binding.Current.HoveredKeys.Contains("R01"),
+                $"Could not establish the {surface} hover.");
+            Call(scene, "PublishLabelInput");
+            Require(pick.Invoke(null, [view, pointer, false]) is not null, "Published label is not hittable.");
+            manager.GetMethod("RecheckPointerForChecks", Static)!.Invoke(null, []);
+            if (surface is null) Require(binding.Current.HoverOrigin?.Surface == "label", "Unclaimed pointer did not acquire label.");
+            else Require(binding.Current.HoverOrigin == previous && binding.Current.HoveredKeys.Contains("R01"),
+                $"Label publication displaced {surface} hover.");
+            release();
+            ForgetPointer();
+        }
         state.CancelHover();
         state.Activate("R01", BrushSelectMode.Toggle);
         Require(solves == before && binding.Current.SelectedKeys.SequenceEqual(["R01"]), "Canvas action did not commit without solving.");
+        Flush();
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).SelectedKeys.SequenceEqual(["R01"]), "Canvas selection did not repaint Overlay.");
+        Require(ModelMembers("_selectedMembers").Contains("R01"), "Canvas selection did not reach model geometry and label activity.");
         gh.NewSolution(false);
         Require(solves == before + 1, "Canvas action did not coalesce into one solution.");
         Require(Output(canvas, 0).SequenceEqual(["R01"]) && Output(overlay, 0).SequenceEqual(["R01"]), "Scope Selection output differs between hosts.");
@@ -52,6 +109,7 @@ internal static class ScopeHostChecks
         Call(Session(second), "Select", "model", "R02", BrushSelectMode.Toggle);
         Require(binding.Current.EventRevision == events + 1, "Winning model owner emitted more than one action.");
         Require(state.Spec!.SelectedKeys.Order().SequenceEqual(new[] { "R01", "R02" }), "Model action did not project onto Canvas.");
+        Flush();
         Require(Cards(Session(overlay)).Single(c => c.Id == original.Id).SelectedKeys.Order().SequenceEqual(new[] { "R01", "R02" }), "Second Overlay did not share state.");
         gh.NewSolution(false);
         Require(Output(second, 0).SequenceEqual(Output(canvas, 0)) && Output(second, 1).SequenceEqual(Output(overlay, 1)), "Shared Overlay outputs/history differ.");
@@ -159,11 +217,24 @@ internal static class ScopeHostChecks
         {
             view.ActiveViewport.ZoomBoundingBox(new BoundingBox(-18, -18, -1, 38, 34, 1)); view.Redraw();
             var session = Session(overlay);
+            manager.GetMethod("MovePointerForChecks", Static)!.Invoke(null, [view, empty, true]);
+            state.Hover("R01");
+            Flush();
+            CheckCanvasHover();
             var previousOutput = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS");
             try
             {
                 Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", output);
                 ExportChecks.Run(doc, view, session, Cards(session), output, true, 1);
+                Flush();
+                CheckCanvasHover();
+                CheckLabelExports(session);
+                Require(new FileInfo(Path.Combine(output, "captures", "overlay-vector.pdf")).Length > 0,
+                    "Scope PDF export wrote no data.");
+                Flush();
+                CheckCanvasHover();
+                ForgetPointer();
+                state.CancelHover();
             }
             finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previousOutput); }
             File.Copy(Path.Combine(output, "captures", "raster-1x.png"), Path.Combine(output, "scope-viewport-1x.png"), true);
@@ -176,15 +247,139 @@ internal static class ScopeHostChecks
             // Avoid disposing GH's definition through the temporary export control.
             control.Document = null;
             gh.Enabled = true; gh.Context = GH_DocumentContext.Loaded;
-            completed.Add("1x GH export and viewport PNG of the same selected R01");
+            completed.Add("1x GH export and viewport PNG of the same selected R01; Canvas hover survives PNG and PDF export");
         }
         File.WriteAllText(Path.Combine(output, "scope-checks.json"), CardJson.Serialize(completed));
         Console.WriteLine(string.Join(Environment.NewLine, completed));
 
+        void CheckSlowExport(object session)
+        {
+            var occlusion = Get(session, "LabelScene");
+            Call(occlusion, "Invalidate");
+            Call(occlusion, "ScanSources");
+            var sources = occlusion.GetType().GetField("_sources", Internal)!;
+            var actual = (IEnumerator<KeyValuePair<object, Func<IEnumerable<GeometryBase>>>>)sources.GetValue(occlusion)!;
+            sources.SetValue(occlusion, SlowSources(actual).GetEnumerator());
+            var composeCount = 0;
+            var command = typeof(ConduitPlusCapture).Assembly.GetType("ConduitPlus.Rhino.CommandRunner")!;
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            command.GetMethod("RunExport", Static)!.Invoke(null, [doc, view, (Action)(() =>
+            {
+                ConduitPlusPdf.RunAutomated(doc, view);
+                composeCount++;
+            })]);
+            Require(composeCount == 0, "Export composed synchronously during a slow harvest.");
+            while (composeCount == 0 && stopwatch.Elapsed < TimeSpan.FromSeconds(45))
+            {
+                Thread.Sleep(15);
+                Call(occlusion, "Continue", null, EventArgs.Empty);
+            }
+            Require(composeCount == 1 && stopwatch.Elapsed.TotalSeconds > 10, "Slow export did not compose once after harvest.");
+            Console.WriteLine($"Slow harvest exported after {stopwatch.Elapsed.TotalSeconds:F1}s.");
+
+            static IEnumerable<KeyValuePair<object, Func<IEnumerable<GeometryBase>>>> SlowSources(
+                IEnumerator<KeyValuePair<object, Func<IEnumerable<GeometryBase>>>> originalSources)
+            {
+                using (originalSources)
+                {
+                    while (originalSources.MoveNext()) yield return originalSources.Current;
+                    for (var i = 0; i < 560; i++)
+                    {
+                        Thread.Sleep(4);
+                        yield return new(new object(), () => []);
+                    }
+                }
+            }
+        }
+
+        void CheckLabelExports(object session)
+        {
+            const string sentinel = "VQ Label 479";
+            const int swatch = unchecked((int)0xffd02060);
+            var field = session.GetType().GetField("_labels", Internal)!;
+            var originalLabels = (Array)field.GetValue(session)!;
+            var type = originalLabels.GetType().GetElementType()!;
+            var anchor = originalLabels.GetValue(0)!;
+            var source = new LabelSource(Guid.NewGuid(), "export fixture");
+            var testLabels = Array.CreateInstance(type, 1);
+            testLabels.SetValue(Activator.CreateInstance(type, [source, null, 0, Get(anchor, "Point"),
+                new LabelStyle(sentinel, null, sentinel, swatch, 100)]), 0);
+            var captures = Path.Combine(output, "captures");
+            var spare = Guid.NewGuid();
+            try
+            {
+                Call(session, "SetLabels", testLabels);
+                CheckSlowExport(session);
+                var frameType = typeof(OverlayManager).Assembly.GetType("ConduitPlus.Rhino.LabelExportFrame")!;
+                using var frame = (IDisposable)session.GetType().GetMethod("SnapshotLabels", Static)!
+                    .Invoke(null, [doc, view, 1d, false])!;
+                var glyphs = (List<(LabelRasterKey Key, Rect2 Bounds, string? Accent)>)frameType
+                    .GetField("_glyphs", Internal)!.GetValue(frame)!;
+                var pill = glyphs.Single(g => g.Key.Text == sentinel).Bounds;
+                var dot = glyphs.Single(g => g.Key.Form == LabelForm.Dot).Bounds;
+                File.WriteAllText(Path.Combine(captures, "label-check.json"), CardJson.Serialize(new { sentinel, dpi, pill, dot }));
+                File.Move(Path.Combine(captures, "overlay-vector.pdf"), Path.Combine(captures, "label-on.pdf"), true);
+                OverlayManager.Set(doc, view, spare, [original with { Title = "Preview off control" }]);
+                session.GetType().GetProperty("Visible", Internal)!.SetValue(session, false);
+                ConduitPlusPdf.RunAutomated(doc, view);
+                File.Move(Path.Combine(captures, "overlay-vector.pdf"), Path.Combine(captures, "preview-off.pdf"), true);
+                File.Move(Path.Combine(captures, "label-on.pdf"), Path.Combine(captures, "overlay-vector.pdf"), true);
+                WriteOpacityFixture(frameType, captures, swatch);
+            }
+            finally
+            {
+                session.GetType().GetProperty("Visible", Internal)!.SetValue(session, true);
+                Call(session, "SetLabels", originalLabels);
+                OverlayManager.Remove(spare);
+            }
+        }
+
+        void CheckCanvasHover()
+        {
+            var canvasOrigin = state.Current.HoverOrigin?.Surface;
+            var overlayHovered = Cards(Session(overlay)).Single(c => c.Id == original.Id).HoveredKeys;
+            Require(canvasOrigin == "canvas" && overlayHovered.Contains("R01"),
+                $"Label frame or export displaced Canvas hover (origin {canvasOrigin}, Overlay keys {string.Join(", ", overlayHovered)}).");
+        }
+        IReadOnlySet<string> ModelMembers(string field) =>
+            (IReadOnlySet<string>)labelSession.GetType().GetField(field, Internal)!.GetValue(labelSession)!;
+        void ForgetPointer() => manager.GetMethod("MovePointerForChecks", Static)!.Invoke(null, [view, empty, false]);
+        void Flush() => typeof(OverlayManager).GetNestedType("InteractionPump", Static)!
+            .GetMethod("Flush", Static)!.Invoke(null, [true]);
         T Add<T>(T obj) where T : IGH_DocumentObject { obj.CreateAttributes(); gh.AddObject(obj, false); return obj; }
         object[] Sessions() => ((Array)typeof(OverlayManager).GetMethod("InView", Static)!.Invoke(null, [doc, view])!).Cast<object>().ToArray();
         object Session(OverlayComponent owner) => Sessions().Single(s => (Guid)Get(s, "Owner") == owner.InstanceGuid);
     }
+    private static void WriteOpacityFixture(Type frameType, string output, int swatch)
+    {
+        const double scale = 4;
+        const string accent = "#2458A0";
+        using var frame = (IDisposable)Activator.CreateInstance(frameType, [scale])!;
+        using var image = new Bitmap(480, 160);
+        using var graphics = Graphics.FromImage(image);
+        graphics.Clear(Color.White);
+        var pdf = global::Rhino.FileIO.FilePdf.Create()!;
+        try
+        {
+            var page = pdf.AddPage(image.Width, image.Height, (int)(96 * scale));
+            Add(LabelForm.Dot, new(5, 5, 5, 5));
+            Add(LabelForm.Full, new(20, 5, 75, 18));
+            Call(frame, "DrawPdf", pdf, page);
+            pdf.Write(Path.Combine(output, "label-opacity.pdf"));
+            image.Save(Path.Combine(output, "label-opacity.png"), ImageFormat.Png);
+        }
+        finally { (pdf as IDisposable)?.Dispose(); }
+
+        void Add(LabelForm form, Rect2 bounds)
+        {
+            var key = new LabelRasterKey(form == LabelForm.Dot ? "" : "Fade probe", swatch,
+                LabelPalette.FromTheme(Theme.Paper), scale, form, bounds.Width, .45);
+            Call(frame, "Add", key, bounds, accent);
+            using var raster = ConduitPlus.Rendering.RasterDrawing.RenderLabel(key, accent);
+            graphics.DrawImageUnscaled(raster, (int)((bounds.X - 1) * scale), (int)((bounds.Y - 1) * scale));
+        }
+    }
+
     private static string[] Output(GH_Component owner, int index) => owner.Params.Output[index].VolatileData.AllData(true).Select(g => g.ToString()!).ToArray();
     private static CardSpec[] Cards(object session) => (CardSpec[])Get(session, "Cards");
     private static object Get(object obj, string name) => obj.GetType().GetProperty(name, Internal)?.GetValue(obj) ?? throw new InvalidOperationException("Missing property " + name);

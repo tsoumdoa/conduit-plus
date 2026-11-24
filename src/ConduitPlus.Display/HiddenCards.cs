@@ -5,7 +5,7 @@ namespace ConduitPlus.Rhino;
 public static partial class OverlayManager
 {
     private static void HiddenEscape(object? sender, EventArgs e)
-    { if (global::Rhino.Commands.Command.InCommand()) return; foreach (var c in Coordinators.Values) { c.ListOpen = false; c.Shown = null; } foreach (var s in Sessions.Values) s.View.Redraw(); }
+    { if (global::Rhino.Commands.Command.InCommand()) return; Mouse.CloseLabelHover(); foreach (var c in Coordinators.Values) { c.ListOpen = false; c.Shown = null; } foreach (var s in Sessions.Values) s.View.Redraw(); }
     private static (HiddenRow[] Rows, HiddenPanel Panel, double Unit) HiddenGeometry(RhinoView view, ViewCoordinator c)
     {
         var f = CurrentFrame(view, c); var unit = f.Unit.Values.Min();

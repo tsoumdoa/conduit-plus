@@ -21,11 +21,52 @@ def compare(a, b):
         return sum(x != y for x, y in zip(first.convert("RGBA").getdata(), second.convert("RGBA").getdata()))
 
 
+def verify_scope(root):
+    captures = root / "captures"
+    check = read(captures / "label-check.json")
+    with pymupdf.open(captures / "overlay-vector.pdf") as document:
+        page = document[0]
+        hits = page.search_for(check["sentinel"])
+        assert len(hits) == 1, hits
+        scale = 96 * check["dpi"] / 72
+        pill, dot = check["pill"], check["dot"]
+        expected = ((pill["x"] + 12) * check["dpi"], (pill["y"] + 1) * check["dpi"])
+        assert max(abs(x * scale - y) for x, y in zip(hits[0].tl, expected)) < 2, (hits, expected)
+        render = page.get_pixmap(matrix=pymupdf.Matrix(scale * 4, scale * 4))
+        swatch = (208, 32, 96)
+        for x, y in ((pill["x"] + 6, pill["y"] + 9), (dot["x"] + 2.5, dot["y"] + 2.5)):
+            pixel = render.pixel(round(x * check["dpi"] * 4), round(y * check["dpi"] * 4))
+            assert max(abs(a - b) for a, b in zip(pixel, swatch)) <= 5, pixel
+    with pymupdf.open(captures / "preview-off.pdf") as document:
+        text = document[0].get_text()
+        assert "Preview off control" in text and check["sentinel"] not in text, text
+
+    with pymupdf.open(captures / "label-opacity.pdf") as document, Image.open(captures / "label-opacity.png") as png:
+        page = document[0]
+        assert "Fade probe" in page.get_text()
+        pdf = page.get_pixmap(matrix=pymupdf.Matrix(96 * 4 / 72, 96 * 4 / 72))
+        samples = {}
+        for name, point in {"dot center": (30, 30), "dot rim": (22, 30),
+                            "pill center": (230, 57), "pill rim": (230, 22),
+                            "pill swatch": (104, 56)}.items():
+            raster = png.getpixel(point)[:3]
+            vector = pdf.pixel(*point)
+            assert max(abs(a - b) for a, b in zip(raster, vector)) <= 8, (name, raster, vector)
+            samples[name] = {"png": raster, "pdf": vector}
+        print(json.dumps(samples, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scope", type=Path)
     for name in ("full", "compact-1", "compact-2", "compact-4", "tooltip", "selected"):
-        parser.add_argument("--" + name, type=Path, required=True)
+        parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
+    if args.scope:
+        verify_scope(args.scope)
+        return
+    if any(value is None for name, value in vars(args).items() if name != "scope"):
+        parser.error("provide --scope or all six structural export directories")
     compact = [args.compact_1, args.compact_2, args.compact_4]
     dimensions = []
     zooms = []

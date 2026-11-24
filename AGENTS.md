@@ -24,7 +24,7 @@ When you finish implementing something (a feature, a fix, a review change), **pa
 - Delegated/sub-agents working in their own worktree don't package; the agent that reviews and commits the work does.
 
 ## Workflow
-- Implementation by Sol (Codex `gpt-6.1-sol`); design reviews by Astra (Codex `gpt-6-astra`); Claude reviews diffs, commits and opens PRs.
+- Implementation by Sol (Codex `gpt-6.2-sol`); design reviews by Astra (Codex `gpt-6.2-astra`); Claude reviews diffs, commits and opens PRs.
 - Small feature PRs, squash-merged. Stacked PRs are merged in order and the next one is retargeted to `main`.
 - Keep `ConduitPlus.Core` free of Rhino types; pure logic goes there with xUnit tests. Tests can't load RhinoCommon at runtime.
 - Component and plug-in GUIDs are stable; never change them. Add new GH inputs after existing ones so saved `.gh` files keep loading.

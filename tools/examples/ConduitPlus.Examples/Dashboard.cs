@@ -58,7 +58,7 @@ internal static class Dashboard
             DisplayLifecycleChecks.ArchiveClean(frozen, frozenPath);
             CheckLegacyBar(legacy);
             var oldOverlay = legacy.Objects.OfType<ConduitPlus.Grasshopper.OverlayComponent>().Single();
-            Require(oldOverlay.Params.Input.Count == 6 && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } && oldOverlay.Params.Input[5] is Param_Number { PersistentData.DataCount: 0 }, "Legacy View and Size must be appended and unset.");
+            Require(oldOverlay.Params.Input.Count == 7 && oldOverlay.Params.Input[6].Optional && oldOverlay.Params.Input[4] is ConduitPlus.Grasshopper.Param_TextOption { HasValue: false } && oldOverlay.Params.Input[5] is Param_Number { PersistentData.DataCount: 0 }, "Legacy View and Size must be appended and unset.");
             Require(oldOverlay.Params.Input[0].SourceCount > 0, "Legacy card wires lost.");
             var clean = new GH_Archive().CreateTopLevelNode("Overlay"); oldOverlay.Write(clean);
             Require(!((GH_IReader)clean).ItemExists("ConduitPlus.Layout"), "Legacy layout must be ignored.");
@@ -66,7 +66,7 @@ internal static class Dashboard
             using var reopened = new GH_Document(); Require(saved.ExtractObject(reopened, "Definition"), "Cannot reopen legacy fixture.");
             DisplayLifecycleChecks.ArchiveClean(saved, "legacy roundtrip");
             CheckLegacyBar(reopened);
-            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay six inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01… keys and eleven inputs with the new 12-row default passed before/after resave.");
+            Console.WriteLine("Frozen fixture: clean archive and roundtrip, Overlay seven inputs with unset View/Size and card wires passed; legacy Bar title, Threshold 1, M01… keys and eleven inputs with the new 12-row default passed before/after resave.");
         }
         Console.WriteLine("Constructing definition.");
         if (!args.Contains("--verify-only")) Build(path);
@@ -197,4 +197,3 @@ internal static class Dashboard
     private static object Property(object obj, string name) => obj.GetType().GetProperty(name, Instance)!.GetValue(obj)!;
     private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }
-

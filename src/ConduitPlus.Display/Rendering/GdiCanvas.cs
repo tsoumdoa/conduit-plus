@@ -162,9 +162,24 @@ public sealed class GdiCanvas : ICanvas2D, IDisposable
     {
         if (radius <= 0) { Rect(r, fill); return; }
         var brush = BrushOf(fill); Composite(brush.Color.A == 255, antialiased: true);
-        using var path = new GraphicsPath(); var d = (float)(Math.Min(radius, Math.Min(r.Width, r.Height) / 2) * 2); var x = (float)r.X; var y = (float)r.Y; var w = (float)r.Width; var h = (float)r.Height;
-        path.AddArc(x, y, d, d, 180, 90); path.AddArc(x + w - d, y, d, d, 270, 90); path.AddArc(x + w - d, y + h - d, d, d, 0, 90); path.AddArc(x, y + h - d, d, d, 90, 90); path.CloseFigure();
+        using var path = RoundedPath(r, radius);
         graphics.FillPath(brush, path);
+    }
+    internal void StrokeRoundedRect(Rect2 r, double radius, string stroke, double width)
+    {
+        using var path = RoundedPath(r, radius);
+        using var pen = new Pen(C(stroke), (float)width);
+        graphics.DrawPath(pen, path);
+    }
+    private static GraphicsPath RoundedPath(Rect2 r, double radius)
+    {
+        var path = new GraphicsPath();
+        var d = (float)(Math.Min(radius, Math.Min(r.Width, r.Height) / 2) * 2);
+        var x = (float)r.X; var y = (float)r.Y; var w = (float)r.Width; var h = (float)r.Height;
+        path.AddArc(x, y, d, d, 180, 90); path.AddArc(x + w - d, y, d, d, 270, 90);
+        path.AddArc(x + w - d, y + h - d, d, d, 0, 90); path.AddArc(x, y + h - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
     public void Line(Point2 a, Point2 b, string color, double width = 1)
     { var c = C(color); Composite(c.A == 255, antialiased: true); using var pen = new Pen(c, (float)width); graphics.DrawLine(pen, (float)a.X, (float)a.Y, (float)b.X, (float)b.Y); }
