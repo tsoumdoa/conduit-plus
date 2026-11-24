@@ -337,20 +337,25 @@ Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-cli
 3. Connect **Colours** to Custom Preview and **Legend** to Overlay (or Canvas Card).
 
 Maps numbers to colours and a finished ordinary Legend. Colours can also feed
-Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Unset Min/Max use the outer nice ticks
-of the finite data (3.2–37 becomes 0–40). Set either bound by typing or wiring;
+Bar → Colors. Values retain their tree paths, item counts and empty branches; one range spans the whole tree. Set either bound by typing or wiring;
 set both for a legend with no Values. Out-of-range values use the end colours unless
 you set **Below** and/or **Above**. Each supplied colour adds an outward triangular
 cap to that end of the legend. Values equal to Min/Max still use the gradient endpoints.
 Missing/null/NaN/infinite values keep their positions as grey `#B4B7BD` and report
 a remark. Constant finite data gets a single-colour legend at that value.
 
+Right-click **Colour Scale → Range** to choose how unset Min and Max are found.
+**Auto (rounded)** uses the outer nice ticks of the finite data (3.2–37 becomes 0–40) and is the default. **Exact data min/max** uses
+finite data extrema. **Clip outliers** uses the selected **Clip at** percentile
+at each end (1%, 2% by default, or 5%). Explicit bounds still set their own ends.
+The range settings are saved with the component and support Undo.
+
 | Colour Scale input | Nick | Access | Default / meaning |
 |---|---|---|---|
 | Values | V | Number tree, optional | Numbers to colour; one scale across branches. |
 | Palette | P | Text tree, flattened, optional | Blue; right-click a name, or wire 2–32 colours. |
-| Min | Mn | Number, optional | Nice floor of the finite data; value at the first colour. |
-| Max | Mx | Number, optional | Nice ceiling of the finite data; value at the last colour. |
+| Min | Mn | Number, optional | Value at the first colour. The Range menu supplies the default. |
+| Max | Mx | Number, optional | Value at the last colour. The Range menu supplies the default. |
 | Mid | Md | Number, optional | Centre, except diverging/Status ranges spanning zero use 0. Must be strictly between Min and Max. |
 | Unit | U | Text | Empty; shown on the legend. |
 | Title | T | Text | Legend. |
@@ -425,6 +430,12 @@ To use a GH Gradient, wire its sampled colours and set the same Min/Max explicit
 | Blue–Red | `#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726` |
 | Purple–Green | `#633481 #AB87C7 #DFDEDA #69AA77 #015E28` |
 | Status | `#209993 #EBC75E #C83846` (Good, Warning, Bad) |
+
+The Palette input menu also includes these ordered groups:
+
+- **Perceptual** — Viridis, Magma, Cividis, Greys, Greens.
+- **Diverging** — Red–Yellow–Green, Brown–Teal, Orange–Purple, Spectral.
+- **Analysis-style** — Daylight, Solar, Comfort, Wind.
 
 **Diagram styles / Colour Palette (`ColPal`)**
 

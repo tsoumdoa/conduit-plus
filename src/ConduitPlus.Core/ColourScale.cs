@@ -13,6 +13,8 @@ public static class ColourRange
 public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, ColourMessage[] Messages,
     ColourPalette Palette, double Min, double Max, double Mid, string? Below = null, string? Above = null)
 {
+    internal bool HasCollapsedClip { get; init; }
+
     public string ColourAt(double? value)
     {
         if (value is not { } v || !double.IsFinite(v)) return Palettes.Missing;
@@ -20,7 +22,7 @@ public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, Colour
         if (v > Max && Above is { } above) return above;
         // Work relative to each side: a global normalized pivot can round to 0 or 1
         // even though Mid is an interior double in the original domain.
-        var position = Min == Max ? .5 : v <= Min ? 0 : v >= Max ? 1
+        var position = Min == Max && (!HasCollapsedClip || v == Min) ? .5 : v <= Min ? 0 : v >= Max ? 1
             : Mid <= Min || Mid >= Max ? ColourRange.Fraction(v, Min, Max)
             : v <= Mid ? .5 * ColourRange.Fraction(v, Min, Mid)
             : .5 + .5 * ColourRange.Fraction(v, Mid, Max);
@@ -28,11 +30,14 @@ public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, Colour
     }
 }
 
+public enum ColourRangeMode { Auto, ExactData, ClipOutliers }
+
 public static class ColourScale
 {
     public static ColourScaleResult Create(IReadOnlyList<double?> values, IReadOnlyList<string>? palette = null,
         double? min = null, double? max = null, double? mid = null, string title = "Legend", string unit = "",
-        string id = "colour-scale", Slot? slot = null, string? below = null, string? above = null)
+        string id = "colour-scale", Slot? slot = null, string? below = null, string? above = null,
+        ColourRangeMode rangeMode = ColourRangeMode.Auto, int clipPercent = 2)
     {
         static void ValidateColour(string? colour, string name)
         {
@@ -61,8 +66,9 @@ public static class ColourScale
         if (mid.HasValue && max.HasValue && mid >= max)
             throw new ArgumentException($"Mid ({F(mid)}) must be less than Max ({F(max)}).");
         var constant = min is null && max is null && mid is null && finite.Min() == finite.Max();
+        var collapsedClip = false;
         if (constant) { min = finite[0]; max = finite[0]; }
-        else if (min is null || max is null)
+        else if (rangeMode == ColourRangeMode.Auto && (min is null || max is null))
         {
             // Explicit controls participate in automatic bounds; only explicit contradictions error.
             var extent = finite.Concat(new[] { min, max, mid }.Where(v => v.HasValue).Select(v => v!.Value)).ToArray();
@@ -78,13 +84,20 @@ public static class ColourScale
             if (max is { } upper && lo >= upper) lo = double.IsFinite(lo - step) && lo - step < upper ? lo - step : Math.BitDecrement(upper);
             min ??= lo; max ??= hi;
         }
+        else if (min is null || max is null)
+        {
+            (min, max) = DataBounds(finite, min, max, mid, rangeMode, clipPercent);
+            constant = min == max;
+            collapsedClip = constant && rangeMode == ColourRangeMode.ClipOutliers;
+        }
         if (!double.IsFinite(min!.Value) || !double.IsFinite(max!.Value))
             throw new ArgumentException("Automatic bounds cannot include these controls; set finite Min and Max around Mid.");
         var explicitMid = mid.HasValue;
         mid ??= scheme.Kind is PaletteKind.Diverging or PaletteKind.Status && min < 0 && max > 0 ? 0 : ColourRange.Lerp(min.Value, max.Value, .5);
         var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Unit = unit, Min = min, Max = max, WiredSlot = slot,
             BelowColor = below, AboveColor = above };
-        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value, below, above);
+        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value, below, above)
+        { HasCollapsedClip = collapsedClip };
         // Compute the breakpoint from the nearer side, without subtracting two
         // almost equal values at the far endpoint. Explicit controls must fit the
         // positioned-stop transport; never silently discard an accepted Mid.
@@ -131,5 +144,51 @@ public static class ColourScale
             messages.Add(new(outside == finite.Length ? ColourMessageLevel.Warning : ColourMessageLevel.Remark, prefix + detail + "."));
         }
         return result with { Colours = values.Select(result.ColourAt).ToArray(), Legend = legend, Messages = messages.ToArray() };
+    }
+
+    private static (double Min, double Max) DataBounds(double[] finite, double? min, double? max,
+        double? mid, ColourRangeMode mode, int clipPercent)
+    {
+        double lo, hi;
+        if (mode == ColourRangeMode.ClipOutliers)
+        {
+            if (clipPercent is not (1 or 2 or 5))
+                throw new ArgumentOutOfRangeException(nameof(clipPercent), "Clip at must be 1%, 2% or 5%.");
+            Array.Sort(finite);
+            double Quantile(double p)
+            {
+                var rank = (finite.Length - 1) * p;
+                var index = (int)rank;
+                var next = finite[(int)Math.Ceiling(rank)];
+                return finite[index] == next ? finite[index] : ColourRange.Lerp(finite[index], next, rank - index);
+            }
+            lo = Quantile(clipPercent / 100d);
+            hi = Quantile((100 - clipPercent) / 100d);
+        }
+        else
+        {
+            lo = finite.Min();
+            hi = finite.Max();
+        }
+
+        foreach (var control in new[] { min, max, mid })
+        {
+            if (control is not { } value) continue;
+            lo = Math.Min(lo, value);
+            hi = Math.Max(hi, value);
+        }
+        var span = hi - lo;
+        var padding = double.IsFinite(span) ? span * .01 : hi * .01 - lo * .01;
+        if (min is null && (lo >= mid || lo >= max))
+        {
+            var padded = lo - padding;
+            lo = padded < lo ? padded : Math.BitDecrement(lo);
+        }
+        if (max is null && (hi <= mid || hi <= min))
+        {
+            var padded = hi + padding;
+            hi = padded > hi ? padded : Math.BitIncrement(hi);
+        }
+        return (min ?? lo, max ?? hi);
     }
 }

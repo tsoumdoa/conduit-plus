@@ -19,26 +19,23 @@ public abstract class ColourComponent(string name, string nickname, string descr
     protected string CardId => InstanceGuid.ToString("N");
     protected static void PaletteInput(GH_InputParamManager p, bool categories)
     {
+        static string OrderedGroup(string name) => name switch
+        {
+            "Viridis" or "Magma" or "Cividis" or "Greys" or "Greens" => "Perceptual",
+            "Red–Yellow–Green" or "Brown–Teal" or "Orange–Purple" or "Spectral" => "Diverging",
+            "Daylight" or "Solar" or "Comfort" or "Wind" => "Analysis-style",
+            _ => "Ordered"
+        };
         var options = Palettes.All.Where(s => categories || s.Kind != PaletteKind.Categorical)
             .OrderBy(s => s.Kind == PaletteKind.Categorical ? Palettes.Styles.Contains(s) ? 1 : 0 : 2)
             .SelectMany(s => s.Kind == PaletteKind.Categorical
                 ? new[] { new InputOption(s.Name, s.Name, Palettes.Styles.Contains(s) ? "Diagram styles" : "Categorical") }
-                : new[] { new InputOption(s.Name, s.Name, "Ordered"), new InputOption(s.Name + " reversed", s.Name + " reversed", "Ordered") }).ToArray();
+                : new[] { new InputOption(s.Name, s.Name, OrderedGroup(s.Name)), new InputOption(s.Name + " reversed", s.Name + " reversed", OrderedGroup(s.Name)) }).ToArray();
         var index = p.AddParameter(new Param_TextOption { Options = options }, "Palette", "P", categories ? "Right-click to choose, or set your own colours (one per category, repeating)" : "Right-click to choose, or set 2–32 colours as evenly spaced stops; append ' reversed' to a name", GH_ParamAccess.tree);
         p[index].Optional = true;
     }
-    protected static string[] ReadPalette(IGH_DataAccess da, int index)
-    {
-        var values = ReadTextTree(da, index);
-        // GH_String preserves named System.Drawing colours as names (e.g. Red), and adds
-        // " (alpha)" to translucent RGB casts. Palette names take precedence over named colours.
-        return values.Select(s =>
-        {
-            if (values.Length == 1 && Palettes.All.Any(p => string.Equals(p.Name, s, StringComparison.OrdinalIgnoreCase))) return s;
-            var colour = Color.FromName(s);
-            return colour.IsKnownColor ? $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}" : s;
-        }).ToArray();
-    }
+    protected static string[] ReadPalette(IGH_DataAccess da, int index) =>
+        Palettes.NormalizeInput(ReadTextTree(da, index));
     protected static string[] ReadTextTree(IGH_DataAccess da, int index)
     {
         da.GetDataTree(index, out GH_Structure<GH_String> tree);
@@ -81,6 +78,57 @@ public abstract class ColourComponent(string name, string nickname, string descr
 
 public sealed class ColourScaleComponent : ColourComponent
 {
+    private ColourRangeMode _rangeMode;
+    private int _clipPercent = 2;
+
+    public override bool Write(GH_IWriter writer)
+    {
+        writer.SetInt32("RangeMode", (int)_rangeMode);
+        writer.SetInt32("ClipPercent", _clipPercent);
+        return base.Write(writer);
+    }
+
+    public override bool Read(GH_IReader reader)
+    {
+        var mode = reader.ItemExists("RangeMode") ? (ColourRangeMode)reader.GetInt32("RangeMode") : ColourRangeMode.Auto;
+        _rangeMode = Enum.IsDefined(mode) ? mode : ColourRangeMode.Auto;
+        var percent = reader.ItemExists("ClipPercent") ? reader.GetInt32("ClipPercent") : 2;
+        _clipPercent = percent is 1 or 2 or 5 ? percent : 2;
+        return base.Read(reader);
+    }
+
+    protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
+    {
+        base.AppendAdditionalComponentMenuItems(menu);
+        Menu_AppendSeparator(menu);
+        var range = Menu_AppendItem(menu, "Range").DropDown;
+        void AddMode(string label, ColourRangeMode mode)
+        {
+            Menu_AppendItem(range, label, (_, _) =>
+            {
+                if (_rangeMode == mode) return;
+                RecordUndoEvent("Range mode");
+                _rangeMode = mode;
+                ExpireSolution(true);
+            }, true, _rangeMode == mode);
+        }
+        AddMode("Auto (rounded)", ColourRangeMode.Auto);
+        AddMode("Exact data min/max", ColourRangeMode.ExactData);
+        AddMode("Clip outliers", ColourRangeMode.ClipOutliers);
+        var clip = Menu_AppendItem(range, "Clip at");
+        clip.Enabled = _rangeMode == ColourRangeMode.ClipOutliers;
+        foreach (var percent in new[] { 1, 2, 5 })
+        {
+            Menu_AppendItem(clip.DropDown, $"{percent}%", (_, _) =>
+            {
+                if (_clipPercent == percent) return;
+                RecordUndoEvent("Clip at");
+                _clipPercent = percent;
+                ExpireSolution(true);
+            }, true, _clipPercent == percent);
+        }
+    }
+
     public ColourScaleComponent() : base("Colour Scale", "ColScale", "Numbers to model colours and a matching gradient Legend") { }
     public override Guid ComponentGuid => new("a7447cd8-1554-460c-b806-bc6f3caeee57");
     protected override ComponentIcon IconKind => ComponentIcon.ColourScale;
@@ -88,8 +136,8 @@ public sealed class ColourScaleComponent : ColourComponent
     {
         p.AddNumberParameter("Values", "V", "Numbers to colour; one scale across all branches. Null/NaN/infinity are missing", GH_ParamAccess.tree); p[0].Optional = true;
         PaletteInput(p, false);
-        p.AddNumberParameter("Min", "Mn", "Value at the first colour; unset uses the nice floor of the data", GH_ParamAccess.item); p[2].Optional = true;
-        p.AddNumberParameter("Max", "Mx", "Value at the last colour; unset uses the nice ceiling of the data", GH_ParamAccess.item); p[3].Optional = true;
+        p.AddNumberParameter("Min", "Mn", "Value at the first colour; unset follows the Range menu", GH_ParamAccess.item); p[2].Optional = true;
+        p.AddNumberParameter("Max", "Mx", "Value at the last colour; unset follows the Range menu", GH_ParamAccess.item); p[3].Optional = true;
         p.AddNumberParameter("Mid", "Md", "Value at the middle colour; defaults to centre, or zero for diverging/Status ranges spanning zero", GH_ParamAccess.item); p[4].Optional = true;
         p.AddTextParameter("Unit", "U", "Legend unit", GH_ParamAccess.item, "");
         p.AddTextParameter("Title", "T", "Legend title", GH_ParamAccess.item, "Legend");
@@ -120,7 +168,7 @@ public sealed class ColourScaleComponent : ColourComponent
             }
             var result = ColourScale.Create(tree.Branches.SelectMany(b => b.Select(v => (double?)v?.Value)).ToArray(),
                 ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId, ReadSlot(da, 7),
-                ReadColour(8), ReadColour(9));
+                ReadColour(8), ReadColour(9), _rangeMode, _clipPercent);
             da.SetDataTree(0, ColourTree(tree, result.Colours)); da.SetData(1, new GH_ObjectWrapper(result.Legend)); Messages(result.Messages);
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }

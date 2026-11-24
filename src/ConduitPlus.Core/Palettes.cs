@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Collections.Immutable;
 using System.Globalization;
 
@@ -58,7 +59,30 @@ public static class Palettes
         Make("Blue–Red", PaletteKind.Diverging, "#0B4C92 #6D9BD5 #DFDEDA #CF7F79 #862726"),
         Make("Purple–Green", PaletteKind.Diverging, "#633481 #AB87C7 #DFDEDA #69AA77 #015E28"),
         Make("Status", PaletteKind.Status, "#209993 #EBC75E #C83846"),
-        .. Styles];
+        .. Styles,
+        Make("Viridis", PaletteKind.Sequential, "#440154 #3B528B #21918C #5EC962 #FDE725"),
+        Make("Magma", PaletteKind.Sequential, "#000004 #51127C #B73779 #FC8961 #FCFDBF"),
+        Make("Cividis", PaletteKind.Sequential, "#00204D #414D6B #7C7B78 #BCAF6F #FFEA46"),
+        Make("Greys", PaletteKind.Sequential, "#F2F2F2 #BDBDBD #8A8A8A #525252 #1F1F1F"),
+        Make("Greens", PaletteKind.Sequential, "#E5F5E0 #A1D99B #5DB66D #238B45 #00441B"),
+        Make("Red–Yellow–Green", PaletteKind.Diverging, "#A50026 #F46D43 #FFFFBF #66BD63 #006837"),
+        Make("Brown–Teal", PaletteKind.Diverging, "#8C510A #D8B365 #F5F5F5 #5AB4AC #01665E"),
+        Make("Orange–Purple", PaletteKind.Diverging, "#B35806 #F1A340 #F7F7F7 #998EC3 #542788"),
+        Make("Spectral", PaletteKind.Diverging, "#9E0142 #F46D43 #FFFFBF #66C2A5 #5E4FA2"),
+        Make("Daylight", PaletteKind.Sequential, "#1B1F4B #2D5DA8 #3FB0C9 #F2E35B #FFF8E0"),
+        Make("Solar", PaletteKind.Sequential, "#2A0B4F #7B1E7A #D9483B #F7A12B #FCF4A3"),
+        Make("Comfort", PaletteKind.Diverging, "#2B5DA8 #8FC1E3 #F2F0E6 #F2A36B #B8322A"),
+        Make("Wind", PaletteKind.Sequential, "#F4F8FB #A9D3E8 #4F9BC9 #2A5A9E #3B2A6B"),
+    ];
+
+    /// <summary>Normalizes named colours from the Grasshopper Palette input.</summary>
+    public static string[] NormalizeInput(IReadOnlyList<string> values) => values.Select(value =>
+    {
+        if (values.Count == 1 && All.Any(p => string.Equals(p.Name, value, StringComparison.OrdinalIgnoreCase)))
+            return value;
+        var colour = Color.FromName(value);
+        return colour.IsKnownColor ? $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}" : value;
+    }).ToArray();
 
     public static ColourPalette Resolve(IReadOnlyList<string>? input, string fallback, ICollection<ColourMessage> messages)
     {
