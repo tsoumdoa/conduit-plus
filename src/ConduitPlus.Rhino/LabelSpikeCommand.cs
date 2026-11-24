@@ -92,6 +92,14 @@ public sealed class ConduitPlusLabelSpike : Command
                 new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    // Redraw only invalidates the view; the paint (and DrawForeground) runs when Rhino
+    // processes its message queue, as in BenchCommand.Draw.
+    private static void Paint(RhinoView view)
+    {
+        view.Redraw();
+        RhinoApp.Wait();
+    }
+
     private enum Blocker { RhinoObject, EarlyPreview, LatePreview, ExternalPreview }
 
     private static object RunCase(RhinoDoc doc, RhinoView view, RhinoViewport viewport, Guid viewportId,
@@ -133,12 +141,14 @@ public sealed class ConduitPlusLabelSpike : Command
                 }
                 dots.Measure = false;
                 var start = Stopwatch.GetTimestamp();
-                view.Redraw();
+                Paint(view);
                 var baseline = Ms(start);
                 dots.Measure = true;
                 dots.Last = null;
                 start = Stopwatch.GetTimestamp();
-                view.Redraw();
+                Paint(view);
+                // A redraw can coalesce with the previous paint message; retry once before failing.
+                if (dots.Last is null && dots.Error is null) { start = Stopwatch.GetTimestamp(); Paint(view); }
                 var frameTime = Ms(start);
                 if (dots.Error is { } error) throw new InvalidOperationException("Depth capture callback failed.", error);
                 var sample = dots.Last ?? throw new InvalidOperationException("Redraw did not invoke the benchmark viewport foreground conduit.");
