@@ -83,17 +83,16 @@ public sealed class ColourScaleComponent : ColourComponent
 
     public override bool Write(GH_IWriter writer)
     {
-        writer.SetInt32("RangeMode", (int)_rangeMode);
-        writer.SetInt32("ClipPercent", _clipPercent);
+        writer.SetInt32(ColourRangeSettings.ModeKey, (int)_rangeMode);
+        writer.SetInt32(ColourRangeSettings.ClipKey, _clipPercent);
         return base.Write(writer);
     }
 
     public override bool Read(GH_IReader reader)
     {
-        var mode = reader.ItemExists("RangeMode") ? (ColourRangeMode)reader.GetInt32("RangeMode") : ColourRangeMode.Auto;
-        _rangeMode = Enum.IsDefined(mode) ? mode : ColourRangeMode.Auto;
-        var percent = reader.ItemExists("ClipPercent") ? reader.GetInt32("ClipPercent") : 2;
-        _clipPercent = percent is 1 or 2 or 5 ? percent : 2;
+        (_rangeMode, _clipPercent) = ColourRangeSettings.FromArchive(
+            reader.ItemExists(ColourRangeSettings.ModeKey) ? reader.GetInt32(ColourRangeSettings.ModeKey) : null,
+            reader.ItemExists(ColourRangeSettings.ClipKey) ? reader.GetInt32(ColourRangeSettings.ClipKey) : null);
         return base.Read(reader);
     }
 

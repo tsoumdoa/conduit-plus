@@ -103,4 +103,37 @@ public sealed class ColourScaleRangeTests
         Assert.Equal(["#FFFFFF", "#008000"], custom.Colours.AsEnumerable());
         Assert.Equal("Greens", Palettes.Resolve(Palettes.NormalizeInput(["Greens"]), "Blue", []).Name);
     }
+
+    [Fact]
+    public void PaddingNeverOverflowsAValidFiniteRange()
+    {
+        var upper = ColourScale.Create([0], min: 1.79e308, rangeMode: ColourRangeMode.ExactData);
+        Assert.Equal((1.79e308, Math.BitIncrement(1.79e308)), (upper.Min, upper.Max));
+        var lower = ColourScale.Create([0], max: -1.79e308, rangeMode: ColourRangeMode.ExactData);
+        Assert.Equal((Math.BitDecrement(-1.79e308), -1.79e308), (lower.Min, lower.Max));
+        var clipped = ColourScale.Create([0, 1], min: 1.79e308, rangeMode: ColourRangeMode.ClipOutliers);
+        Assert.True(double.IsFinite(clipped.Max));
+    }
+
+    [Fact]
+    public void ClipQuantileKeepsSubnormalEndpointInside()
+    {
+        var result = ColourScale.Create([double.Epsilon, 25 * double.Epsilon], below: "#FF0000",
+            rangeMode: ColourRangeMode.ClipOutliers);
+        Assert.Equal(double.Epsilon, result.Min);
+        Assert.NotEqual("#FF0000", result.Colours[0]);
+        Assert.DoesNotContain(result.Messages, message => message.Text.Contains("outside"));
+    }
+
+    [Theory]
+    [InlineData(null, null, ColourRangeMode.Auto, 2)]   // file saved before range modes
+    [InlineData(1, 5, ColourRangeMode.ExactData, 5)]
+    [InlineData(2, 1, ColourRangeMode.ClipOutliers, 1)]
+    [InlineData(9, 3, ColourRangeMode.Auto, 2)]         // unknown values fall back
+    public void SavedRangeSettingsRoundTripAndLegacyFilesLoadAsAuto(int? mode, int? clip, ColourRangeMode expectedMode, int expectedClip)
+    {
+        var loaded = ColourRangeSettings.FromArchive(mode, clip);
+        Assert.Equal((expectedMode, expectedClip), loaded);
+        Assert.Equal(loaded, ColourRangeSettings.FromArchive((int)loaded.Mode, loaded.ClipPercent));
+    }
 }

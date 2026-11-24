@@ -32,6 +32,15 @@ public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, Colour
 
 public enum ColourRangeMode { Auto, ExactData, ClipOutliers }
 
+/// <summary>Saved Range menu state. Archives without the keys (files saved before range modes) load as Auto at 2%.</summary>
+public static class ColourRangeSettings
+{
+    public const string ModeKey = "RangeMode", ClipKey = "ClipPercent";
+    public static (ColourRangeMode Mode, int ClipPercent) FromArchive(int? mode, int? clipPercent) => (
+        mode is { } m && Enum.IsDefined((ColourRangeMode)m) ? (ColourRangeMode)m : ColourRangeMode.Auto,
+        clipPercent is 1 or 2 or 5 ? clipPercent.Value : 2);
+}
+
 public static class ColourScale
 {
     public static ColourScaleResult Create(IReadOnlyList<double?> values, IReadOnlyList<string>? palette = null,
@@ -159,8 +168,15 @@ public static class ColourScale
             {
                 var rank = (finite.Length - 1) * p;
                 var index = (int)rank;
+                var lower = finite[index];
                 var next = finite[(int)Math.Ceiling(rank)];
-                return finite[index] == next ? finite[index] : ColourRange.Lerp(finite[index], next, rank - index);
+                if (lower == next) return lower;
+                // One rounding step keeps the quantile on the correct side of subnormal
+                // endpoints; fall back to overflow-safe Lerp when the difference is infinite.
+                var difference = next - lower;
+                return double.IsFinite(difference)
+                    ? Math.Clamp(Math.FusedMultiplyAdd(difference, rank - index, lower), lower, next)
+                    : ColourRange.Lerp(lower, next, rank - index);
             }
             lo = Quantile(clipPercent / 100d);
             hi = Quantile((100 - clipPercent) / 100d);
@@ -182,12 +198,12 @@ public static class ColourScale
         if (min is null && (lo >= mid || lo >= max))
         {
             var padded = lo - padding;
-            lo = padded < lo ? padded : Math.BitDecrement(lo);
+            lo = padded < lo && double.IsFinite(padded) ? padded : Math.BitDecrement(lo);
         }
         if (max is null && (hi <= mid || hi <= min))
         {
             var padded = hi + padding;
-            hi = padded > hi ? padded : Math.BitIncrement(hi);
+            hi = padded > hi && double.IsFinite(padded) ? padded : Math.BitIncrement(hi);
         }
         return (min ?? lo, max ?? hi);
     }
