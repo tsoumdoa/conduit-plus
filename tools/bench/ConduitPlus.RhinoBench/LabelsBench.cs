@@ -15,7 +15,7 @@ namespace ConduitPlus.Rhino;
 
 internal static class LabelsBench
 {
-    internal static void Run(RhinoDoc doc, RhinoView view, Action pump)
+    internal static void Run(RhinoDoc doc, RhinoView view, Action pump, bool benchmark = true)
     {
         CheckAnchors();
         var server = new GH_ComponentServer();
@@ -84,15 +84,56 @@ internal static class LabelsBench
         var frame = session.InspectLabelFrame();
         Check(frame.Length == 1 && frame[0].Form == ConduitPlus.Core.LabelForm.Dot,
             "Real foreground redraw places one dot for coincident owners");
+        var dot = frame[0].Dot;
+        var dpiForInput = UiContext.Dpi(view);
+        var pointer = new System.Drawing.Point((int)Math.Round((dot.X + dot.Width / 2) * dpiForInput),
+            (int)Math.Round((dot.Y + dot.Height / 2) * dpiForInput));
+        var hit = OverlaySession.PickLabel(view, pointer) ?? throw new InvalidOperationException("Missing displayed dot hit.");
+        var hoverWork = OverlayManager.MovePointerForChecks(view, pointer);
+        Console.WriteLine(FormattableString.Invariant($"Label pointer dispatch (first, cold): {hoverWork.TotalMilliseconds:F2} ms"));
+        // Warm samples alternate between the dot and an empty point so every move changes hover.
+        var away = new System.Drawing.Point(pointer.X + (int)Math.Round(60 * dpiForInput), pointer.Y + (int)Math.Round(60 * dpiForInput));
+        var samples = new List<double>();
+        for (var i = 0; i < 120; i++)
+        {
+            var work = OverlayManager.MovePointerForChecks(view, i % 2 == 0 ? away : pointer);
+            if (i >= 20) samples.Add(work.TotalMilliseconds);
+        }
+        samples.Sort();
+        double P(double q) => samples[Math.Min(samples.Count - 1, (int)Math.Ceiling(q * samples.Count) - 1)];
+        Console.WriteLine(FormattableString.Invariant($"Label pointer dispatch warm: p50 {P(.5):F3} ms, p95 {P(.95):F3} ms, p99 {P(.99):F3} ms (frame budget {InteractionTiming.FrameMilliseconds} ms)"));
+        Check(P(.95) < 2, "Warm label pointer dispatch p95 under 2 ms");
+        OverlayManager.MovePointerForChecks(view, pointer);
+        Check(OverlayManager.Snapshot(hit.Owner.Owner).HoverKey == "1", "Paced dot hover brushes its member");
+        view.Redraw();
+        for (var i = 0; i < 10 && hit.Owner.InspectLabelPopover() is null; i++)
+        {
+            pump();
+            view.Redraw();
+        }
+        var popover = hit.Owner.InspectLabelPopover() ?? throw new InvalidOperationException("Missing dot popover.");
+        var expanded = new System.Drawing.Point((int)Math.Round((popover.X + 10) * dpiForInput), pointer.Y);
+        Check(OverlaySession.PickLabel(view, expanded)?.Placement.Form == LabelForm.Dot, "Dot hover publishes a popover hit");
+        Check(OverlayManager.ClickLabelForChecks(view, expanded), "Click selects the popped member");
+        var component = hit.Owner.Owner == overlay.InstanceGuid ? overlay : second;
+        component.ExpireSolution(false);
+        gh.NewSolution(false);
+        Check(component.Params.Output[0].VolatileData.AllData(false).OfType<GH_String>().Single().Value == "1" &&
+            component.Params.Output[1].VolatileDataCount == 1, "Label click publishes selection and a single event");
+        OverlayManager.SetInteractionEnabled(hit.Owner.Owner, false);
+        Check(OverlaySession.PickLabel(view, pointer) is null &&
+            OverlayManager.Snapshot(hit.Owner.Owner).HoverKey is null, "Disabled interaction clears label hover and hits");
+        OverlayManager.SetInteractionEnabled(hit.Owner.Owner, true);
+        OverlayManager.ClearSelection(hit.Owner.Owner);
         gh.RemoveObject(second, false);
         for (var i = 0; i < 50; i++)
         {
             view.Redraw();
-            if (session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full }]) break;
+            if (session.InspectLabelFrame() is [{ Form: LabelForm.Full } remaining] && remaining.Identity.Owner == session.Owner) break;
             pump();
             Thread.Sleep(10);
         }
-        Check(session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full }],
+        Check(session.InspectLabelFrame() is [{ Form: LabelForm.Full } remainingLabel] && remainingLabel.Identity.Owner == session.Owner,
             "Real foreground redraw expands the remaining owner to a pill");
         var expected = session.InspectLabelFrame().Select(label => (label.Identity, label.Form)).ToArray();
         var settleTicks = session.LabelSettleTicks;
@@ -257,6 +298,55 @@ internal static class LabelsBench
             a.Style is { Key: null, Text: "Point caption", Priority: 4 }), "Explicit points broadcast text and priority");
         Check(explicitSpec.Anchors.Select(a => a.Identity(overlay.InstanceGuid)).Distinct().Count() == 2, "Explicit points retain distinct identities");
 
+        var scope = new ScopeComponent();
+        var scopedLabels = new LabelsComponent();
+        var sourceOverlay = new OverlayComponent();
+        var mirrorOverlay = new OverlayComponent();
+        foreach (var obj in new IGH_DocumentObject[] { scope, scopedLabels, sourceOverlay, mirrorOverlay })
+            gh.AddObject(obj, false);
+        ((Param_Point)scopedLabels.Params.Input[1]).PersistentData.Append(new GH_Point(view.MainViewport.CameraTarget));
+        ((Param_String)scopedLabels.Params.Input[2]).PersistentData.Append(new GH_String("Scoped point"));
+        ((Param_String)scopedLabels.Params.Input[3]).PersistentData.Append(new GH_String("point-member"));
+        foreach (var display in new[] { sourceOverlay, mirrorOverlay })
+        {
+            display.Params.Input[3].AddSource(scope.Params.Output[0]);
+            display.Params.Input[6].AddSource(scopedLabels.Params.Output[0]);
+        }
+        gh.NewSolution(false);
+        var scopedSession = OverlayManager.Get(doc, view, sourceOverlay.InstanceGuid);
+        for (var i = 0; i < 100 && scopedSession.InspectLabelFrame().Length == 0; i++)
+        {
+            view.Redraw();
+            pump();
+            Thread.Sleep(10);
+        }
+        var scopedDot = scopedSession.InspectLabelFrame().Single().Dot;
+        var scopedPointer = new System.Drawing.Point((int)Math.Round((scopedDot.X + 2.5) * dpiForInput),
+            (int)Math.Round((scopedDot.Y + 2.5) * dpiForInput));
+        var scopedHit = OverlaySession.PickLabel(view, scopedPointer) ?? throw new InvalidOperationException("Missing Scope label.");
+        OverlayManager.MovePointerForChecks(view, scopedPointer);
+        Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey == "point-member" &&
+            OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).HoverKey == "point-member", "Label hover shares Scope across displays");
+        Check(OverlayManager.ClickLabelForChecks(view, scopedPointer), "Scope label click routes to its owner");
+        Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&
+            OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&
+            OverlayManager.DomainSnapshot(scopedHit.Owner)?.Events.Length == 1, "Scope shares one member selection and one event");
+        using (var switched = RhinoDoc.CreateHeadless(null))
+        {
+            // The Windows in-process host has no modeless document switcher. Deliver its notification
+            // through the production handler with another document in the host.
+            OverlayManager.ActiveDocumentChanged(switched, EventArgs.Empty);
+            Check(OverlayManager.Snapshot(scopedHit.Owner.Owner).HoverKey is null &&
+                OverlayManager.Snapshot(scopedHit.Owner.Owner).SelectedKeys.SequenceEqual(["point-member"]),
+                "Document-change notification clears pointer hover and retains the bound Scope selection");
+        }
+        OverlayManager.ClearSelection(scopedHit.Owner.Owner);
+        Check(OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).SelectedKeys.Length == 0, "Clear selection shares Scope");
+        gh.RemoveObject(sourceOverlay, false);
+        gh.RemoveObject(mirrorOverlay, false);
+        gh.RemoveObject(scopedLabels, false);
+        gh.RemoveObject(scope, false);
+
         var frozen = new GH_Archive();
         using var legacy = new GH_Document();
         Check(frozen.ReadFromFile(Path.Combine("examples", "hello.gh")) && frozen.ExtractObject(legacy, "Definition"), "Open pre-label fixture");
@@ -281,8 +371,65 @@ internal static class LabelsBench
 
         bool MatchesFrozenWires(OverlayComponent component) => component.Params.Input.Take(6)
             .Select((p, i) => p.Sources.Select(s => s.InstanceGuid).SequenceEqual(wires[i])).All(same => same);
-        LabelPaintBench.RunViewport(doc, view, pump);
-        LabelPaintBench.Run();
+        CheckCardHover();
+        if (benchmark)
+        {
+            LabelPaintBench.RunViewport(doc, view, pump);
+            LabelPaintBench.Run();
+        }
+
+        void CheckCardHover()
+        {
+            var viewport = view.MainViewport;
+            var previousMode = viewport.DisplayMode;
+            var target = viewport.CameraTarget;
+            var offset = viewport.CameraLocation - target;
+            var center = target + offset * .2;
+            var radius = offset.Length * .025;
+            var extent = new Vector3d(radius, radius, radius);
+            using var blocker = new BoundingBox(center - extent, center + extent).ToBrep();
+            var blockerId = doc.Objects.AddBrep(blocker);
+            var clipId = doc.Objects.AddPoint(target - offset * .1);
+            var owner = Guid.NewGuid();
+            try
+            {
+                viewport.DisplayMode = DisplayModeDescription.GetDisplayMode(DisplayModeDescription.ShadedId);
+                const string key = "occluded-member";
+                var card = new CardSpec { Id = "metric", Title = "Occluded member", Kind = CardKind.Metric, Keys = [key] };
+                var anchor = new LabelAnchor(new(owner, "{0}"), null, 0, target, new("Occluded member", key, null, null, 0));
+                OverlayManager.SetWithLabels(doc, view, owner, [card], null, Theme.Paper, null, true, 1, "Occluded", true, [anchor]);
+                var fixture = OverlayManager.Get(doc, view, owner);
+                for (var i = 0; i < 100 && fixture.InspectLabels().Single().Answer is not { Current: true, Occluded: true }; i++)
+                {
+                    pump();
+                    view.Redraw();
+                    Thread.Sleep(10);
+                }
+                Check(fixture.InspectLabels().Single().Answer is { Current: true, Occluded: true } &&
+                    fixture.InspectLabelFrame().Length == 0, "Occluded inactive label has no painted hit");
+                var placed = OverlayManager.Placements(fixture).Single();
+                var region = CardMeasure.Hits(fixture.Cards.Single(), fixture.Theme).Single(h => h.Key == key);
+                var cardPointer = new System.Drawing.Point((int)Math.Round(placed.X + (region.X + region.W / 2) * fixture.Unit),
+                    (int)Math.Round(placed.Y + (region.Y + region.H / 2) * fixture.Unit));
+                OverlayManager.MovePointerForChecks(view, cardPointer);
+                for (var i = 0; i < 20 && fixture.InspectLabelFrame().Length == 0; i++)
+                {
+                    pump();
+                    view.Redraw();
+                }
+                Check(fixture.InspectLabelFrame() is [{ Opacity: .45, Form: LabelForm.Full }], "Card hover paints occluded member pill at 45 percent");
+                OverlayManager.SetPresentationVisible(owner, false);
+                Check(fixture.InspectLabelFrame().Length == 0 && OverlayManager.Snapshot(owner).HoverKey is null,
+                    "Hiding overlay retires the label frame and hover");
+            }
+            finally
+            {
+                OverlayManager.Remove(owner);
+                doc.Objects.Delete(blockerId, true);
+                doc.Objects.Delete(clipId, true);
+                viewport.DisplayMode = previousMode;
+            }
+        }
     }
 
     private static void CheckAnchors()

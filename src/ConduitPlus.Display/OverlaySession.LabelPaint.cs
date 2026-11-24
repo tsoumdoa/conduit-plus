@@ -84,6 +84,7 @@ internal sealed partial class OverlaySession
         private sealed class DotBatch(LabelRasterKey key)
         {
             internal LabelRasterKey Key { get; } = key;
+            internal int PaintOrder { get; set; }
             private List<Point3d> _previous = [];
             internal List<Point3d> Points { get; private set; } = [];
             private readonly DisplayBitmapDrawList _drawList = new();
@@ -238,9 +239,15 @@ internal sealed partial class OverlaySession
         internal void Draw(DrawEventArgs e, IReadOnlyList<Rect2> reserved, long started)
         {
             _drawn.Clear();
+            _frameComplete = false;
+            _popoverBounds = null;
             RasterWork = default;
             Classify();
-            if (Scene.Snapshot is not { } snapshot || _schedule is not { } schedule || _projection is not { } projection) return;
+            if (Scene.Snapshot is not { } snapshot || _schedule is not { } schedule || _projection is not { } projection)
+            {
+                InvalidateLabelInput();
+                return;
+            }
             var classified = Stopwatch.GetTimestamp();
             var dpi = projection.Dpi;
             var reservedUploads = Prepare(dpi);
@@ -304,8 +311,10 @@ internal sealed partial class OverlaySession
             var pendingDots = 0;
             _neutralDots.Points.Clear();
             _fadedNeutralDots.Points.Clear();
+            var dotPaintOrder = 0;
             foreach (var batch in _usedDots)
             {
+                batch.PaintOrder = dotPaintOrder++;
                 if (batch.Key == _neutralDots.Key)
                     batch.Draw(e.Display, _neutralTexture!.Display);
                 else if (batch.Key == _fadedNeutralDots.Key)
@@ -320,6 +329,7 @@ internal sealed partial class OverlaySession
                 else
                 {
                     pendingDots++;
+                    batch.PaintOrder = int.MaxValue;
                     var fallback = batch.Key.Opacity < 1 ? _fadedNeutralDots : _neutralDots;
                     fallback.Points.AddRange(batch.Points);
                 }
@@ -338,6 +348,27 @@ internal sealed partial class OverlaySession
                     (float)(ring.Width * dpi), (float)(ring.Height * dpi), (float)((pill ? 6 : 2.5) * dpi),
                     Fade(ink, opacity), (float)((isSelected ? 2 : 1) * dpi), Color.Transparent);
 
+            if (_popover is { } popover && OverlayManager.LabelInputEnabled(popover.Owner))
+            {
+                var index = _drawn.FindIndex(label => label.Identity == popover.Placement.Identity &&
+                    LabelPicking.Retains(popover.Placement.Dot, popover.Placement.Dot,
+                        new(label.Dot.X + label.Dot.Width / 2, label.Dot.Y + label.Dot.Height / 2)));
+                if (index >= 0) DrawPopover(popover, _drawn[index].Dot);
+                else _popover = null;
+            }
+            else _popover = null;
+            _frameHud = reserved;
+            _frameComplete = true;
+
+            void DrawPopover((OverlaySession Owner, LabelPlacement Placement) popover, Rect2 dot)
+            {
+                var style = _styles[popover.Placement.Identity];
+                var size = new Size2(projection.Size.Width / dpi, projection.Size.Height / dpi);
+                var (bounds, left) = LabelPicking.Popover(dot, style.Full.Width, size, popover.Placement.Left);
+                _popover = (popover.Owner, popover.Placement with { Left = left, Dot = dot });
+                DrawPill(style.Full, bounds, LabelActivity.Hovered);
+                _popoverBounds = LabelPicking.PaintedPill(bounds, dpi);
+            }
             var ringsDrawn = Stopwatch.GetTimestamp();
             var redrawAfter = _layout.RedrawAfter;
             if (_budget.RedrawAfter is { } settle && (redrawAfter is null || settle < redrawAfter))

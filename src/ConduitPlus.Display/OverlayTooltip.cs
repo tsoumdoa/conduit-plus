@@ -14,6 +14,14 @@ internal sealed partial class OverlaySession
     private sealed record TooltipTarget(string? Card, string Key, long Rev, double Dpi, bool Model, long DomainVersion);
     private readonly ConduitPlus.Platform.UiTimer _tooltipTimer = new(50);
     private (string Card, string Key)? _cardHover;
+    private LabelAnchor? _labelTooltip;
+
+    internal void SetLabelTooltip(LabelAnchor? anchor)
+    {
+        if (_labelTooltip == anchor) return;
+        _labelTooltip = anchor;
+        SyncTooltip();
+    }
     private TooltipTarget? _tooltipTarget;
     private string[]? _tooltipLines;
     private Bitmap? _tooltipBitmap;
@@ -52,6 +60,14 @@ internal sealed partial class OverlaySession
     {
         if (_disposed) return;
         if (!TooltipAllowed) { HideTooltip(); return; }
+        if (_labelTooltip is { Style.Key: { } labelKey } anchor)
+        {
+            var snapshot = OverlayManager.DomainSnapshot(this);
+            var target = new TooltipTarget("label", labelKey, 0, UiContext.Dpi(View), false, snapshot?.Version ?? 0);
+            var content = anchor.Style.Text == labelKey ? new[] { labelKey } : new[] { anchor.Style.Text, labelKey };
+            SetTooltip(target, Tooltip.WithMemberGroups(content, snapshot?.Membership, labelKey));
+            return;
+        }
         if (!OverlayManager.LocalHover(this)) { HideTooltip(); return; }
         var domain = OverlayManager.DomainSnapshot(this);
         var model = OverlayManager.ModelHover(this);
@@ -71,7 +87,11 @@ internal sealed partial class OverlaySession
         }
         if (lines is null || key is null) { HideTooltip(); return; }
         var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model, domain?.Version ?? 0);
-        if (_tooltipTarget == next) return;
+        SetTooltip(next, lines);
+    }
+    private void SetTooltip(TooltipTarget next, string[] lines)
+    {
+        if (_tooltipTarget == next && _tooltipLines is { } previous && previous.SequenceEqual(lines)) return;
         HideTooltip(); _tooltipTarget = next; _tooltipLines = lines;
         _tooltipSince = Stopwatch.GetTimestamp(); _tooltipTimer.Start();
     }

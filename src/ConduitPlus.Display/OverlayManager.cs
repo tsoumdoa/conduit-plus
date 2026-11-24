@@ -52,6 +52,7 @@ public static partial class OverlayManager
         ConduitPlus.Rendering.GdiCanvas.RegisterTextMetrics();
         _started = true;
         RhinoDoc.CloseDocument += CloseDocument;
+        RhinoDoc.ActiveDocumentChanged += ActiveDocumentChanged;
         RhinoView.Destroy += ViewDestroyed;
         RhinoView.Create += ViewChanged; RhinoView.Rename += ViewChanged; RhinoView.Modified += ViewChanged;
         _viewSnapshot = ViewSnapshot();
@@ -67,7 +68,8 @@ public static partial class OverlayManager
         if (!_started) return;
         _started = false;
         _stopping = true;
-        RhinoDoc.CloseDocument -= CloseDocument; RhinoView.Destroy -= ViewDestroyed;
+        RhinoDoc.CloseDocument -= CloseDocument;
+        RhinoDoc.ActiveDocumentChanged -= ActiveDocumentChanged; RhinoView.Destroy -= ViewDestroyed;
         RhinoView.Create -= ViewChanged; RhinoView.Rename -= ViewChanged; RhinoView.Modified -= ViewChanged;
         RhinoApp.Idle -= ViewsIdle; _viewsPending = false;
         RhinoApp.AppSettingsChanged -= AppearanceChanged;
@@ -96,11 +98,13 @@ public static partial class OverlayManager
     }
     // No sticky flag: if the user cancels the close, the next first-use call restarts Display.
     private static void AppClosing(object? sender, EventArgs e) => Stop();
+    internal static void ActiveDocumentChanged(object? sender, EventArgs e) => Mouse.CancelPending();
+
     private static void CommandStarted(object? sender, global::Rhino.Commands.CommandEventArgs e)
     {
         Mouse.CancelPending();
         foreach (var session in Sessions.Values.ToArray())
-        { session.HideTooltip(); session.ClearCardHover(); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true); }
+        { session.HideTooltip(); session.ClearCardHover(); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true); SetLabelHover(session, null); }
     }
     private static void AppearanceChanged(object? sender, EventArgs e) => RhinoApp.InvokeOnUiThread((Action)(() =>
     {
@@ -169,7 +173,7 @@ public static partial class OverlayManager
             if (!States.TryGetValue(key, out var state)) States.Add(key, state = new(doc.RuntimeSerialNumber, view.MainViewport.Id));
             state.ViewId = view.MainViewport.Id; Bindings[owner] = state;
             state.Domain = domain; state.Enabled = brushEnabled; state.PresentationVisible = visible;
-            if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys));
+            if (domain is null) state.Brush.Prune(specs, linked.SelectMany(l => l.Keys).Concat(labels.Select(a => a.Style.Key).OfType<string>()));
         }
         // Following the active view removes this owner's previous conduit.
         // Clear only this owner's old-surface hover, including private brush state; retain selection.
@@ -225,7 +229,7 @@ public static partial class OverlayManager
     {
         lock (StateLock)
             if (!States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var current) || current.Domain is null) return;
-        ClearHover(session, false); ClearHover(session, true);
+        ClearHover(session, false); ClearHover(session, true); SetLabelHover(session, null);
         lock (StateLock)
             if (States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state))
                 state.Gesture = Interlocked.Increment(ref _gestureGeneration);
@@ -252,7 +256,7 @@ public static partial class OverlayManager
             if (Bindings.TryGetValue(owner, out var state)) state.Enabled = enabled;
         if (!enabled)
             foreach (var session in Sessions.Values.Where(s => s.Owner == owner).ToArray())
-            { ClearHover(session, false); ClearHover(session, true); }
+            { ClearHover(session, false); ClearHover(session, true); SetLabelHover(session, null); }
     }
     /// <summary>Withdraw presentation without removing cards, view state, binding or Scope membership.</summary>
     public static void SetPresentationVisible(Guid owner, bool visible)
@@ -268,7 +272,7 @@ public static partial class OverlayManager
             if (!visible)
             {
                 // Private domains are skipped by CancelBrushHover; a hidden owner clears its own hover too.
-                Mouse.Forget(session); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true);
+                Mouse.Forget(session); CancelBrushHover(session); ClearHover(session, false); ClearHover(session, true); SetLabelHover(session, null);
                 session.ClearCardHover(); session.HideTooltip();
             }
             else session.RefreshInteraction();
@@ -311,12 +315,36 @@ public static partial class OverlayManager
         Change(session, b => b.ClearHover(Origin(session, model)), b => b.ClearHover(Origin(session, model)), clearing: true);
         session.SyncTooltip();
     }
-    internal static void Select(OverlaySession session, string card, string key, BrushSelectMode mode)
+    internal static bool LabelInputEnabled(OverlaySession session)
+    {
+        lock (StateLock)
+            return session.Visible && States.TryGetValue((session.Document.RuntimeSerialNumber, session.Owner), out var state)
+                && state.Enabled && state.PresentationVisible;
+    }
+
+    internal static void SetLabelHover(OverlaySession session, OverlaySession.LabelHit? hit)
+    {
+        session.SetLabelPopover(hit?.Placement);
+        var origin = Origin(session, false) with { Surface = "label" };
+        var key = hit?.Anchor.Style.Key;
+        Change(session, b => key is null ? b.ClearHover(origin) : b.Hover(origin, key, BrushTargetKind.Member),
+            b => key is null ? b.ClearHover(origin) : b.Hover(origin, key, BrushTargetKind.Member), clearing: key is null);
+        session.SetLabelTooltip(hit?.Anchor);
+    }
+
+    public static void ClearSelection(Guid owner)
+    {
+        UiContext.Ensure();
+        if (Sessions.Values.FirstOrDefault(s => s.Owner == owner && s.Visible) is { } session)
+            Select(session, "label", CardMeasure.ClearKey, BrushSelectMode.Replace, label: true);
+    }
+
+    internal static void Select(OverlaySession session, string card, string key, BrushSelectMode mode, bool label = false)
     {
         var clear = key == CardMeasure.ClearKey;
         if (!clear && CardMeasure.IsReserved(key)) return;
-        var source = new BrushActionSource(session.Owner, card, card == "model" ? "model" : "card");
-        var kind = session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
+        var source = new BrushActionSource(session.Owner, card, label ? "label" : card == "model" ? "model" : "card");
+        var kind = !label && session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;
         if (Change(session, b => clear ? b.Clear(source) : b.Select(key, mode, source, kind),
             b => clear ? b.Clear(source) : b.Select(key, mode, kind, source)))
         {

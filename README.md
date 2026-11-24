@@ -204,6 +204,9 @@ GH's document-wide preview mode (off or selected only) does not control these ca
 Wire a **Link** or a **Labels** specification into Overlay’s optional **Labels** input.
 Labels accepts a Link for member-key anchors or points with authored text. Right-click
 Overlay and choose **Show Link keys** to display default labels for its Links.
+Hover a label dot to expand it. Keyed labels brush and select their members with
+the same modifiers as cards, including across displays wired to the same Scope.
+Use **Clear selection** in the Overlay menu to clear the selection.
 Try it on the linked room faces in [hello.gh](examples/hello.gh).
 Labels appear in the live viewport. PNG, PDF and clipboard export follow in a later release.
 

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck', 'LabelOcclusion', 'Labels')][string]$Mode = 'Bench',
+    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck', 'LabelOcclusion', 'Labels', 'LabelInput')][string]$Mode = 'Bench',
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
     [string]$Output,
@@ -27,6 +27,7 @@ elseif ($Mode -eq 'Pdf') { $arguments += '--pdf' }
 elseif ($Mode -eq 'PlatformCheck') { $arguments += '--platform-check' }
 if ($Mode -eq 'LabelOcclusion') { $arguments += '--label-occlusion' }
 if ($Mode -eq 'Labels') { $arguments += '--labels' }
+if ($Mode -eq 'LabelInput') { $arguments += '--label-input' }
 if ($Compact) { $arguments += '--compact' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {

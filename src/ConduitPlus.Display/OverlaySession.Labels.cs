@@ -105,6 +105,7 @@ internal sealed partial class OverlaySession
 
         internal void InvalidateAnchors()
         {
+            InvalidateLabelInput();
             _schedule = null;
             _stylesDirty = true;
         }
@@ -142,6 +143,7 @@ internal sealed partial class OverlaySession
             {
                 _projection = (screen, size, dpi, near, far);
                 _projectionRevision++;
+                OverlayManager.RecheckLabelPointer(_view);
             }
             if (projectionChanged || anchorsChanged)
             {

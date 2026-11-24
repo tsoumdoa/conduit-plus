@@ -503,6 +503,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalComponentMenuItems(menu);
+        Menu_AppendItem(menu, "Clear selection", (_, _) => OverlayManager.ClearSelection(InstanceGuid), !Locked);
         Menu_AppendItem(menu, "Show Link keys", (_, _) => ToggleLinkKeys(), true, ShowLinkKeys);
         var copy = Menu_AppendItem(menu, "Copy card as image");
         copy.Enabled = false;
@@ -889,6 +890,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         }
         var labels = specs.SelectMany(s => s.Anchors).DistinctBy(a => a.Identity(InstanceGuid)).ToArray();
         links = links.Concat(direct).Concat(explicitLinks).Distinct().ToArray();
+        var memberKeys = links.SelectMany(l => l.Keys).Concat(labels.Select(a => a.Style.Key).OfType<string>());
         _diagnosticCards = cards;
         _diagnosticGeometryKeys = links.SelectMany(l => l.LinkedGeometryKeys).ToArray();
         _diagnosticLinksWired = Params.Input[1].SourceCount > 0 || direct.Count != 0 || explicitLinks.Count != 0;
@@ -896,7 +898,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
         {
             var suspendedInteraction = _rhinoSuspended && _interactionSolve;
             scope.SetEnabled(!suspendedInteraction);
-            try { if (!suspendedInteraction) scope.Publish(cards, links.SelectMany(l => l.Keys)); }
+            try { if (!suspendedInteraction) scope.Publish(cards, memberKeys); }
             catch (ArgumentException e)
             {
                 if (scope.BeginPublication() is { } ticket) scope.Stage(ticket, null);
@@ -910,7 +912,7 @@ public sealed class OverlayComponent : PreviewDisplayComponent
             QueuePublish(cards, links, labels); return;
         }
         var snapshot = OverlayManager.Snapshot(InstanceGuid);
-        var membership = _membership = MembershipIndex.Create([new BrushRegistration("private", cards, links.SelectMany(l => l.Keys))], _membership);
+        var membership = _membership = MembershipIndex.Create([new BrushRegistration("private", cards, memberKeys)], _membership);
         RefreshLinkDiagnostics(membership);
         foreach (var diagnostic in membership.Diagnostics)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Card {diagnostic.CardId}, key '{diagnostic.Key}': {diagnostic.Message}");

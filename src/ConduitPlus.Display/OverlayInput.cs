@@ -35,10 +35,18 @@ public static partial class OverlayManager
                 Command.InCommand() || !HostInput.LeftButtonDown || HostInput.EscapeDown)) Cancel();
         }
         public void Reset() { CancelPending(); _wheel.Clear(); Cancel(); _pressed = false; _buttonDown = false; }
-        internal void CancelPending()
+        internal void CancelPending(bool closeLabels = true)
         {
+            if (closeLabels) CloseLabelHover();
             _modelDwell.Cancel(); _scrollRest.Cancel(); // accepted wheel input survives: its message was already swallowed
             _pointer = null; _movePending = false; _clearScrollHover = false; _exitPending = false;
+        }
+        private OverlaySession? _labelHoverOwner;
+        internal void CloseLabelHover()
+        {
+            var owner = _labelHoverOwner;
+            _labelHoverOwner = null;
+            if (owner is { IsDisposed: false }) SetLabelHover(owner, null);
         }
         private void Cancel()
         {
@@ -48,6 +56,7 @@ public static partial class OverlayManager
         }
         public void Forget(OverlaySession session)
         {
+            if (_labelHoverOwner == session) CloseLabelHover();
             if (_pointer is { } pointer && SameView(pointer.View, session.View)) { _modelDwell.Cancel(); _scrollRest.Cancel(); _pointer = null; _movePending = false; }
             if (_emptyPress is { } press && SameView(press.View, session.View)) _emptyPress = null;
             if (_gesture?.Session == session) Cancel();
@@ -74,6 +83,13 @@ public static partial class OverlayManager
                 s.Cursor(default, false); s.ClearCardHover(); ClearHover(s, false); ClearHover(s, true);
             }
         }
+        internal void RecheckLabelPointer(RhinoView view)
+        {
+            if (_labelHoverOwner is null || _pointer is not { } pointer || !SameView(view, pointer.View)) return;
+            _movePending = true;
+            InteractionPump.Wake();
+        }
+
         internal bool HasPointer => _pointer is not null;
         internal System.Drawing.Point? PointerIn(RhinoView view) => _pointer is { } p && SameView(p.View, view) ? p.Point : null;
         internal void ObservePointerWindow(System.Drawing.Point screen)
@@ -93,7 +109,7 @@ public static partial class OverlayManager
             _movePending = true;
             InteractionPump.Wake();
         }
-        internal void ApplyPending(long now)
+        internal void ApplyPending(long now, bool syntheticPointer = false)
         {
             if (_exitPending)
             {
@@ -107,7 +123,7 @@ public static partial class OverlayManager
                 if (!target.Session.IsDisposed && target.Session.Visible) target.Session.ScrollBy(target.Card, rows);
             if (_pointer is not { } p) return;
             var screen = HostView.PointerScreen;
-            if (!PointerInView(p.View, screen)) { CancelPending(); ClearPointerHover(); return; }
+            if (!syntheticPointer && !PointerInView(p.View, screen)) { CancelPending(); ClearPointerHover(); return; }
             if (Interacting || Command.InCommand())
             {
                 CancelPending();
@@ -116,7 +132,7 @@ public static partial class OverlayManager
             }
             // Revalidate the actual cursor, even if Rhino didn't deliver its latest move (e.g. a window opened).
             // macOS: if AppKit can't map the pointer, keep Rhino's own MouseCallback point.
-            var actual = HostView.ToClient(p.View, screen) ?? p.Point;
+            var actual = syntheticPointer ? p.Point : HostView.ToClient(p.View, screen) ?? p.Point;
             if (actual != p.Point)
             {
                 _pointer = p = (p.View, actual); _movePending = true;
@@ -128,10 +144,14 @@ public static partial class OverlayManager
             if (!_movePending && !scrollRested && !_modelDwell.Pending) return;
             _movePending = false;
             var sessions = InView(p.View);
-            var hidden = HiddenHit(p.View, p.Point.X, p.Point.Y);
+            var hidden = HiddenHit(p.View, p.Point.X, p.Point.Y) ||
+                sessions.Any(s => s.LabelTooltipBounds is { } bounds && bounds.Contains(p.Point.X, p.Point.Y));
             var hits = sessions.ToDictionary(s => s, s => hidden ? null : s.Hit(p.Point.X, p.Point.Y));
             var overCard = hits.Values.Any(h => h.HasValue);
-            if (overCard || hidden) _modelDwell.Cancel();
+            var label = overCard || hidden || _scrollRest.Pending || HostInput.EscapeDown
+                ? null : OverlaySession.PickLabel(p.View, p.Point, retain: true);
+            if (overCard || hidden || label.HasValue) _modelDwell.Cancel();
+            if (_labelHoverOwner != label?.Owner) CloseLabelHover();
             foreach (var s in Sessions.Values.ToArray())
             {
                 if (!_started) return;
@@ -144,10 +164,16 @@ public static partial class OverlayManager
                 }
                 if (hits.TryGetValue(s, out var hit) && hit is { } card) s.SetHover(card.CardId, card.Key);
                 else { s.ClearCardHover(); ClearHover(s, false); }
-                if (overCard || hidden) ClearHover(s, true);
+                if (overCard || hidden || label.HasValue) ClearHover(s, true);
             }
             _clearScrollHover = false;
             if (_scrollRest.Pending) { _modelDwell.Cancel(); return; }
+            if (label is { } labelHit && !labelHit.Owner.IsDisposed)
+            {
+                _labelHoverOwner = labelHit.Owner;
+                SetLabelHover(labelHit.Owner, labelHit);
+                return;
+            }
             if (overCard || hidden) { _modelDwell.Cancel(); return; }
             if (scrollRested) _modelDwell.Move(new(p.Point.X, p.Point.Y), now);
             if (!_modelDwell.Take(now)) return;
@@ -189,6 +215,15 @@ public static partial class OverlayManager
             }
             MoveHover(e.View, e.ViewportPoint);
         }
+        internal TimeSpan MoveForChecks(RhinoView view, System.Drawing.Point point)
+        {
+            MoveHover(view, point);
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            ApplyPending(Environment.TickCount64, syntheticPointer: true);
+            _pointer = null;
+            return System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        }
+
         private void MoveHover(RhinoView view, System.Drawing.Point point)
         {
             if (_pointer is not { } previous || !SameView(previous.View, view)) _modelDwell.Cancel();
@@ -212,16 +247,18 @@ public static partial class OverlayManager
             // A click must hit the rows after all preceding wheel messages, and no deferred hover
             // may run after its selection/sort. Flush presentation again before returning to Rhino.
             InteractionPump.Flush();
-            CancelPending();
+            CancelPending(closeLabels: false);
             _buttonDown = true;
             foreach (var s in Sessions.Values.ToArray()) ClearHover(s, true);
             try { MouseDown(e); }
-            finally { InteractionPump.Flush(); }
+            finally { CloseLabelHover(); InteractionPump.Flush(); }
         }
         private void MouseDown(MouseCallbackEventArgs e)
         {
             if (HiddenHit(e.View,e.ViewportPoint.X,e.ViewportPoint.Y,true)) { e.Cancel=true; _pressed=true; _emptyPress=null; return; }
             _emptyPress = null;
+            var tooltipHit = InView(e.View).Any(s => s.LabelTooltipBounds is { } bounds &&
+                bounds.Contains(e.ViewportPoint.X, e.ViewportPoint.Y));
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
             if (_gesture is not null) { e.Cancel = true; Cancel(); return; } // a new down also ends a gesture whose outside release was missed
             var intent = Intent(e);
@@ -231,6 +268,7 @@ public static partial class OverlayManager
                 foreach (var session in InView(e.View)) CancelBrushHover(session);
                 return;
             }
+            if (tooltipHit) { e.Cancel = true; _pressed = true; return; }
             var mode = BrushSelection.FromModifiers(intent.Shift, intent.Toggle);
             var sessions = InView(e.View);
             foreach (var s in sessions)
@@ -258,6 +296,11 @@ public static partial class OverlayManager
                 {
                     s.Select(hit.Value.CardId, hit.Value.Key, mode);
                 }
+                return;
+            }
+            if (TrySelectLabel(e.View, e.ViewportPoint, mode))
+            {
+                e.Cancel = true; _pressed = true;
                 return;
             }
             if (Command.InCommand()) return;
@@ -291,7 +334,9 @@ public static partial class OverlayManager
                 SameView(press.View, e.View) && CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(e.ViewportPoint.X, e.ViewportPoint.Y)))
             {
                 var sessions = InView(e.View);
-                if (!sessions.Any(s => s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) is not null) && ModelPicking.Pick(e.View, sessions, e.ViewportPoint) is null)
+                if (!sessions.Any(s => s.Hit(e.ViewportPoint.X, e.ViewportPoint.Y) is not null) &&
+                    OverlaySession.PickLabel(e.View, e.ViewportPoint) is not { Anchor.Style.Key: not null } &&
+                    ModelPicking.Pick(e.View, sessions, e.ViewportPoint) is null)
                     foreach (var session in sessions) session.Select("model", CardMeasure.ClearKey);
             }
             Cancel(); if (_pressed) { e.Cancel = true; _pressed = false; }
@@ -299,6 +344,25 @@ public static partial class OverlayManager
             Enabled = Sessions.Count > 0;
         }
     }
+
+    private static bool TrySelectLabel(RhinoView view, System.Drawing.Point point, BrushSelectMode mode)
+    {
+        if (OverlaySession.PickLabel(view, point) is not { Anchor.Style.Key: { } key } label) return false;
+        Select(label.Owner, "label", key, mode, label: true);
+        return true;
+    }
+
+    internal static void RecheckLabelPointer(RhinoView view) => Mouse.RecheckLabelPointer(view);
+
+    internal static TimeSpan MovePointerForChecks(RhinoView view, System.Drawing.Point point)
+    {
+        var elapsed = Mouse.MoveForChecks(view, point);
+        InteractionPump.Flush();
+        return elapsed;
+    }
+
+    internal static bool ClickLabelForChecks(RhinoView view, System.Drawing.Point point) =>
+        TrySelectLabel(view, point, BrushSelectMode.Replace);
 
     /// <summary>Which wheel/pointer route is active (diagnostics).</summary>
     internal static string InputRoute => HostInput.IsMac ? $"AppKit local event monitor: {MacDiagnostics.MonitorStatus ?? "not installed"}"
