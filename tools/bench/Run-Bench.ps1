@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck', 'LabelSpike')][string]$Mode = 'Bench',
+    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck', 'LabelOcclusion')][string]$Mode = 'Bench',
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
     [string]$Output,
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (-not $Output) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $Output = if ($Mode -eq 'LabelSpike') { Join-Path $repo "artifacts/labels-depth-$stamp" }
+    $Output = if ($Mode -eq 'LabelOcclusion') { Join-Path $repo "artifacts/labels-occlusion-$stamp" }
         else { Join-Path ([IO.Path]::GetTempPath()) "ConduitPlus/bench-$stamp" }
 }
 $destination = [IO.Path]::GetFullPath($Output)
@@ -24,8 +24,8 @@ $assembly = Join-Path $PSScriptRoot "ConduitPlus.RhinoBench/bin/$Configuration/n
 $arguments = @('"' + $assembly + '"')
 if ($Mode -eq 'Capture') { $arguments += @('--capture', $Scale) }
 elseif ($Mode -eq 'Pdf') { $arguments += '--pdf' }
-elseif ($Mode -eq 'PlatformCheck', 'LabelSpike') { $arguments += '--platform-check' }
-if ($Mode -eq 'LabelSpike') { $arguments += '--label-spike' }
+elseif ($Mode -eq 'PlatformCheck') { $arguments += '--platform-check' }
+if ($Mode -eq 'LabelOcclusion') { $arguments += '--label-occlusion' }
 if ($Compact) { $arguments += '--compact' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {

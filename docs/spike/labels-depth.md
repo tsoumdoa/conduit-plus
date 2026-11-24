@@ -1,5 +1,7 @@
 # Label depth spike
 
+The depth readback spike was retired after the hidden host returned no usable depth buffer. The [labels design](../design/labels.md#visibility-before-layout) uses CPU ray occlusion. Run the replacement headless harness with `./tools/bench/Run-Bench.ps1 -Mode LabelOcclusion`. Reports are written under `artifacts/`.
+
 The implementation targets the pinned RhinoCommon 8.20 API. It records a fresh
 ZBufferCapture for each measured foreground redraw because arbitrary preview
 revisions are unavailable. It uses the active mode, samples each occupied
@@ -35,76 +37,10 @@ standard preview and Custom Preview depth are unverified.
 | Interior false hits and leaks | Zero | Unmeasured |
 | Standard and Custom Preview coverage on both platforms | Both contribute where they write depth | Unverified |
 
-The feasibility gate remains open. Validate ZBufferCapture in interactive Rhino
-first. If real GH preview depth is absent or the timing gates fail, test a
-batched platform-specific sampler against completed scene depth before choosing
-a label renderer.
-
 ### Hidden-host follow-up (2026-11-24)
 
 - `view.Redraw()` only invalidates the view. The foreground callback ran only once each redraw was followed by `RhinoApp.Wait()`, as `BenchCommand` already does. That was the cause of the "Redraw did not invoke…" failure in both the hidden host and interactive Rhino.
 - Calling `ZBufferCapture.WorldPointAt` from inside `DrawForeground` crashed with a native access violation. The capture and classification now run between frames, before the paint. That matches the design's classify-before-layout order.
 - In the hidden RhinoCore host, `ZBufferCapture` yields no buffer: `GrayscaleDib()` throws natively and `WorldPointAt` would read invalid memory.
 - The spike now checks the buffer size once per case, before sampling, so a missing capture fails with a managed error instead of crashing Rhino.
-- Measurements therefore need interactive Rhino.
-
-## Run on Windows or Mac
-
-From the repository root on Windows, the bounded hidden-host reproduction is:
-
-```powershell
-./tools/bench/Run-Bench.ps1 -Mode LabelSpike -Configuration Debug
-```
-
-For an interactive run, use a disposable empty Rhino model and a maximized
-model viewport. Install a local Yak containing this spike through the normal
-project workflow once the reviewing thread prepares the test packages. Build
-the Windows package on Windows and the Mac package with Pack-Yak.ps1
--Platform mac. Drop the platform-specific Yak onto Rhino and restart Rhino
-before running the command. This worktree contains source only.
-
-Windows build:
-
-```powershell
-dotnet build src/ConduitPlus.Rhino/ConduitPlus.Rhino.csproj -c Debug
-```
-
-Use the RHP in src/ConduitPlus.Rhino/bin/Debug/net8.0-windows/.
-
-Mac build with the .NET 8 SDK:
-
-```sh
-dotnet build src/ConduitPlus.Rhino/ConduitPlus.Rhino.csproj -c Debug -p:ConduitPlusPlatform=mac -p:EnableWindowsTargeting=true
-```
-
-Use the RHP in artifacts/mac/bin/ConduitPlus.Rhino/Debug/net8.0/. Run
-`_ConduitPlusLabelSpike` in Rhino 8 on either platform. The command runs the
-same orbit/zoom and stationary-camera blocker shifts in each case, with 20
-discarded warm-up frames followed by 600 recorded frames. It saves JSON after
-each case. The report contains raw samples, per-stage p50/p95/p99/max, paired
-redraw deltas, counts of ≥16 ms deltas, and interior mismatch totals. Redraw
-wall time includes blocking readback but does not independently fence final GPU
-presentation. The report covers placeholder dots, with no text atlas or hit
-routing. Run again with a 4K viewport where available to exercise readback at
-that size.
-
-Repeat on native 1× and 2× displays where available, moving Rhino onto the
-monitor before starting each run. Check the report's viewport dimensions and
-detected DPI, and save each report separately. Set CONDUITPLUS_RESULTS in the
-environment inherited by Rhino to an absolute directory such as
-repo/artifacts/labels-depth-2x. Without an override the command writes to
-Documents/ConduitPlus/artifacts/labels-depth/labels-depth.json. The optional
-CONDUITPLUS_SPIKE_DISPLAY tag is recorded alongside detected DPI.
-
-For real GH checks, run the command and set its **Source** option to
-GHStandard or GHCustom (the hidden-host bench still reads CONDUITPLUS_SPIKE_GH),
-once per source. Each source writes to its own results subfolder. This tag switches to
-the external-plane oracle and identifies the report. In Grasshopper build a
-single quad mesh with corners (-6,-4,0), (2,-4,0), (2,5,0), (-6,5,0), in that
-order, without baking it. For Standard, enable preview only on the mesh output.
-For Custom, disable that output preview and wire it into an opaque Custom
-Preview, which should be the only preview contributor. Keep Grasshopper open
-with the definition active and other previews disabled. Start with Shaded
-results. The wireframe oracle expects wire-only coverage outside its excluded
-edge band, so a Custom Preview that writes solid depth in wireframe requires a
-separate interpretation of those results.
+- The hidden host yielded no depth measurements.

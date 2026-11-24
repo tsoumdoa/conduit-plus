@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="../ConduitPlus.Core/ConduitPlus.Core.csproj" />
     <ProjectReference Include="../ConduitPlus.Display/ConduitPlus.Display.csproj" />
+    <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <Reference Update="RhinoCommon"><Private>false</Private></Reference>
   </ItemGroup>

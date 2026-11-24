@@ -21,7 +21,7 @@ internal static class Program
         SetDllDirectory(RhinoSystem);
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
-            foreach (var folder in new[] { pluginDirectory, Path.Combine(RhinoSystem, "netcore"), RhinoSystem })
+            foreach (var folder in new[] { pluginDirectory, Path.Combine(RhinoSystem, "netcore"), RhinoSystem, Path.GetFullPath(Path.Combine(RhinoSystem, "..", "Plug-ins", "Grasshopper")) })
             {
                 var path = Path.Combine(folder, name.Name + ".dll");
                 if (File.Exists(path)) return AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
@@ -44,14 +44,14 @@ internal static class Program
         doc.Views.ActiveView = view;
         var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(pluginDirectory, "ConduitPlus.Rhino.rhp"));
         var captureIndex = Array.IndexOf(args, "--capture");
-        var type = captureIndex >= 0 ? "ConduitPlusCapture" : args.Contains("--pdf") ? "ConduitPlusPdf" : args.Contains("--label-spike") ? "ConduitPlusLabelSpike" : args.Contains("--platform-check") ? "ConduitPlusPlatformCheck" : "ConduitPlusBench";
-        var entry = assembly.GetType("ConduitPlus.Rhino." + type)!.GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.Static)!;
+        var type = captureIndex >= 0 ? "ConduitPlusCapture" : args.Contains("--pdf") ? "ConduitPlusPdf" : args.Contains("--label-occlusion") ? "LabelOcclusionBench" : args.Contains("--platform-check") ? "ConduitPlusPlatformCheck" : "ConduitPlusBench";
+        var entry = assembly.GetType("ConduitPlus.Rhino." + type)!.GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
         var arguments = captureIndex >= 0
             ? new object[] { doc, view, int.Parse(args[captureIndex + 1], System.Globalization.CultureInfo.InvariantCulture), args.Contains("--compact") }
             : [doc, view];
         try
         {
-            core.InvokeInHostContext(() => { entry.Invoke(null, arguments); return true; });
+            core.InvokeInHostContext(() => { try { entry.Invoke(null, arguments); } catch (TargetInvocationException e) { Console.Error.WriteLine(e.InnerException); throw; } return true; });
             Console.WriteLine("Benchmark workload completed successfully.");
             return 0;
         }
