@@ -24,7 +24,15 @@ internal sealed partial class OverlaySession
 
     internal void SetLabelPaintBudgetForChecks(TimeProvider? clock = null, int? fixedLimit = null)
     {
-        if (_labelView is { } view) view.PaintBudget = new(clock, fixedLimit);
+        _labelView?.SetPaintClock(clock, fixedLimit);
+    }
+
+    internal const int LabelUploadAllowance = 8;
+    internal (int Uploads, int PendingDots) LabelRasterWork => _labelView?.RasterWork ?? default;
+    internal int LabelSettleTicks => _labelView?.SettleTicks ?? 0;
+    internal void ObserveLabelPillForChecks(Action<Bitmap, int, int>? observer)
+    {
+        if (_labelView is { } view) view.PillObserver = observer;
     }
 
     private sealed partial class LabelView
@@ -40,8 +48,22 @@ internal sealed partial class OverlaySession
         private readonly List<(Rect2 Bounds, bool Pill, bool Selected, string Ink, double Opacity)> _rings = [];
         private LabelActivity[] _activity = [];
 
-        internal LabelPaintBudget PaintBudget { get; set; } = new();
-        private readonly LabelLayout _layout = new();
+        private LabelPaintBudget _budget = new();
+        private LabelLayout _layout = new();
+        internal int SettleTicks { get; private set; }
+        internal (int Uploads, int PendingDots) RasterWork { get; private set; }
+        internal Action<Bitmap, int, int>? PillObserver { get; set; }
+        private Texture? _neutralTexture;
+        private Texture? _fadedNeutralTexture;
+        private DotBatch _neutralDots = null!;
+        private DotBatch _fadedNeutralDots = null!;
+
+        internal void SetPaintClock(TimeProvider? clock, int? fixedLimit)
+        {
+            _settled.Stop();
+            _budget = new(clock, fixedLimit);
+            _layout = new(clock);
+        }
         internal LabelPlacement[] InspectFrame() => _drawn.ToArray();
         private readonly LabelRasterCache<Texture> _rasters = new();
         private readonly UiTimer _settled = new(120);
@@ -81,16 +103,31 @@ internal sealed partial class OverlaySession
 
         private sealed class Texture(Bitmap bitmap) : IDisposable
         {
+            internal Bitmap Image { get; } = bitmap;
             internal DisplayBitmap Display { get; } = new(bitmap);
             internal long Bytes { get; } = (long)bitmap.Width * bitmap.Height * 8;
-            public void Dispose() { Display.Dispose(); bitmap.Dispose(); }
+            public void Dispose() { Display.Dispose(); Image.Dispose(); }
         }
 
-        private void Prepare(double dpi)
+        private int Prepare(double dpi)
         {
             if (!_stylesDirty && _rasterDpi == dpi &&
                 ThemesMatch())
-                return;
+                return 0;
+
+            var uploads = 0;
+            if (_neutralTexture is null || _rasterDpi != dpi)
+            {
+                _neutralTexture?.Dispose();
+                _fadedNeutralTexture?.Dispose();
+                var neutral = new LabelRasterKey("", null, LabelPalette.FromTheme(Theme.Paper), dpi, LabelForm.Dot, 5, 1);
+                var faded = neutral with { Opacity = .45 };
+                _neutralDots = new(neutral);
+                _fadedNeutralDots = new(faded);
+                _neutralTexture = CreateTexture(neutral);
+                _fadedNeutralTexture = CreateTexture(faded);
+                uploads = 2;
+            }
 
             var widths = new Dictionary<(string Text, string Font, bool Swatch), (string Text, double Width)>();
             var keys = new HashSet<LabelRasterKey>();
@@ -138,24 +175,22 @@ internal sealed partial class OverlaySession
             _metrics = widths;
             _rasterDpi = dpi;
             _stylesDirty = false;
-            // Prime a bounded number of commonly shared dot textures on style changes.
-            var dotWarmup = Stopwatch.GetTimestamp();
-            foreach (var key in _dots.Keys)
-            {
-                if (Stopwatch.GetElapsedTime(dotWarmup).TotalMilliseconds >= 1) break;
-                GetTexture(key);
-            }
+            return uploads;
         }
 
         private Texture GetTexture(LabelRasterKey key)
         {
             if (_rasters.TryGet(key, out var cached)) return cached;
-            var image = RasterDrawing.RenderLabel(key);
-            Texture texture;
-            try { texture = new(image); }
-            catch { image.Dispose(); throw; }
+            var texture = CreateTexture(key);
             _rasters.Add(key, texture, texture.Bytes);
             return texture;
+        }
+
+        private static Texture CreateTexture(LabelRasterKey key)
+        {
+            var image = RasterDrawing.RenderLabel(key);
+            try { return new(image); }
+            catch { image.Dispose(); throw; }
         }
 
         private DotBatch Batch(LabelRasterKey key)
@@ -200,14 +235,15 @@ internal sealed partial class OverlaySession
             _activityDirty = false;
         }
 
-        internal void Draw(DrawEventArgs e, IReadOnlyList<Rect2> reserved)
+        internal void Draw(DrawEventArgs e, IReadOnlyList<Rect2> reserved, long started)
         {
-            var started = Stopwatch.GetTimestamp();
+            _drawn.Clear();
+            RasterWork = default;
             Classify();
             if (Scene.Snapshot is not { } snapshot || _schedule is not { } schedule || _projection is not { } projection) return;
             var classified = Stopwatch.GetTimestamp();
             var dpi = projection.Dpi;
-            Prepare(dpi);
+            var reservedUploads = Prepare(dpi);
             RankByActivity();
             _candidates.Clear();
             foreach (var style in _priorityOrder)
@@ -222,14 +258,13 @@ internal sealed partial class OverlaySession
             var candidatesBuilt = Stopwatch.GetTimestamp();
             var frame = _layout.PlaceRanked(_candidates, projection.Size, dpi, reserved);
             var placed = Stopwatch.GetTimestamp();
-            var remainingUploads = 8;
+            var remainingUploads = LabelUploadAllowance - reservedUploads;
             var remainingPreloads = 4;
-            var budget = PaintBudget.BeginFrame(_projectionRevision);
-            var inMotion = PaintBudget.RedrawAfter.HasValue;
+            var budget = _budget.BeginFrame(_projectionRevision);
+            var inMotion = _budget.RedrawAfter.HasValue;
             var sampledPills = 0;
             var pillCount = 0;
             var pillTicks = 0L;
-            _drawn.Clear();
             foreach (var batch in _usedDots) batch.Points.Clear();
             _usedDots.Clear();
             _rings.Clear();
@@ -266,10 +301,36 @@ internal sealed partial class OverlaySession
             }
 
             var pillsDrawn = Stopwatch.GetTimestamp();
+            var pendingDots = 0;
+            _neutralDots.Points.Clear();
+            _fadedNeutralDots.Points.Clear();
             foreach (var batch in _usedDots)
             {
-                batch.Draw(e.Display, GetTexture(batch.Key).Display);
+                if (batch.Key == _neutralDots.Key)
+                    batch.Draw(e.Display, _neutralTexture!.Display);
+                else if (batch.Key == _fadedNeutralDots.Key)
+                    batch.Draw(e.Display, _fadedNeutralTexture!.Display);
+                else if (_rasters.TryGet(batch.Key, out var texture))
+                    batch.Draw(e.Display, texture.Display);
+                else if (remainingUploads > 0)
+                {
+                    remainingUploads--;
+                    batch.Draw(e.Display, GetTexture(batch.Key).Display);
+                }
+                else
+                {
+                    pendingDots++;
+                    var fallback = batch.Key.Opacity < 1 ? _fadedNeutralDots : _neutralDots;
+                    fallback.Points.AddRange(batch.Points);
+                }
             }
+            if (pendingDots > 0)
+            {
+                if (_neutralDots.Points.Count > 0) _neutralDots.Draw(e.Display, _neutralTexture!.Display);
+                if (_fadedNeutralDots.Points.Count > 0) _fadedNeutralDots.Draw(e.Display, _fadedNeutralTexture!.Display);
+                _redraw.Start();
+            }
+            RasterWork = (LabelUploadAllowance - remainingUploads, pendingDots);
 
             var dotsDrawn = Stopwatch.GetTimestamp();
             foreach (var (ring, pill, isSelected, ink, opacity) in _rings)
@@ -279,7 +340,7 @@ internal sealed partial class OverlaySession
 
             var ringsDrawn = Stopwatch.GetTimestamp();
             var redrawAfter = _layout.RedrawAfter;
-            if (PaintBudget.RedrawAfter is { } settle && (redrawAfter is null || settle < redrawAfter))
+            if (_budget.RedrawAfter is { } settle && (redrawAfter is null || settle < redrawAfter))
                 redrawAfter = settle;
             if (redrawAfter is { } remaining && !_settled.Enabled)
             {
@@ -291,7 +352,7 @@ internal sealed partial class OverlaySession
             Timing = new(Timing.Sequence + 1, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                 Elapsed(started, classified), Elapsed(classified, candidatesBuilt), Elapsed(candidatesBuilt, placed),
                 Elapsed(placed, pillsDrawn), Elapsed(pillsDrawn, dotsDrawn), Elapsed(dotsDrawn, ringsDrawn), pillCount, inMotion);
-            if (inMotion) PaintBudget.Observe(sampledPills, Elapsed(0, pillTicks));
+            if (inMotion) _budget.Observe(sampledPills, Elapsed(0, pillTicks));
             else if (wasInMotion) SettledTiming = Timing;
 
             static double Elapsed(long start, long end) => Stopwatch.GetElapsedTime(start, end).TotalMilliseconds;
@@ -307,16 +368,20 @@ internal sealed partial class OverlaySession
                 var cached = _rasters.TryGet(key, out var texture);
                 if (!cached)
                 {
-                    if (inMotion && activity == LabelActivity.Ordinary && remainingUploads-- <= 0)
+                    if (inMotion && activity == LabelActivity.Ordinary && remainingUploads == 0)
                     {
                         _redraw.Start();
                         return false;
                     }
+                    if (remainingUploads > 0) remainingUploads--;
                     texture = GetTexture(key);
                 }
                 var sample = inMotion && cached && activity == LabelActivity.Ordinary;
                 var before = sample ? Stopwatch.GetTimestamp() : 0;
-                e.Display.DrawBitmap(texture.Display, (int)Math.Round(rect.X * dpi), (int)Math.Round(rect.Y * dpi));
+                var x = (int)Math.Round(rect.X * dpi);
+                var y = (int)Math.Round(rect.Y * dpi);
+                e.Display.DrawBitmap(texture.Display, x, y);
+                PillObserver?.Invoke(texture.Image, x, y);
                 if (sample)
                 {
                     pillTicks += Stopwatch.GetTimestamp() - before;

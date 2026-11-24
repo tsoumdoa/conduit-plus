@@ -77,12 +77,16 @@ public sealed class LabelLayout(TimeProvider? clock = null)
         {
             var c = source[i];
             if (next.ContainsKey(c.Identity)) continue;
-            if (c.Visibility.Opacity(c.Activity != LabelActivity.Ordinary) <= 0) continue;
-            var p = new Point2(c.Anchor.X / dpi, c.Anchor.Y / dpi);
-            if (placedAnchors.Contains(p)) continue;
-            var dot = new Rect2(p.X - 2.5, p.Y - 2.5, 5, 5);
-            if (!Fits(dot, 0)) continue;
             var known = _history.TryGetValue(c.Identity, out var old);
+            var suppressed = new History(LabelForm.Dot, old.Left, LabelForm.Dot, false, now);
+            var p = new Point2(c.Anchor.X / dpi, c.Anchor.Y / dpi);
+            var dot = new Rect2(p.X - 2.5, p.Y - 2.5, 5, 5);
+            if (c.Visibility.Opacity(c.Activity != LabelActivity.Ordinary) <= 0 ||
+                placedAnchors.Contains(p) || !Fits(dot, 0))
+            {
+                next.Add(c.Identity, suppressed);
+                continue;
+            }
             var active = c.Activity != LabelActivity.Ordinary;
             var shortThreshold = known ? old.Form == LabelForm.Dot ? 22 : 14 : 18;
             var spacing = active ? 96 : Spacing(p, shortThreshold);
@@ -126,7 +130,11 @@ public sealed class LabelLayout(TimeProvider? clock = null)
                     return Fits(bounds, promoting ? 4 : 0) && (!promoting || Fits(dot, 4));
                 }
             }
-            if (occluded && form != LabelForm.Full) continue;
+            if (occluded && form != LabelForm.Full)
+            {
+                next.Add(c.Identity, suppressed);
+                continue;
+            }
             next.Add(c.Identity, history with { Form = form, Left = left });
             placedAnchors.Add(p);
             occupied.Add(dot, dot);

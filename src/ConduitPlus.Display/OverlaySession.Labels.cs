@@ -45,7 +45,7 @@ internal sealed partial class OverlaySession
         if (_labelView is { } view) view.DpiOverride = dpi;
     }
 
-    internal void DrawViewLabels(DrawEventArgs e, IReadOnlyList<Rect2> reserved) => _labelView?.Draw(e, reserved);
+    internal void DrawViewLabels(DrawEventArgs e, IReadOnlyList<Rect2> reserved, long started) => _labelView?.Draw(e, reserved, started);
 
     internal (LabelAnchor Anchor, OcclusionAnswer Answer)[] InspectLabels() =>
         _labels.Select((anchor, i) => (anchor, _labelView?.Answer(this, i) ?? default)).ToArray();
@@ -73,7 +73,7 @@ internal sealed partial class OverlaySession
         {
             _key = key;
             _view = owner.View;
-            _settled.Tick += (_, _) => { _settled.Stop(); _view.Redraw(); };
+            _settled.Tick += (_, _) => { _settled.Stop(); SettleTicks++; _view.Redraw(); };
             Scene = new(owner.Document, _view.MainViewport);
             _redraw.Tick += (_, _) =>
             {
@@ -133,13 +133,18 @@ internal sealed partial class OverlaySession
             var viewport = _view.MainViewport;
             var dpi = DpiOverride ?? UiContext.Dpi(_view);
             viewport.GetFrustum(out _, out _, out _, out _, out var near, out var far);
-            var projection = (viewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen),
-                _owners.First().ViewSize, dpi, near, far);
-            var projectionChanged = _projection != projection;
+            var screen = viewport.GetTransform(CoordinateSystem.World, CoordinateSystem.Screen);
+            var size = _owners.First().ViewSize;
+            var projectionChanged = _projection is not { } previous ||
+                size != previous.Size || dpi != previous.Dpi || near != previous.Near || far != previous.Far ||
+                !SameScreenTransform(screen, previous.Screen);
+            if (projectionChanged)
+            {
+                _projection = (screen, size, dpi, near, far);
+                _projectionRevision++;
+            }
             if (projectionChanged || anchorsChanged)
             {
-                _projection = projection;
-                if (projectionChanged) _projectionRevision++;
                 var projector = new LabelOcclusionScene.Projection(viewport, dpi);
                 for (var i = 0; i < _anchors.Length; i++)
                     _segments[i] = projector.Project(_anchors[i].Anchor.Point, out _pixels[i]);
@@ -166,6 +171,22 @@ internal sealed partial class OverlaySession
             _redraw.Stop();
         }
 
+        private static bool SameScreenTransform(Transform current, Transform previous)
+        {
+            // Rhino can renormalize the camera basis during a redraw of a stationary view.
+            // Compare against the last accepted transform so sub-tolerance movement still accumulates.
+            const double relativeTolerance = 1e-12;
+            for (var row = 0; row < 4; row++)
+            for (var column = 0; column < 4; column++)
+            {
+                var a = current[row, column];
+                var b = previous[row, column];
+                if (Math.Abs(a - b) > relativeTolerance * Math.Max(1, Math.Max(Math.Abs(a), Math.Abs(b))))
+                    return false;
+            }
+            return true;
+        }
+
         internal OcclusionAnswer Answer(OverlaySession owner, int index) =>
             Scene.Snapshot is { } snapshot && _schedule is { } schedule && _offsets.TryGetValue(owner, out var offset)
                 ? schedule.Answer(offset + index, snapshot.Generation, _projectionRevision)
@@ -175,6 +196,8 @@ internal sealed partial class OverlaySession
         {
             _redraw.Dispose();
             _settled.Dispose();
+            _neutralTexture?.Dispose();
+            _fadedNeutralTexture?.Dispose();
             ClearRasters();
             Scene.Dispose();
         }

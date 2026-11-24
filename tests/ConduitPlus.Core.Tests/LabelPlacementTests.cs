@@ -88,6 +88,28 @@ public sealed class LabelPlacementTests
     }
 
     [Fact]
+    public void CoveringTheDotRestartsPromotionWithExtraClearance()
+    {
+        var clock = new Clock();
+        var layout = new LabelLayout(clock);
+        var candidate = Candidate(0, 100);
+        LabelPlacement[] Frame(params Rect2[] obstacles) => layout.Place([candidate], View, 1, obstacles);
+
+        Assert.Equal(LabelForm.Full, Assert.Single(Frame()).Form);
+        Assert.Empty(Frame(new Rect2(90, 90, 20, 20)));
+        clock.Now = 500;
+        var close = new Rect2(105, 98, 1, 4);
+        Assert.Equal(LabelForm.Dot, Assert.Single(Frame(close)).Form);
+        Assert.Null(layout.RedrawAfter);
+        clock.Now = 800;
+        Assert.Equal(LabelForm.Dot, Assert.Single(Frame()).Form);
+        clock.Now = 919;
+        Assert.Equal(LabelForm.Dot, Assert.Single(Frame()).Form);
+        clock.Now = 920;
+        Assert.Equal(LabelForm.Full, Assert.Single(Frame()).Form);
+    }
+
+    [Fact]
     public void CacheUsesResolvedKeysAndEvictsLeastRecentlyUsed()
     {
         using var cache = new LabelRasterCache<Resource>(8);

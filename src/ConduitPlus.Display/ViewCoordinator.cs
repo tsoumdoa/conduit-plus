@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ConduitPlus.Core;
 using Rhino;
 using Rhino.Display;
@@ -6,6 +7,7 @@ public static partial class OverlayManager
 {
     private sealed class ViewCoordinator : IDisposable
     {
+        internal readonly List<Rect2> LabelReservations = [];
         internal bool ListOpen;
         internal (Guid Owner, string CardId)? Shown;
 
@@ -150,19 +152,30 @@ public static partial class OverlayManager
     {
         if (sessions.FirstOrDefault(session => session.LabelScene is not null) is { } labels)
         {
-            foreach (var session in sessions) session.ResolveDrawTheme();
-            var reserved = sessions.SelectMany(session => Placements(session).Select(p => new Rect2(p.X, p.Y, p.W, p.H))).ToList();
+            var started = Stopwatch.GetTimestamp();
+            var labelCoordinator = Coordinator(source.Document, source.View);
+            var cardFrame = CurrentFrame(source.View, labelCoordinator);
+            var reserved = labelCoordinator.LabelReservations;
+            reserved.Clear();
+            foreach (var placement in cardFrame.Placements)
+                reserved.Add(new(placement.X, placement.Y, placement.Width, placement.Height));
             foreach (var session in sessions)
+            {
+                session.ResolveDrawTheme();
+                if (labelCoordinator.Shown is { } shown && shown.Owner == session.Owner)
+                    foreach (var placement in Placements(session))
+                        if (placement.Id == shown.CardId)
+                            reserved.Add(new(placement.X, placement.Y, placement.W, placement.H));
                 if (session.LabelTooltipBounds is { } tooltip) reserved.Add(tooltip);
-            if (Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var labelCoordinator) &&
-                CurrentFrame(source.View, labelCoordinator).Chip is { } labelChip)
+            }
+            if (cardFrame.Chip is { } labelChip)
             {
                 reserved.Add(labelChip);
                 if (labelCoordinator.ListOpen) reserved.Add(HiddenGeometry(source.View, labelCoordinator).Panel.Bounds);
             }
             var axes = AxesIconReserve(source.View);
             if (axes > 0) reserved.Add(new(0, source.ViewSize.Height - axes, axes, axes));
-            labels.DrawViewLabels(e, reserved);
+            labels.DrawViewLabels(e, reserved, started);
         }
 
     }

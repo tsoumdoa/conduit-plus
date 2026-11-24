@@ -93,7 +93,7 @@ internal sealed class LabelOcclusionScene : IDisposable
         if (e.Document.RuntimeSerialNumber == _document.RuntimeSerialNumber) Dispose();
     }
 
-    private void Invalidate()
+    internal void Invalidate()
     {
         _generation++;
         _items?.Dispose();

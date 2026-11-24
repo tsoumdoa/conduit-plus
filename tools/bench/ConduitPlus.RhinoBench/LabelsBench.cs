@@ -1,4 +1,6 @@
+using System.Drawing;
 using System.Reflection;
+using ConduitPlus.Core;
 using ConduitPlus.Grasshopper;
 using GH_IO.Serialization;
 using Grasshopper;
@@ -92,15 +94,51 @@ internal static class LabelsBench
         }
         Check(session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full }],
             "Real foreground redraw expands the remaining owner to a pill");
+        var expected = session.InspectLabelFrame().Select(label => (label.Identity, label.Form)).ToArray();
+        var settleTicks = session.LabelSettleTicks;
+        session.SetLabelPaintBudgetForChecks(fixedLimit: 0);
+        var beforeMotion = session.LabelFrameTiming.Sequence;
+        view.Redraw();
+        if (session.LabelFrameTiming.Sequence == beforeMotion) pump();
+        Check(session.LabelFrameTiming.Sequence > beforeMotion && session.LabelFrameTiming.InMotion &&
+            session.InspectLabelFrame() is [{ Form: LabelForm.Dot }],
+            $"Motion allowance leaves the expected label as a dot (sequence {beforeMotion} to {session.LabelFrameTiming.Sequence}, " +
+            $"motion {session.LabelFrameTiming.InMotion}, forms {string.Join(", ", session.InspectLabelFrame().Select(label => label.Form))})");
+        for (var i = 0; i < 100 && (session.LabelSettleTicks == settleTicks ||
+            !session.InspectLabelFrame().Select(label => (label.Identity, label.Form)).SequenceEqual(expected)); i++)
+        {
+            Thread.Sleep(10);
+            pump();
+        }
+        Check(session.LabelSettleTicks > settleTicks &&
+            session.InspectLabelFrame().Select(label => (label.Identity, label.Form)).SequenceEqual(expected),
+            $"Production settle timer restores the expected label identity and pill form without an explicit redraw " +
+            $"(ticks {settleTicks} to {session.LabelSettleTicks}, frame {session.LabelFrameTiming.Sequence}, " +
+            $"motion {session.LabelFrameTiming.InMotion}, forms {string.Join(", ", session.InspectLabelFrame().Select(label => label.Form))})");
+        session.SetLabelPaintBudgetForChecks(fixedLimit: int.MaxValue);
         foreach (var dpi in new[] { 1, 2 })
         {
             session.SetLabelDpiForChecks(dpi);
             foreach (var theme in ConduitPlus.Core.Theme.Presets)
             {
                 OverlayManager.ReplaceTheme(overlay.InstanceGuid, theme);
-                view.Redraw();
-                Check(session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full, Dot.Width: 5, Pill.Height: 18 }],
+                using var target = new Bitmap(view.MainViewport.Size.Width, view.MainViewport.Size.Height);
+                using var graphics = Graphics.FromImage(target);
+                graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                session.ObserveLabelPillForChecks((bitmap, x, y) => graphics.DrawImageUnscaled(bitmap, x, y));
+                try { view.Redraw(); pump(); }
+                finally { session.ObserveLabelPillForChecks(null); }
+                var painted = session.InspectLabelFrame();
+                Check(painted is [{ Form: LabelForm.Full, Dot.Width: 5, Pill.Height: 18 }],
                     $"Real foreground redraw at simulated {dpi}x with {theme.Name}");
+                var pill = painted[0].Pill;
+                var px = (int)Math.Round(pill.X * dpi) + (int)Math.Ceiling(pill.Width * dpi) - 2 * dpi;
+                var py = (int)Math.Round(pill.Y * dpi) + 9 * dpi;
+                var surface = ColorRgba.Parse(LabelPalette.FromTheme(session.Theme).Surface);
+                var pixel = target.GetPixel(px, py);
+                Check(pixel.A == surface.A && Math.Abs(pixel.R - surface.R) <= 1 &&
+                    Math.Abs(pixel.G - surface.G) <= 1 && Math.Abs(pixel.B - surface.B) <= 1,
+                    $"Foreground pill surface pixels at {dpi}x with {theme.Name}");
             }
         }
         session.SetLabelDpiForChecks(null);
@@ -111,13 +149,37 @@ internal static class LabelsBench
         foreach (var scale in new[] { 1, 2 })
         {
             var size = view.MainViewport.Size;
+            var sequence = session.LabelFrameTiming.Sequence;
             using var capture = new ViewCapture { Width = size.Width * scale, Height = size.Height * scale }.CaptureToBitmap(view);
-            Check(capture is not null, $"Existing headless view capture produces a {scale}x image");
+            Check(capture is not null && session.LabelFrameTiming.Sequence == sequence,
+                $"Export exclusion at {scale}x leaves the live foreground label frame untouched");
             capture!.Save(Path.Combine(output, $"labels-scene-{scale}x.png"), System.Drawing.Imaging.ImageFormat.Png);
         }
 
         Check(otherSession.LabelScene is null && ReferenceEquals(session.LabelScene, scene) &&
             !scene.IsDisposed, "Removing one owner keeps the shared scene alive");
+
+        Check(session.InspectLabelFrame().Length > 0, "Snapshot invalidation starts with a populated frame");
+        var invalidated = false;
+        var viewportId = view.MainViewport.Id;
+        void InvalidateBeforeForeground(object? sender, DrawEventArgs args)
+        {
+            if (args.Viewport.Id != viewportId || args.Display.IsInViewCapture) return;
+            scene.Invalidate();
+            invalidated = true;
+        }
+        DisplayPipeline.PreDrawObjects += InvalidateBeforeForeground;
+        try { view.Redraw(); pump(); }
+        finally { DisplayPipeline.PreDrawObjects -= InvalidateBeforeForeground; }
+        Check(invalidated && session.InspectLabelFrame().Length == 0,
+            "An unavailable snapshot clears the published foreground label frame");
+        for (var i = 0; i < 100 && session.InspectLabelFrame().Length == 0; i++)
+        {
+            scene.Refresh();
+            Thread.Sleep(10);
+            pump();
+            view.Redraw();
+        }
 
         var previousSize = view.MainViewport.Size;
         view.MainViewport.Size = new System.Drawing.Size(920, 700);

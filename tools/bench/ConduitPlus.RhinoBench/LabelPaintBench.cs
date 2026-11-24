@@ -28,6 +28,7 @@ internal static class LabelPaintBench
         var displayMode = vp.DisplayMode;
         var tangent = Vector3d.CrossProduct(vp.CameraDirection, vp.CameraUp);
 
+        CheckColdDots();
         const int frames = 120;
         foreach (var heavy in new[] { true, false })
         {
@@ -75,6 +76,58 @@ internal static class LabelPaintBench
             var normal = vp.CameraDirection;
             var t = ((planePoint - line.From) * normal) / (line.Direction * normal);
             return line.PointAt(t);
+        }
+
+        void CheckColdDots()
+        {
+            const int count = 1000;
+            var anchors = new LabelAnchor[count];
+            for (var i = 0; i < count; i++)
+            {
+                var point = OnPlane(size.Width / 2d + 12 * (i % 40 - 19.5),
+                    size.Height / 2d + 12 * (i / 40 - 12), target);
+                anchors[i] = new(new(owner, "{cold dots}"), null, i, point,
+                    new("", null, null, Color.FromArgb(255, i >> 8, i & 255, 127).ToArgb(), 0));
+            }
+
+            OverlayManager.SetWithLabels(doc, view, owner, [], null, Theme.Paper, null, true, 1, "Labels", true, anchors);
+            try
+            {
+                var session = OverlayManager.Get(doc, view, owner);
+                session.SetLabelDpiForChecks(1);
+                session.SetLabelPaintBudgetForChecks(new FrameClock(), fixedLimit: 0);
+                var wait = Stopwatch.StartNew();
+                while (session.InspectLabelFrame().Length < count && wait.Elapsed < TimeSpan.FromSeconds(8))
+                {
+                    pump();
+                    view.Redraw();
+                    Thread.Sleep(10);
+                }
+                session.ClearLabelRasters();
+                view.Redraw();
+                var cold = session.LabelRasterWork;
+                if (cold.Uploads != OverlaySession.LabelUploadAllowance || cold.PendingDots < count - cold.Uploads || cold.PendingDots >= count ||
+                    session.InspectLabelFrame().Length != count)
+                    throw new InvalidOperationException($"Expected {count} cold dot colours, got {cold} and {session.InspectLabelFrame().Length} labels.");
+
+                for (var frame = 0; frame < count && session.LabelRasterWork.PendingDots > 0; frame++)
+                {
+                    var sequence = session.LabelFrameTiming.Sequence;
+                    wait.Restart();
+                    while (session.LabelFrameTiming.Sequence == sequence && wait.Elapsed < TimeSpan.FromSeconds(1))
+                    {
+                        Thread.Sleep(5);
+                        pump();
+                    }
+                    if (session.LabelFrameTiming.Sequence == sequence ||
+                        session.LabelRasterWork.Uploads > OverlaySession.LabelUploadAllowance)
+                        throw new InvalidOperationException("Cold dot uploads exceeded the allowance or stopped scheduling redraws.");
+                }
+                if (session.LabelRasterWork.PendingDots != 0)
+                    throw new InvalidOperationException("Cold dot colours did not converge.");
+                Console.WriteLine($"PASS {count} cold dot colours paint immediately, converge through scheduled redraws and upload at most {OverlaySession.LabelUploadAllowance} per frame");
+            }
+            finally { OverlayManager.Remove(owner); }
         }
 
         void RunGrid(bool heavy)

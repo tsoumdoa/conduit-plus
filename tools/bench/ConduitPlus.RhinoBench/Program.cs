@@ -61,7 +61,7 @@ internal static class Program
             core.InvokeInHostContext(() =>
             {
                 if (args.Contains("--label-occlusion")) RunLabels(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); });
-                else if (args.Contains("--labels")) RunLabelWiring(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); });
+                else if (args.Contains("--labels")) RunLabelWiring(doc, view, () => { core.DoEvents(); System.Windows.Forms.Application.DoEvents(); Rhino.RhinoApp.Wait(); });
                 else
                 {
                     var entry = assembly.GetType("ConduitPlus.Rhino." + type)!
