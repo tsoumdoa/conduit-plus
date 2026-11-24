@@ -40,6 +40,14 @@ first. If real GH preview depth is absent or the timing gates fail, test a
 batched platform-specific sampler against completed scene depth before choosing
 a label renderer.
 
+### Hidden-host follow-up (2026-11-24)
+
+- `view.Redraw()` only invalidates the view. The foreground callback ran only once each redraw was followed by `RhinoApp.Wait()`, as `BenchCommand` already does. That was the cause of the "Redraw did not invoke…" failure in both the hidden host and interactive Rhino.
+- Calling `ZBufferCapture.WorldPointAt` from inside `DrawForeground` crashed with a native access violation. The capture and classification now run between frames, before the paint. That matches the design's classify-before-layout order.
+- In the hidden RhinoCore host, `ZBufferCapture` yields no buffer: `GrayscaleDib()` throws natively and `WorldPointAt` would read invalid memory.
+- The spike now checks the buffer size once per case, before sampling, so a missing capture fails with a managed error instead of crashing Rhino.
+- Measurements therefore need interactive Rhino.
+
 ## Run on Windows or Mac
 
 From the repository root on Windows, the bounded hidden-host reproduction is:

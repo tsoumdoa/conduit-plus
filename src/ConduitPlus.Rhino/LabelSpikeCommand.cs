@@ -146,9 +146,10 @@ public sealed class ConduitPlusLabelSpike : Command
                 dots.Measure = true;
                 dots.Last = null;
                 start = Stopwatch.GetTimestamp();
+                dots.Prepare(viewport);
                 Paint(view);
                 // A redraw can coalesce with the previous paint message; retry once before failing.
-                if (dots.Last is null && dots.Error is null) { start = Stopwatch.GetTimestamp(); Paint(view); }
+                if (dots.Last is null && dots.Error is null) { start = Stopwatch.GetTimestamp(); dots.Prepare(viewport); Paint(view); }
                 var frameTime = Ms(start);
                 if (dots.Error is { } error) throw new InvalidOperationException("Depth capture callback failed.", error);
                 var sample = dots.Last ?? throw new InvalidOperationException("Redraw did not invoke the benchmark viewport foreground conduit.");
@@ -245,17 +246,40 @@ public sealed class ConduitPlusLabelSpike : Command
             if (e.Viewport.Id == viewportId) e.IncludeBoundingBox(new BoundingBox(-9, -7, -4, 9, 7, 4));
         }
 
+        private Pass? _prepared;
+        private Size? _bufferSize;
+
         protected override void DrawForeground(DrawEventArgs e)
         {
             if (_capturing) { _nested++; return; }
-            if (!Measure || Last is not null || Error is not null || e.Viewport.Id != viewportId) return;
-            try { Last = Capture(e); }
+            if (!Measure || Last is not null || Error is not null || _prepared is not { } prepared || e.Viewport.Id != viewportId) return;
+            try
+            {
+                var start = Stopwatch.GetTimestamp();
+                for (var i = 0; i < _projected.Length; i++)
+                {
+                    if (_projected[i] is not { } item || (!item.Visible && i % 9 != 0)) continue;
+                    var color = item.Visible ? Color.OrangeRed : Color.FromArgb(115, Color.OrangeRed);
+                    e.Display.DrawRoundedRectangle(new PointF(item.Pixel.X, item.Pixel.Y), 4, 4, 2, color, 0, color);
+                }
+                Last = prepared with { Draw = Ms(start) };
+            }
             catch (Exception error) { Error = error; }
         }
 
-        private Pass Capture(DrawEventArgs e)
+        /// <summary>
+        /// Captures depth and classifies anchors between frames, never inside a draw callback:
+        /// a nested ZBufferCapture during DrawForeground crashed natively in WorldPointAt.
+        /// </summary>
+        public void Prepare(RhinoViewport vp)
         {
-            var vp = e.Viewport;
+            _prepared = null;
+            try { _prepared = Classify(vp); }
+            catch (Exception error) { Error = error; }
+        }
+
+        private Pass Classify(RhinoViewport vp)
+        {
             var size = vp.Size;
             if (!vp.GetFrustum(out _, out _, out _, out _, out var near, out var far))
                 throw new InvalidOperationException("No valid viewport frustum.");
@@ -274,9 +298,18 @@ public sealed class ConduitPlusLabelSpike : Command
             {
                 using var suppression = OverlayManager.SuppressForDepthSpike();
                 using var depth = new ZBufferCapture(vp);
-                depth.SetDisplayMode(vp.DisplayMode.Id);
                 hits = depth.HitCount();
                 capture = Ms(start);
+                // WorldPointAt has no native bounds check: verify the buffer once per case so a
+                // missing or differently sized capture fails as a managed error, not an access violation.
+                if (_bufferSize is null)
+                {
+                    using var dib = depth.GrayscaleDib();
+                    _bufferSize = dib is null ? Size.Empty : dib.Size;
+                    RhinoApp.WriteLine($"Depth buffer {_bufferSize.Value.Width}x{_bufferSize.Value.Height}, viewport {size.Width}x{size.Height}, hits {hits}.");
+                }
+                if (_bufferSize.Value.Width < size.Width || _bufferSize.Value.Height < size.Height)
+                    throw new InvalidOperationException($"Depth capture is {_bufferSize.Value.Width}x{_bufferSize.Value.Height} for a {size.Width}x{size.Height} viewport.");
                 start = Stopwatch.GetTimestamp();
                 for (var i = 0; i < _anchors.Length; i++)
                 {
@@ -306,15 +339,7 @@ public sealed class ConduitPlusLabelSpike : Command
                 item.Visible = !point.IsValid || item.Depth <= (point - location) * direction + item.Bias;
                 _projected[i] = item;
             }
-            var classification = Ms(start);
-            start = Stopwatch.GetTimestamp();
-            for (var i = 0; i < _projected.Length; i++)
-            {
-                if (_projected[i] is not { } item || (!item.Visible && i % 9 != 0)) continue;
-                var color = item.Visible ? Color.OrangeRed : Color.FromArgb(115, Color.OrangeRed);
-                e.Display.DrawRoundedRectangle(new PointF(item.Pixel.X, item.Pixel.Y), 4, 4, 2, color, 0, color);
-            }
-            return new Pass(capture, sampling, classification, Ms(start), hits, _nested);
+            return new Pass(capture, sampling, Ms(start), 0, hits, _nested);
         }
 
         public (int FalseHits, int Leaks, int CheckedAnchors) Check(RhinoViewport vp, bool solid, int offset)
