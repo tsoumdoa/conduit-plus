@@ -88,7 +88,7 @@ internal static class MacView
         try
         {
             var ns = NsView(view);
-            if (ns == IntPtr.Zero) return true; // Unknown handle kind: rely on Rhino's MouseCallback stream (else all hover would stop).
+            if (ns == IntPtr.Zero) return false; // No ownership without a resolved view; AppKit.ViewOf retries resolution after 1 s.
             var window = AppKit.Window(ns);
             if (window == IntPtr.Zero) return false;
             var global = Decode(screen);
