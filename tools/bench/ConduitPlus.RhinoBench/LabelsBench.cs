@@ -88,9 +88,13 @@ internal static class LabelsBench
         var dpiForInput = UiContext.Dpi(view);
         var pointer = new System.Drawing.Point((int)Math.Round((dot.X + dot.Width / 2) * dpiForInput),
             (int)Math.Round((dot.Y + dot.Height / 2) * dpiForInput));
+        var firstStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var hit = OverlaySession.PickLabel(view, pointer) ?? throw new InvalidOperationException("Missing displayed dot hit.");
         var hoverWork = OverlayManager.MovePointerForChecks(view, pointer);
-        Console.WriteLine(FormattableString.Invariant($"Label pointer dispatch (first, cold): {hoverWork.TotalMilliseconds:F2} ms"));
+        var firstInteraction = System.Diagnostics.Stopwatch.GetElapsedTime(firstStarted);
+        Console.WriteLine(FormattableString.Invariant($"Label ApplyPending-only (first): {hoverWork.TotalMilliseconds:F2} ms"));
+
+        Console.WriteLine(FormattableString.Invariant($"Label first interaction (pick + move + flush): {firstInteraction.TotalMilliseconds:F2} ms"));
         // Warm samples alternate between the dot and an empty point so every move changes hover.
         var away = new System.Drawing.Point(pointer.X + (int)Math.Round(60 * dpiForInput), pointer.Y + (int)Math.Round(60 * dpiForInput));
         var samples = new List<double>();
@@ -101,8 +105,8 @@ internal static class LabelsBench
         }
         samples.Sort();
         double P(double q) => samples[Math.Min(samples.Count - 1, (int)Math.Ceiling(q * samples.Count) - 1)];
-        Console.WriteLine(FormattableString.Invariant($"Label pointer dispatch warm: p50 {P(.5):F3} ms, p95 {P(.95):F3} ms, p99 {P(.99):F3} ms (frame budget {InteractionTiming.FrameMilliseconds} ms)"));
-        Check(P(.95) < 2, "Warm label pointer dispatch p95 under 2 ms");
+        Console.WriteLine(FormattableString.Invariant($"Label ApplyPending-only warm: p50 {P(.5):F3} ms, p95 {P(.95):F3} ms, p99 {P(.99):F3} ms (frame budget {InteractionTiming.FrameMilliseconds} ms)"));
+        Check(P(.95) < 2, "Warm label ApplyPending-only p95 under 2 ms");
         OverlayManager.MovePointerForChecks(view, pointer);
         Check(OverlayManager.Snapshot(hit.Owner.Owner).HoverKey == "1", "Paced dot hover brushes its member");
         view.Redraw();
@@ -114,12 +118,16 @@ internal static class LabelsBench
         var popover = hit.Owner.InspectLabelPopover() ?? throw new InvalidOperationException("Missing dot popover.");
         var expanded = new System.Drawing.Point((int)Math.Round((popover.X + 10) * dpiForInput), pointer.Y);
         Check(OverlaySession.PickLabel(view, expanded)?.Placement.Form == LabelForm.Dot, "Dot hover publishes a popover hit");
-        Check(OverlayManager.ClickLabelForChecks(view, expanded), "Click selects the popped member");
+        var primary = PointerModifiers.Resolve(false, true, false, false);
+        Check(ModelPicking.Pick(view, [hit.Owner], pointer) is not null, "Model geometry is pickable beneath the label");
+        Check(OverlayManager.ClickForChecks(view, pointer, primary) == (true, true), "Label over model consumes mouse down and up");
+        Check(OverlayManager.ClickForChecks(view, pointer, PointerModifiers.Resolve(true, true, false, true, physicalControl: true)) == (false, false),
+            "Mac Control-click passes through the label");
         var component = hit.Owner.Owner == overlay.InstanceGuid ? overlay : second;
         component.ExpireSolution(false);
         gh.NewSolution(false);
         Check(component.Params.Output[0].VolatileData.AllData(false).OfType<GH_String>().Single().Value == "1" &&
-            component.Params.Output[1].VolatileDataCount == 1, "Label click publishes selection and a single event");
+            component.Params.Output[1].VolatileDataCount == 1 && OverlayManager.DomainSnapshot(hit.Owner)?.Events is [{ SourceSurface: "label" }], "Label click publishes selection and a single event");
         OverlayManager.SetInteractionEnabled(hit.Owner.Owner, false);
         Check(OverlaySession.PickLabel(view, pointer) is null &&
             OverlayManager.Snapshot(hit.Owner.Owner).HoverKey is null, "Disabled interaction clears label hover and hits");
@@ -324,10 +332,22 @@ internal static class LabelsBench
         var scopedPointer = new System.Drawing.Point((int)Math.Round((scopedDot.X + 2.5) * dpiForInput),
             (int)Math.Round((scopedDot.Y + 2.5) * dpiForInput));
         var scopedHit = OverlaySession.PickLabel(view, scopedPointer) ?? throw new InvalidOperationException("Missing Scope label.");
-        OverlayManager.MovePointerForChecks(view, scopedPointer);
+        var viewportForPointer = view.MainViewport;
+        var targetBefore = viewportForPointer.CameraTarget;
+        var locationBefore = viewportForPointer.CameraLocation;
+        var pan = viewportForPointer.CameraX * (viewportForPointer.CameraDirection.Length * .1 +
+            locationBefore.DistanceTo(targetBefore) * .2);
+        viewportForPointer.SetCameraLocations(targetBefore + pan, locationBefore + pan);
+        view.Redraw();
+        Check(OverlaySession.PickLabel(view, scopedPointer) is null, "Panned label leaves the pointer over empty space");
+        OverlayManager.MovePointerForChecks(view, scopedPointer, retainPointer: true);
+        Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey is null, "Empty pointer starts without a hover owner");
+        viewportForPointer.SetCameraLocations(targetBefore, locationBefore);
+        view.Redraw();
+        OverlayManager.RecheckPointerForChecks();
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).HoverKey == "point-member" &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).HoverKey == "point-member", "Label hover shares Scope across displays");
-        Check(OverlayManager.ClickLabelForChecks(view, scopedPointer), "Scope label click routes to its owner");
+        Check(OverlayManager.ClickForChecks(view, scopedPointer, PointerModifiers.Resolve(true, true, true, false, command: true)) == (true, true), "Scope label click routes to its owner");
         Check(OverlayManager.Snapshot(sourceOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&
             OverlayManager.Snapshot(mirrorOverlay.InstanceGuid).SelectedKeys.SequenceEqual(["point-member"]) &&
             OverlayManager.DomainSnapshot(scopedHit.Owner)?.Events.Length == 1, "Scope shares one member selection and one event");
@@ -371,11 +391,55 @@ internal static class LabelsBench
 
         bool MatchesFrozenWires(OverlayComponent component) => component.Params.Input.Take(6)
             .Select((p, i) => p.Sources.Select(s => s.InstanceGuid).SequenceEqual(wires[i])).All(same => same);
+        CheckUnkeyedTooltip();
+        CheckFallbackDotOrder();
         CheckCardHover();
         if (benchmark)
         {
             LabelPaintBench.RunViewport(doc, view, pump);
             LabelPaintBench.Run();
+        }
+
+        void CheckUnkeyedTooltip()
+        {
+            var viewport = view.MainViewport;
+            var origin = viewport.WorldToClient(viewport.CameraTarget);
+            if (!viewport.GetFrustumLine(origin.X + 35 * dpiForInput, origin.Y, out var ray))
+                throw new InvalidOperationException("Missing frustum line for the neighboring label.");
+            var owner = Guid.NewGuid();
+            var caption = new LabelAnchor(new(owner, "{0}"), null, 0, viewport.CameraTarget,
+                new("Full text of an unkeyed label", null, "Short", null, 1));
+            var neighbor = new LabelAnchor(new(owner, "{0}"), null, 1, ray.ClosestPoint(viewport.CameraTarget, true),
+                new("Neighbor", null, null, null, 0));
+            OverlayManager.SetWithLabels(doc, view, owner, [], null, Theme.Paper, null, true, 1, "Unkeyed", true, [caption, neighbor]);
+            try
+            {
+                var fixture = OverlayManager.Get(doc, view, owner);
+                for (var i = 0; i < 100 && fixture.InspectLabelFrame().All(p => p.Form != LabelForm.Short); i++)
+                {
+                    pump();
+                    view.Redraw();
+                    Thread.Sleep(10);
+                }
+                var shortLabel = fixture.InspectLabelFrame().Single(p => p.Identity == caption.Identity(owner));
+                Check(shortLabel.Form == LabelForm.Short, "Explicit annotation is painted with short text");
+                var point = new System.Drawing.Point((int)Math.Round((shortLabel.Pill.X + shortLabel.Pill.Width / 2) * dpiForInput),
+                    (int)Math.Round((shortLabel.Pill.Y + shortLabel.Pill.Height / 2) * dpiForInput));
+                OverlayManager.MovePointerForChecks(view, point);
+                Check(fixture.InspectTooltipLines()?.SequenceEqual([caption.Style.Text]) == true &&
+                    OverlayManager.Snapshot(owner).HoverKey is null, "Short unkeyed annotation has a local full-text tooltip");
+            }
+            finally { OverlayManager.Remove(owner); }
+        }
+
+        static void CheckFallbackDotOrder()
+        {
+            var faded = new LabelPlacement(new(Guid.NewGuid(), default, null, 0), new(7.5, 17.5, 5, 5),
+                default, LabelForm.Dot, false, .45);
+            var opaque = faded with { Identity = new(Guid.NewGuid(), default, null, 0), Dot = new(13.5, 17.5, 5, 5), Opacity = 1 };
+            Check(LabelPicking.Hit([faded, opaque], new(13, 20), true, false,
+                id => OverlaySession.FallbackLabelDotPaintOrder(id == faded.Identity)) == faded,
+                "Equidistant fallback dots pick the last paint pass despite reversed frame order");
         }
 
         void CheckCardHover()
@@ -418,6 +482,19 @@ internal static class LabelsBench
                     view.Redraw();
                 }
                 Check(fixture.InspectLabelFrame() is [{ Opacity: .45, Form: LabelForm.Full }], "Card hover paints occluded member pill at 45 percent");
+                if (!viewport.GetFrustumLine(cardPointer.X, cardPointer.Y, out var underCardRay))
+                    throw new InvalidOperationException("Missing frustum line under the card.");
+                var underCard = anchor with { Point = underCardRay.ClosestPoint(target, true),
+                    Style = anchor.Style with { Key = "under-card" } };
+                OverlayManager.SetWithLabels(doc, view, owner, [card], null, Theme.Paper, null, true, 1, "Occluded", true, [underCard]);
+                view.Redraw();
+                var projected = viewport.WorldToClient(underCard.Point);
+                Check(Math.Abs(projected.X - cardPointer.X) < 1 && Math.Abs(projected.Y - cardPointer.Y) < 1 &&
+                    OverlaySession.PickLabel(view, cardPointer) is null, "Card reserves the pointer over the label anchor");
+                Check(OverlayManager.ClickForChecks(view, cardPointer, primary) == (true, true) &&
+                    OverlayManager.DomainSnapshot(fixture)?.Events is [{ CardId: "metric" }] &&
+                    OverlayManager.Snapshot(owner).SelectedKeys.SequenceEqual([key]), "Card click consumes both messages and publishes one event");
+                OverlayManager.ClearSelection(owner);
                 OverlayManager.SetPresentationVisible(owner, false);
                 Check(fixture.InspectLabelFrame().Length == 0 && OverlayManager.Snapshot(owner).HoverKey is null,
                     "Hiding overlay retires the label frame and hover");

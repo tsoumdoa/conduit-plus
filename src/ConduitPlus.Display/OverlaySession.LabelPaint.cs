@@ -35,6 +35,8 @@ internal sealed partial class OverlaySession
         if (_labelView is { } view) view.PillObserver = observer;
     }
 
+    internal static int FallbackLabelDotPaintOrder(bool faded) => faded ? int.MaxValue : int.MaxValue - 1;
+
     private sealed partial class LabelView
     {
         internal LabelTiming Timing { get; private set; }
@@ -329,7 +331,7 @@ internal sealed partial class OverlaySession
                 else
                 {
                     pendingDots++;
-                    batch.PaintOrder = int.MaxValue;
+                    batch.PaintOrder = FallbackLabelDotPaintOrder(batch.Key.Opacity < 1);
                     var fallback = batch.Key.Opacity < 1 ? _fadedNeutralDots : _neutralDots;
                     fallback.Points.AddRange(batch.Points);
                 }
@@ -359,6 +361,11 @@ internal sealed partial class OverlaySession
             else _popover = null;
             _frameHud = reserved;
             _frameComplete = true;
+            if (_repickOnPublish)
+            {
+                _repickOnPublish = false;
+                OverlayManager.RecheckLabelPointer(_view);
+            }
 
             void DrawPopover((OverlaySession Owner, LabelPlacement Placement) popover, Rect2 dot)
             {

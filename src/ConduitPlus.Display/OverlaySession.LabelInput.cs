@@ -21,7 +21,7 @@ internal sealed partial class OverlaySession
         private (OverlaySession Owner, LabelPlacement Placement)? _popover;
         private Rect2? _popoverBounds;
         internal Rect2? PopoverBounds => _popoverBounds;
-        private bool _frameComplete;
+        private bool _frameComplete, _repickOnPublish;
         private IReadOnlyList<Rect2> _frameHud = [];
 
         internal static LabelHit? Pick(RhinoView view, Point point, bool retain)
@@ -76,7 +76,7 @@ internal sealed partial class OverlaySession
 
         private void InvalidateLabelInput()
         {
-            OverlayManager.RecheckLabelPointer(_view);
+            _repickOnPublish = true;
             _frameComplete = false;
             _popover = null;
             _popoverBounds = null;

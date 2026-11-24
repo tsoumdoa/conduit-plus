@@ -71,6 +71,7 @@ internal sealed partial class OverlaySession
 
         private LabelView(OverlaySession owner, (uint, Guid) key)
         {
+            OverlayManager.PrepareLabelPointerDispatch();
             _key = key;
             _view = owner.View;
             _settled.Tick += (_, _) => { _settled.Stop(); SettleTicks++; _view.Redraw(); };
@@ -143,7 +144,7 @@ internal sealed partial class OverlaySession
             {
                 _projection = (screen, size, dpi, near, far);
                 _projectionRevision++;
-                OverlayManager.RecheckLabelPointer(_view);
+                _repickOnPublish = true;
             }
             if (projectionChanged || anchorsChanged)
             {

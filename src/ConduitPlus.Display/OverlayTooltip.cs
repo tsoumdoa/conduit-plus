@@ -60,12 +60,13 @@ internal sealed partial class OverlaySession
     {
         if (_disposed) return;
         if (!TooltipAllowed) { HideTooltip(); return; }
-        if (_labelTooltip is { Style.Key: { } labelKey } anchor)
+        if (_labelTooltip is { } anchor)
         {
-            var snapshot = OverlayManager.DomainSnapshot(this);
-            var target = new TooltipTarget("label", labelKey, 0, UiContext.Dpi(View), false, snapshot?.Version ?? 0);
-            var content = anchor.Style.Text == labelKey ? new[] { labelKey } : new[] { anchor.Style.Text, labelKey };
-            SetTooltip(target, Tooltip.WithMemberGroups(content, snapshot?.Membership, labelKey));
+            var labelKey = anchor.Style.Key;
+            var snapshot = labelKey is null ? null : OverlayManager.DomainSnapshot(this);
+            var target = new TooltipTarget("label", labelKey ?? anchor.Style.Text, 0, UiContext.Dpi(View), false, snapshot?.Version ?? 0);
+            string[] content = labelKey is null || anchor.Style.Text == labelKey ? [anchor.Style.Text] : [anchor.Style.Text, labelKey];
+            SetTooltip(target, labelKey is null ? content : Tooltip.WithMemberGroups(content, snapshot?.Membership, labelKey));
             return;
         }
         if (!OverlayManager.LocalHover(this)) { HideTooltip(); return; }
@@ -89,6 +90,8 @@ internal sealed partial class OverlaySession
         var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model, domain?.Version ?? 0);
         SetTooltip(next, lines);
     }
+    internal IReadOnlyList<string>? InspectTooltipLines() => _tooltipLines;
+
     private void SetTooltip(TooltipTarget next, string[] lines)
     {
         if (_tooltipTarget == next && _tooltipLines is { } previous && previous.SequenceEqual(lines)) return;
