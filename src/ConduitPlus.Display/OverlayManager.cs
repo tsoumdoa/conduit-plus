@@ -329,9 +329,22 @@ public static partial class OverlayManager
     }
     internal static OverlaySession[] InView(RhinoDoc doc, RhinoView view) => Sessions.Values.Where(s => s.Document.RuntimeSerialNumber == doc.RuntimeSerialNumber && s.View.MainViewport.Id == view.MainViewport.Id).ToArray();
 
+    [ThreadStatic] private static int _depthSpikeCapture;
+
+    internal static IDisposable SuppressForDepthSpike()
+    {
+        _depthSpikeCapture++;
+        return new DepthSpikeCapture();
+    }
+
+    private sealed class DepthSpikeCapture : IDisposable
+    {
+        public void Dispose() => _depthSpikeCapture--;
+    }
+
     internal static void DrawForeground(OverlaySession source, DrawEventArgs e)
     {
-        if (!source.Visible || e.RhinoDoc.RuntimeSerialNumber != source.Document.RuntimeSerialNumber || e.Viewport.Id != source.View.MainViewport.Id) return;
+        if (_depthSpikeCapture != 0 || !source.Visible || e.RhinoDoc.RuntimeSerialNumber != source.Document.RuntimeSerialNumber || e.Viewport.Id != source.View.MainViewport.Id) return;
         var sessions = InView(source.Document, source.View).Where(s => s.Visible).ToArray();
         // One foreground pass per viewport puts tooltips above every owner's cards.
         // Standalone benchmark sessions are intentionally not registered in Sessions.

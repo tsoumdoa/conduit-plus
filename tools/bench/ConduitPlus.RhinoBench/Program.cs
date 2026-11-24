@@ -44,7 +44,7 @@ internal static class Program
         doc.Views.ActiveView = view;
         var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(pluginDirectory, "ConduitPlus.Rhino.rhp"));
         var captureIndex = Array.IndexOf(args, "--capture");
-        var type = captureIndex >= 0 ? "ConduitPlusCapture" : args.Contains("--pdf") ? "ConduitPlusPdf" : args.Contains("--platform-check") ? "ConduitPlusPlatformCheck" : "ConduitPlusBench";
+        var type = captureIndex >= 0 ? "ConduitPlusCapture" : args.Contains("--pdf") ? "ConduitPlusPdf" : args.Contains("--label-spike") ? "ConduitPlusLabelSpike" : args.Contains("--platform-check") ? "ConduitPlusPlatformCheck" : "ConduitPlusBench";
         var entry = assembly.GetType("ConduitPlus.Rhino." + type)!.GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.Static)!;
         var arguments = captureIndex >= 0
             ? new object[] { doc, view, int.Parse(args[captureIndex + 1], System.Globalization.CultureInfo.InvariantCulture), args.Contains("--compact") }
@@ -54,6 +54,11 @@ internal static class Program
             core.InvokeInHostContext(() => { entry.Invoke(null, arguments); return true; });
             Console.WriteLine("Benchmark workload completed successfully.");
             return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
         }
         finally
         {

@@ -1,13 +1,18 @@
 param(
-    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck')][string]$Mode = 'Bench',
+    [ValidateSet('Bench', 'Capture', 'Pdf', 'PlatformCheck', 'LabelSpike')][string]$Mode = 'Bench',
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
-    [string]$Output = (Join-Path ([IO.Path]::GetTempPath()) ('ConduitPlus/bench-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
+    [string]$Output,
     [switch]$Compact,
     [ValidateRange(10, 600)][int]$TimeoutSeconds = 90
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+if (-not $Output) {
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $Output = if ($Mode -eq 'LabelSpike') { Join-Path $repo "artifacts/labels-depth-$stamp" }
+        else { Join-Path ([IO.Path]::GetTempPath()) "ConduitPlus/bench-$stamp" }
+}
 $destination = [IO.Path]::GetFullPath($Output)
 $project = Join-Path $PSScriptRoot 'ConduitPlus.RhinoBench/ConduitPlus.RhinoBench.csproj'
 & dotnet build $project -c $Configuration
@@ -19,7 +24,8 @@ $assembly = Join-Path $PSScriptRoot "ConduitPlus.RhinoBench/bin/$Configuration/n
 $arguments = @('"' + $assembly + '"')
 if ($Mode -eq 'Capture') { $arguments += @('--capture', $Scale) }
 elseif ($Mode -eq 'Pdf') { $arguments += '--pdf' }
-elseif ($Mode -eq 'PlatformCheck') { $arguments += '--platform-check' }
+elseif ($Mode -eq 'PlatformCheck', 'LabelSpike') { $arguments += '--platform-check' }
+if ($Mode -eq 'LabelSpike') { $arguments += '--label-spike' }
 if ($Compact) { $arguments += '--compact' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {
