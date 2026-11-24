@@ -345,8 +345,7 @@ public static partial class OverlayManager
         if (!sessions.Contains(source)) sessions = [source];
         if (sessions[0] != source) return;
         if (sessions.Contains(source) && Sessions.Values.Contains(source)) CheckFrame(source);
-        if (!e.Display.IsInViewCapture)
-            sessions.FirstOrDefault(session => session.LabelScene is not null)?.ClassifyViewLabels();
+        if (!e.Display.IsInViewCapture) DrawLabels(source, sessions, e);
         foreach (var session in sessions) session.Draw(e);
         if (!e.Display.IsInViewCapture) foreach (var session in sessions.Where(s => ShownId(s) is not null)) session.DrawFloating(e);
         if (!e.Display.IsInViewCapture && Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var coordinator) && CurrentFrame(source.View, coordinator) is { Chip: { } chip } frame)

@@ -50,6 +50,8 @@ PNG/PDF commands snapshot the eligible view before conduit suppression. Resolve 
 
 Premeasure distinct full/short strings per font/DPI. Cache premultiplied pill rasters using existing platform raster adapters, keyed by resolved text, colours, font, DPI and form. Draw transient rings separately; cap textures at 16 MiB per view with LRU disposal. Batch identical dots. Budget cold uploads per frame; while pending, draw a measured neutral or authored dot and publish its actual hit bounds. Release native resources on detach/close and DPI/theme replacement. Content edits invalidate affected entries; camera changes invalidate classification/projection/layout only. Pre-sort stable priority buckets on data change. Bound nearest-neighbour cost in coincident cells using occupancy and bounded-radius queries; benchmark all-coincident as well as uniform distributions.
 
+During projection changes and for 120 ms after the last change, the foreground pass gives ordinary pills a fixed count per frame in placement rank order. Selected and hovered pills are exempt. A smoothed estimate of warm draw cost targets 1.5 ms and adjusts the count at most every 250 ms when the estimate moves by more than 25%. Paint-time dot fallbacks keep the layout's form and side history, and publish the actual drawn geometry. Motion frames use spare upload slots to prepare up to four deferred pills. A scheduled settled redraw removes the cap and draws every placed pill.
+
 1. Core occluder BVH, Rhino/GH harvesting and headless harness. Remove the depth spike command and its capture-only hooks in this PR. Gate further display work on the correctness and timing checks above.
 2. Link anchors, Labels component, Overlay wiring and persistence. Rhino-free xUnit for alignment, broadcasting, identity and diagnostics; Rhino harness for holed faces, multipart keys, degenerate curves, labels-only publication and frozen archive round-trip.
 3. Pure Core placement and themed painter, then view coordinator integration. Test exact thresholds, Unicode, priority ties, cross-owner collisions, hysteresis with a fake clock, DPI invariance and coincident inputs. Replay orbit, resize and named/follow-active view switches headlessly across all five themes.
@@ -62,3 +64,5 @@ Premeasure distinct full/short strings per font/DPI. Cache premultiplied pill ra
 - A supplied colour shows as a **swatch** in a neutral themed pill; the collapsed dot takes that colour.
 - Testing is headless only, through Core tests and hidden RhinoCore with headless Grasshopper. Drop the ZBufferCapture route.
 - Both Rhino objects and Grasshopper preview must occlude labels, including geometry unrelated to a Link.
+
+The viewport foreground pass draws labels during live redraws. PNG, PDF and clipboard retain their existing output through PR 3. Label composition for export is scheduled for PR 5.

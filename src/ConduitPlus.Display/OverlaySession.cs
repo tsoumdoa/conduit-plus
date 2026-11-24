@@ -104,6 +104,11 @@ internal sealed partial class OverlaySession : IDisposable
         OverlayManager.Settle(Document, View);
     }
 
+    internal void ResolveDrawTheme()
+    {
+        if (Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
+    }
+
     private Theme ResolveTheme() => RhinoTheme.ForViewport(_themeSelection, View.MainViewport, Document);
 
     private CardSpec[] ApplyViewState(CardSpec[] specs, IReadOnlySet<string> selectedMembers) => specs.Select(c =>
@@ -234,7 +239,7 @@ internal sealed partial class OverlaySession : IDisposable
         // state synchronously, without pumping input or redrawing, before preparing capture-scale pixels.
         if (e.Display.IsInViewCapture && OverlayManager.HasPendingInteraction(this)) Update(Cards, preserveGesture: true);
         // Display-mode background edits need not raise Rhino's UI appearance event.
-        if (!e.Display.IsInViewCapture && Theme != ResolveTheme()) Update(Cards, preserveGesture: true);
+        if (!e.Display.IsInViewCapture) ResolveDrawTheme();
         if (!floatingOnly) DrawHighlights(e.Display, !e.Display.IsInViewCapture);
         var size = e.Viewport.Size;
         var scale = Unit * (e.Display.IsInViewCapture ? CaptureMultiplier : 1);

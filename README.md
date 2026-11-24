@@ -203,8 +203,9 @@ GH's document-wide preview mode (off or selected only) does not control these ca
 
 Wire a **Link** or a **Labels** specification into Overlay’s optional **Labels** input.
 Labels accepts a Link for member-key anchors or points with authored text. Right-click
-Overlay and choose **Show Link keys** to prepare default labels for its Links.
-Viewport label drawing arrives in a later release.
+Overlay and choose **Show Link keys** to display default labels for its Links.
+Try it on the linked room faces in [hello.gh](examples/hello.gh).
+Labels appear in the live viewport. PNG, PDF and clipboard export follow in a later release.
 
 ## Canvas Overlay
 

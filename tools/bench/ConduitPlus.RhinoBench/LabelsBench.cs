@@ -79,9 +79,93 @@ internal static class LabelsBench
 
         Check(otherSession.InspectLabels().Single().Answer is { Current: true, Visible: true } &&
             scene.HarvestCount == 1, "One harvest and combined classification through the viewport conduit");
+        var frame = session.InspectLabelFrame();
+        Check(frame.Length == 1 && frame[0].Form == ConduitPlus.Core.LabelForm.Dot,
+            "Real foreground redraw places one dot for coincident owners");
         gh.RemoveObject(second, false);
+        for (var i = 0; i < 50; i++)
+        {
+            view.Redraw();
+            if (session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full }]) break;
+            pump();
+            Thread.Sleep(10);
+        }
+        Check(session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full }],
+            "Real foreground redraw expands the remaining owner to a pill");
+        foreach (var dpi in new[] { 1, 2 })
+        {
+            session.SetLabelDpiForChecks(dpi);
+            foreach (var theme in ConduitPlus.Core.Theme.Presets)
+            {
+                OverlayManager.ReplaceTheme(overlay.InstanceGuid, theme);
+                view.Redraw();
+                Check(session.InspectLabelFrame() is [{ Form: ConduitPlus.Core.LabelForm.Full, Dot.Width: 5, Pill.Height: 18 }],
+                    $"Real foreground redraw at simulated {dpi}x with {theme.Name}");
+            }
+        }
+        session.SetLabelDpiForChecks(null);
+
+        var output = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!;
+        session.SetLabelPaintBudgetForChecks(fixedLimit: int.MaxValue);
+        view.Redraw();
+        foreach (var scale in new[] { 1, 2 })
+        {
+            var size = view.MainViewport.Size;
+            using var capture = new ViewCapture { Width = size.Width * scale, Height = size.Height * scale }.CaptureToBitmap(view);
+            Check(capture is not null, $"Existing headless view capture produces a {scale}x image");
+            capture!.Save(Path.Combine(output, $"labels-scene-{scale}x.png"), System.Drawing.Imaging.ImageFormat.Png);
+        }
+
         Check(otherSession.LabelScene is null && ReferenceEquals(session.LabelScene, scene) &&
             !scene.IsDisposed, "Removing one owner keeps the shared scene alive");
+
+        var previousSize = view.MainViewport.Size;
+        view.MainViewport.Size = new System.Drawing.Size(920, 700);
+        view.Redraw();
+        pump();
+        Check(view.MainViewport.Size.Width < previousSize.Width && session.InspectLabelFrame().Length == 1,
+            "Label frame stays valid after a viewport resize");
+        view.MainViewport.Size = previousSize;
+
+        var nextView = doc.Views.Add("Label target", DefinedViewportProjection.Perspective,
+            new System.Drawing.Rectangle(0, 0, 600, 500), true)
+            ?? throw new InvalidOperationException("Could not create second label viewport.");
+        try
+        {
+            var viewInput = (Param_String)overlay.Params.Input[4];
+            viewInput.PersistentData.Append(new GH_String(nextView.MainViewport.Name));
+            viewInput.ExpireSolution(false);
+            overlay.ExpireSolution(false);
+            gh.NewSolution(false);
+            Check(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId == nextView.MainViewport.Id &&
+                session.LabelScene is null, "Named viewport moves label ownership");
+            doc.Views.ActiveView = view;
+            pump();
+            Check(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId == nextView.MainViewport.Id,
+                "Named viewport keeps labels when the active viewport changes");
+            viewInput.PersistentData.Clear();
+            viewInput.ExpireSolution(false);
+            overlay.ExpireSolution(false);
+            gh.NewSolution(false);
+            doc.Views.ActiveView = nextView;
+            pump();
+            // The hidden host does not reliably raise RhinoApp.Idle after changing active views.
+            typeof(OverlayComponent).GetMethod("FollowActiveView", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(overlay, null);
+
+            Check(OverlayManager.Binding(overlay.InstanceGuid)?.ViewId == nextView.MainViewport.Id,
+                "Follow Active moves labels without a Grasshopper solution");
+        }
+        finally
+        {
+            doc.Views.ActiveView = view;
+            nextView.Close();
+            pump();
+        }
+        overlay.ExpireSolution(false);
+        gh.NewSolution(false);
+        session = OverlayManager.Get(doc, view, overlay.InstanceGuid);
+        scene = session.LabelScene ?? throw new InvalidOperationException("Label view did not rebind.");
 
         var saved = new GH_Archive();
         Check(saved.AppendObject(gh, "Definition"), "Save Labels definition");
@@ -135,6 +219,8 @@ internal static class LabelsBench
 
         bool MatchesFrozenWires(OverlayComponent component) => component.Params.Input.Take(6)
             .Select((p, i) => p.Sources.Select(s => s.InstanceGuid).SequenceEqual(wires[i])).All(same => same);
+        LabelPaintBench.RunViewport(doc, view, pump);
+        LabelPaintBench.Run();
     }
 
     private static void CheckAnchors()

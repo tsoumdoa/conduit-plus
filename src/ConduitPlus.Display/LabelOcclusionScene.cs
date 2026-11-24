@@ -421,13 +421,17 @@ internal sealed class LabelOcclusionScene : IDisposable
             }
         }
 
-        internal OcclusionSegment? Project(Point3d anchor)
+        internal OcclusionSegment? Project(Point3d anchor) => Project(anchor, out _);
+
+        internal OcclusionSegment? Project(Point3d anchor, out Point2 screen)
         {
+            screen = default;
             var depth = Vector3d.Multiply(anchor - _camera, _direction);
             if (depth <= 0 || depth < _nearDepth || depth > _farDepth) return null;
             var pixel = anchor;
             pixel.Transform(_screen);
             if (!(pixel.X >= 0 && pixel.Y >= 0 && pixel.X < _size.Width && pixel.Y < _size.Height)) return null;
+            screen = new(pixel.X, pixel.Y);
             var factor = _parallel ? 1 : depth / _nearDepth;
             var start = _near + _right * pixel.X + _down * pixel.Y;
             return new(Point(start), Point(anchor), _worldUnitsPerPixel * factor);

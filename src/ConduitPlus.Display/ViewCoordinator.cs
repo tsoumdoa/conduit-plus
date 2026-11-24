@@ -146,6 +146,26 @@ public static partial class OverlayManager
         return false;
     }
     internal static string? ShownId(OverlaySession session) => Coordinators.TryGetValue((session.Document.RuntimeSerialNumber, session.View.MainViewport.Id), out var c) && c.Shown is { } shown && shown.Owner == session.Owner ? shown.CardId : null;
+    private static void DrawLabels(OverlaySession source, OverlaySession[] sessions, DrawEventArgs e)
+    {
+        if (sessions.FirstOrDefault(session => session.LabelScene is not null) is { } labels)
+        {
+            foreach (var session in sessions) session.ResolveDrawTheme();
+            var reserved = sessions.SelectMany(session => Placements(session).Select(p => new Rect2(p.X, p.Y, p.W, p.H))).ToList();
+            foreach (var session in sessions)
+                if (session.LabelTooltipBounds is { } tooltip) reserved.Add(tooltip);
+            if (Coordinators.TryGetValue((source.Document.RuntimeSerialNumber, source.View.MainViewport.Id), out var labelCoordinator) &&
+                CurrentFrame(source.View, labelCoordinator).Chip is { } labelChip)
+            {
+                reserved.Add(labelChip);
+                if (labelCoordinator.ListOpen) reserved.Add(HiddenGeometry(source.View, labelCoordinator).Panel.Bounds);
+            }
+            var axes = AxesIconReserve(source.View);
+            if (axes > 0) reserved.Add(new(0, source.ViewSize.Height - axes, axes, axes));
+            labels.DrawViewLabels(e, reserved);
+        }
+
+    }
     private static void DisposeCoordinators(Func<(uint Doc, Guid View), bool> match)
     {
         foreach (var key in Coordinators.Keys.Where(match).ToArray()) { Coordinators[key].Dispose(); Coordinators.Remove(key); }

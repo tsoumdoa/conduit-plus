@@ -53,6 +53,27 @@ public static class RasterDrawing
         using var canvas = new GdiCanvas(graphics);
         return Render(TooltipPainter.Measure(canvas, lines, theme), scale, c => TooltipPainter.Paint(c, lines, theme), Margin(theme, scale));
     }
+    public static Bitmap RenderLabel(LabelRasterKey key)
+    {
+        var size = key.Form == LabelForm.Dot ? new Size2(5, 5) : new Size2(key.Width, 18);
+        var bitmap = Render(size, key.Dpi, canvas => LabelPainter.Paint(canvas, key));
+        if (key.Opacity == 1) return bitmap;
+        using (bitmap)
+        {
+            var faded = new Bitmap(bitmap.Width, bitmap.Height, PixelFormat.Format32bppPArgb);
+            try
+            {
+                using var graphics = Graphics.FromImage(faded);
+                using var attributes = new ImageAttributes();
+                attributes.SetColorMatrix(new ColorMatrix { Matrix33 = (float)key.Opacity });
+                graphics.DrawImage(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                    0, 0, bitmap.Width, bitmap.Height, GraphicsUnit.Pixel, attributes);
+                return faded;
+            }
+            catch { faded.Dispose(); throw; }
+        }
+    }
+
     private static Bitmap Render(Size2 size, double scale, Action<ICanvas2D> paint, int margin = 0)
     {
         var bitmap = new Bitmap(checked((int)Math.Ceiling(size.Width * scale) + 2 * margin), checked((int)Math.Ceiling(size.Height * scale) + 2 * margin), PixelFormat.Format32bppPArgb);
