@@ -55,19 +55,18 @@ public static class LabelPainter
         return rgba.WithAlpha((byte)Math.Round(rgba.A * opacity)).ToHex();
     }
 
-    public static void Paint(ICanvas2D canvas, LabelRasterKey key, bool applyOpacity = false)
+    public static void Paint(ICanvas2D canvas, LabelRasterKey key)
     {
-        string Ink(string color) => applyOpacity ? Fade(color, key.Opacity) : color;
-        var swatch = Ink(DataColor(key.Swatch, key.Palette));
+        var swatch = DataColor(key.Swatch, key.Palette);
         if (key.Form == LabelForm.Dot)
         {
-            canvas.RoundedRect(new(0, 0, 5, 5), 2.5, Ink(key.Palette.Surface));
+            canvas.RoundedRect(new(0, 0, 5, 5), 2.5, key.Palette.Surface);
             canvas.RoundedRect(new(1, 1, 3, 3), 1.5, swatch);
             return;
         }
-        canvas.RoundedRect(new(0, 0, key.Width, 18), 6, Ink(key.Palette.Surface));
+        canvas.RoundedRect(new(0, 0, key.Width, 18), 6, key.Palette.Surface);
         if (key.Swatch.HasValue) canvas.RoundedRect(new(4, 7, 4, 4), 1, swatch);
-        canvas.Text(key.Text, new(key.Swatch.HasValue ? 12 : 4, 1), FontSize, Ink(key.Palette.Ink), key.Palette.Font);
+        canvas.Text(key.Text, new(key.Swatch.HasValue ? 12 : 4, 1), FontSize, key.Palette.Ink, key.Palette.Font);
     }
 }
 

@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Diagnostics;
 using ConduitPlus.Core;
 using ConduitPlus.Rendering;
 using Rhino;
@@ -19,10 +18,11 @@ internal sealed class LabelExportFrame(double dpi) : IDisposable
     {
         foreach (var (key, bounds, accent) in _glyphs)
         {
-            var image = RasterDrawing.RenderLabel(key);
+            var image = RasterDrawing.RenderLabel(key, accent);
+            var margin = accent is null ? 0 : (int)Math.Ceiling(dpi);
             try
             {
-                _rasters.Add((image, new DisplayBitmap(image), (int)Math.Round(bounds.X * dpi), (int)Math.Round(bounds.Y * dpi)));
+                _rasters.Add((image, new DisplayBitmap(image), (int)Math.Round(bounds.X * dpi) - margin, (int)Math.Round(bounds.Y * dpi) - margin));
             }
             catch
             {
@@ -35,14 +35,6 @@ internal sealed class LabelExportFrame(double dpi) : IDisposable
     internal void DrawRaster(DisplayPipeline display)
     {
         foreach (var (_, texture, x, y) in _rasters) display.DrawBitmap(texture, x, y);
-        foreach (var (key, bounds, accent) in _glyphs)
-        {
-            if (accent is null) continue;
-            display.DrawRoundedRectangle(new PointF((float)((bounds.X + bounds.Width / 2) * dpi),
-                (float)((bounds.Y + bounds.Height / 2) * dpi)), (float)(bounds.Width * dpi),
-                (float)(bounds.Height * dpi), (float)((key.Form == LabelForm.Dot ? 2.5 : 6) * dpi),
-                GdiCanvas.ParseColor(LabelPainter.Fade(accent, key.Opacity)), (float)(2 * dpi), Color.Transparent);
-        }
     }
 
     internal void DrawPdf(FilePdf pdf, int page)
@@ -50,10 +42,13 @@ internal sealed class LabelExportFrame(double dpi) : IDisposable
         foreach (var (key, bounds, accent) in _glyphs)
         {
             using var canvas = new PdfCanvas(pdf, page, bounds.X * dpi, bounds.Y * dpi, dpi, dpi);
-            LabelPainter.Paint(canvas, key, applyOpacity: true);
-            if (accent is not null)
-                canvas.StrokeRoundedRect(new(0, 0, bounds.Width, bounds.Height),
-                    key.Form == LabelForm.Dot ? 2.5 : 6, LabelPainter.Fade(accent, key.Opacity), 2);
+            canvas.PaintGroup(bounds, key.Opacity, () =>
+            {
+                LabelPainter.Paint(canvas, key);
+                if (accent is not null)
+                    canvas.StrokeRoundedRect(new(0, 0, bounds.Width, bounds.Height),
+                        key.Form == LabelForm.Dot ? 2.5 : 6, accent, 2);
+            });
         }
     }
 
@@ -71,6 +66,10 @@ internal sealed class LabelExportFrame(double dpi) : IDisposable
 internal sealed partial class OverlaySession
 {
     internal LabelExportFrame? CaptureLabels { get; set; }
+
+    internal static LabelOcclusionScene? ExportScene(RhinoDoc doc, RhinoView view) =>
+        OverlayManager.InView(doc, view).Where(session => session.Visible)
+            .Select(session => session.LabelScene).FirstOrDefault(scene => scene is not null);
 
     internal static LabelExportFrame? SnapshotLabels(RhinoDoc doc, RhinoView view, double multiplier,
         bool omitFloatingCards = false)
@@ -95,17 +94,8 @@ internal sealed partial class OverlaySession
     {
         internal LabelExportFrame Snapshot(double multiplier, IReadOnlyList<Rect2> reserved)
         {
-            var started = Stopwatch.GetTimestamp();
-            Scene.Refresh();
-            while (!Scene.Snapshot.HasValue)
-            {
-                if (Stopwatch.GetElapsedTime(started) >= TimeSpan.FromSeconds(10))
-                    throw new InvalidOperationException("The label occlusion scene did not finish preparing for export.");
-                Thread.Sleep(1);
-                Scene.Refresh();
-            }
-
-            var index = Scene.Snapshot.Value.Index;
+            var index = Scene.Snapshot?.Index
+                ?? throw new InvalidOperationException("The label occlusion scene is not ready.");
             var dpi = (DpiOverride ?? UiContext.Dpi(_view)) * multiplier;
             var viewport = _view.MainViewport;
             var projector = new LabelOcclusionScene.Projection(viewport, dpi / multiplier);

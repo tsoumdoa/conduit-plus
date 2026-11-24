@@ -16,12 +16,18 @@ public sealed class ConduitPlusPdf : Command
         var view = doc.Views.ActiveView;
         if (view is null) return Result.Failure;
         if (!CommandRunner.HasExportContent(doc, view)) return Result.Cancel;
-        return CommandRunner.Run(() => RunAutomated(doc, view));
+        return CommandRunner.RunExport(doc, view, () => Compose(doc, view));
     }
     public static void RunAutomated(RhinoDoc doc, RhinoView view)
     {
         UiContext.Ensure();
         OverlayManager.Start();
+        CommandRunner.AwaitExportSceneForAutomation(doc, view);
+        Compose(doc, view);
+    }
+
+    private static void Compose(RhinoDoc doc, RhinoView view)
+    {
         RhinoApp.WriteLine("ConduitPlusPdf is experimental.");
         var sessions = OverlayManager.InView(doc, view);
         if (!CommandRunner.HasExportContent(doc, view)) return;

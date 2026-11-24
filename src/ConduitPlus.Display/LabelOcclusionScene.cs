@@ -38,6 +38,8 @@ internal sealed class LabelOcclusionScene : IDisposable
     internal double LastWorkerMilliseconds { get; private set; }
     private string? _meshSettings;
     private bool _disposed;
+    internal event Action? ExportReady;
+    internal event Action? ExportClosed;
     internal bool IsDisposed => _disposed;
     internal int HarvestCount { get; private set; }
 
@@ -134,6 +136,7 @@ internal sealed class LabelOcclusionScene : IDisposable
         var timer = Stopwatch.StartNew();
         try { AdvanceSlice(checkMembership, timer); }
         finally { LongestUiSliceMilliseconds = Math.Max(LongestUiSliceMilliseconds, timer.Elapsed.TotalMilliseconds); }
+        if (Snapshot.HasValue) ExportReady?.Invoke();
         if (_redrawPending && !_disposed)
         {
             _redrawPending = false;
@@ -444,6 +447,7 @@ internal sealed class LabelOcclusionScene : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        ExportClosed?.Invoke();
         RhinoDoc.AddRhinoObject -= Changed;
         RhinoDoc.DeleteRhinoObject -= Changed;
         RhinoDoc.UndeleteRhinoObject -= Changed;

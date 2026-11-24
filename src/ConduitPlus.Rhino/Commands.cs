@@ -28,6 +28,74 @@ internal static class CommandRunner
         RhinoApp.WriteLine(EmptyViewMessage);
         return false;
     }
+    internal static Result RunExport(RhinoDoc doc, RhinoView view, Action compose)
+    {
+        if (OverlayManager.Busy) return Result.Cancel;
+        UiContext.Ensure();
+        OverlayManager.Start();
+        var scene = OverlaySession.ExportScene(doc, view);
+        if (scene is null) return Run(compose);
+
+        var result = Result.Success;
+        OverlayManager.Busy = true;
+        scene.ExportReady += Ready;
+        scene.ExportClosed += Cancel;
+        RhinoApp.EscapeKeyPressed += Escape;
+        try { scene.Refresh(); }
+        catch (Exception e)
+        {
+            Cancel();
+            RhinoApp.WriteLine($"Conduit+: {e}");
+            return Result.Failure;
+        }
+        return result;
+
+        void Escape(object? sender, EventArgs args)
+        {
+            Cancel();
+            RhinoApp.WriteLine("Conduit+ export cancelled.");
+        }
+        void Cancel()
+        {
+            scene.ExportReady -= Ready;
+            scene.ExportClosed -= Cancel;
+            RhinoApp.EscapeKeyPressed -= Escape;
+            OverlayManager.Busy = false;
+        }
+        void Ready()
+        {
+            Cancel();
+            result = Run(compose);
+        }
+    }
+
+    internal static void AwaitExportSceneForAutomation(RhinoDoc doc, RhinoView view)
+    {
+        var scene = OverlaySession.ExportScene(doc, view);
+        if (scene is null) return;
+        // Synchronous automation callers need the file before they inspect it. Let the
+        // host dispatch the scene timer while they wait instead of driving the harvest here.
+        var finished = false;
+        scene.ExportReady += Finish;
+        scene.ExportClosed += Finish;
+        try
+        {
+            scene.Refresh();
+            while (!finished)
+            {
+                RhinoApp.Wait();
+                if (!finished) Thread.Sleep(15);
+            }
+        }
+        finally
+        {
+            scene.ExportReady -= Finish;
+            scene.ExportClosed -= Finish;
+        }
+
+        void Finish() => finished = true;
+    }
+
     public static Result Run(Action action)
     {
         if (OverlayManager.Busy) { RhinoApp.WriteLine("Conduit+ is already preparing cards."); return Result.Cancel; }
@@ -79,7 +147,7 @@ public sealed class ConduitPlusCapture : Command
         var result = RhinoGet.GetNumber("Capture scale (1, 2 or 4)", true, ref multiplier, 1, 4);
         if (result != Result.Success) return result;
         if (multiplier is not (1 or 2 or 4)) return Result.Failure;
-        return CommandRunner.Run(() => CaptureToFile(doc, view, (int)multiplier, true));
+        return CommandRunner.RunExport(doc, view, () => Compose(doc, view, (int)multiplier, true));
     }
 
     public static void RunAutomated(RhinoDoc doc, RhinoView view, int scale, bool compact = false)
@@ -99,6 +167,12 @@ public sealed class ConduitPlusCapture : Command
         UiContext.Ensure();
         OverlayManager.Start();
         if (multiplier is not (1 or 2 or 4)) throw new ArgumentOutOfRangeException(nameof(multiplier));
+        CommandRunner.AwaitExportSceneForAutomation(doc, view);
+        Compose(doc, view, multiplier, interactive);
+    }
+
+    private static void Compose(RhinoDoc doc, RhinoView view, int multiplier, bool interactive)
+    {
         var sessions = OverlayManager.InView(doc, view);
         if (!CommandRunner.HasExportContent(doc, view)) return;
         var size = view.ActiveViewport.Size;
