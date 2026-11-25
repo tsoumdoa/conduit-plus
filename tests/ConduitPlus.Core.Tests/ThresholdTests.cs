@@ -57,6 +57,53 @@ public sealed class ThresholdTests
     }
 
     [Fact]
+    public void NullItemsUseTheInvalidTextDiagnostics()
+    {
+        var sides = Assert.Throws<ArgumentException>(() => ThresholdSet.Resolve(
+            [1, 2, 3], ["#123456"], ["Above", null!, "Below"], []));
+        Assert.Equal("Unknown threshold side ''; choose Above or Below.", sides.Message);
+        var colours = Assert.Throws<ArgumentException>(() => ThresholdSet.Resolve(
+            [1, 2, 3], ["#123456", null!, "#654321"], null, []));
+        Assert.Equal("Threshold colours must be #RRGGBB strings.", colours.Message);
+    }
+
+    [Fact]
+    public void CollapsedClipAndUncaughtOutlierSurviveStoreAndJson()
+    {
+        var values = Enumerable.Repeat<double?>(2, 100).Append(5).ToArray();
+        var scale = ColourScale.Create(values, rangeMode: ColourRangeMode.ClipOutliers,
+            clipPercent: 5, thresholds: [6], thresholdColours: ["#123456"]);
+        var store = new CardStore();
+        store.Update([scale.Legend]);
+        var snapshot = Assert.Single(store.Snapshot);
+        var restored = CardJson.Deserialize<CardSpec>(CardJson.Serialize(snapshot));
+        Assert.True(snapshot.Mapping!.HasCollapsedClip);
+        Assert.True(restored.Mapping!.HasCollapsedClip);
+        Assert.Null(restored.Mapping.Thresholds.WinnerFor(5));
+        Assert.NotEqual(scale.Colours[0], scale.Colours[^1]);
+        Assert.Equal(scale.Colours[^1], restored.Mapping.ColourAt(5));
+    }
+
+    [Fact]
+    public void WidenedDomainInvalidatesLayoutAndMovesTheFollowingCard()
+    {
+        var legend = ColourScale.Create([24, 25], min: 23, max: 26, slot: Slot.Tl,
+            thresholds: [24, 25], thresholdColours: ["#123456"]).Legend;
+        var next = new CardSpec { Id = "next", Kind = CardKind.Metric, WiredSlot = Slot.Tl };
+        var owner = Guid.NewGuid();
+        LayoutRequest Request(CardSpec card) =>
+            new(new(1600, 900), 1, [new(owner, 1, Theme.Paper, [card, next])], TextMetrics.Estimate, new());
+        var narrow = Request(legend);
+        var wide = Request(legend with { Min = 0, Max = 100 });
+        Assert.NotEqual(ViewportLayout.Signature(narrow), ViewportLayout.Signature(wide));
+        var before = ViewportLayout.Solve(narrow).Placements;
+        var after = ViewportLayout.Solve(wide).Placements;
+        var extra = after.Single(p => p.CardId == legend.Id).Height - before.Single(p => p.CardId == legend.Id).Height;
+        Assert.True(extra > 0);
+        Assert.Equal(extra, after.Single(p => p.CardId == next.Id).Y - before.Single(p => p.CardId == next.Id).Y);
+    }
+
+    [Fact]
     public void MappingSurvivesSnapshotRoundTripWithExactModelColours()
     {
         double?[] values = [-2, -1, 0, double.Epsilon, .25, .5, 1, 2, null];

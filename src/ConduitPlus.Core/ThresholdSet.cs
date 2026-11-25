@@ -45,7 +45,7 @@ public sealed record ThresholdSet(ImmutableArray<ThresholdEntry> Entries)
         var entries = new Dictionary<(double, ThresholdSide), ThresholdEntry>();
         for (var i = 0; i < values.Count; i++)
         {
-            var text = sides is { Count: > 0 } ? sides[sides.Count == 1 ? 0 : i].Trim() : "Above";
+            var text = sides is { Count: > 0 } ? sides[sides.Count == 1 ? 0 : i]?.Trim() ?? "" : "Above";
             var side = text.ToUpperInvariant() switch
             {
                 "ABOVE" => ThresholdSide.Above,
@@ -53,7 +53,7 @@ public sealed record ThresholdSet(ImmutableArray<ThresholdEntry> Entries)
                 _ => throw new ArgumentException($"Unknown threshold side '{text}'; choose Above or Below.")
             };
             var colour = colours[colours.Count == 1 ? 0 : i];
-            if (colour.Length != 7 || colour[0] != '#' || !colour.Skip(1).All(Uri.IsHexDigit))
+            if (colour is not { Length: 7 } || colour[0] != '#' || !colour.Skip(1).All(Uri.IsHexDigit))
                 throw new ArgumentException("Threshold colours must be #RRGGBB strings.");
             var entry = new ThresholdEntry(values[i], colour, side);
             if (!entries.TryAdd((entry.Value, side), entry)) Warn($"Duplicate threshold {entry.Label}; using the first colour.");

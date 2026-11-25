@@ -43,6 +43,8 @@ public static class ViewportLayout
                 LegendLabels = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.Labels : null,
                 LegendValues = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.ValueLabels : null,
                 LegendThresholds = x.c.Thresholds,
+                LegendMin = x.c.Thresholds is { Entries.Length: > 0 } ? x.c.Min : null,
+                LegendMax = x.c.Thresholds is { Entries.Length: > 0 } ? x.c.Max : null,
                 LegendHasKeys = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue && x.c.Keys.Length > 0 })
         })
     });

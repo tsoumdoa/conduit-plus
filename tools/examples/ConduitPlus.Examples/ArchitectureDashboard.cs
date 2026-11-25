@@ -23,7 +23,8 @@ internal static class ArchitectureDashboard
             var name = rooms ? "room-areas" : "massing";
             if (example != "all" && example != (rooms ? "rooms" : "massing")) continue;
             var path = Path.Combine(root, "examples", name + ".gh");
-            if (!args.Contains("--verify-only")) Build(path, rooms);
+            var verifyOnly = args.Contains("--verify-only");
+            if (!verifyOnly) Build(path, rooms);
             using var gh = new GH_Document(); var archive = new GH_Archive();
             Require(archive.ReadFromFile(path) && archive.ExtractObject(gh, "Definition"), "Cannot reopen " + path);
             DisplayLifecycleChecks.ArchiveClean(archive, path);
@@ -39,7 +40,16 @@ internal static class ArchitectureDashboard
                 var sessions = (Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!;
                 var session = sessions.Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
                 var cards = (CardSpec[])Get(session, "Cards");
-                Require(cards.Length == (rooms ? (cards.Any(c => c.Thresholds is { Entries.Length: > 0 }) ? 8 : 7) : 9), "Unexpected architectural card count.");
+                // A fresh build always includes the legend. Only explicitly legacy archives omit it.
+                var updatedRooms = rooms && !(verifyOnly && args.Contains("--legacy-rooms"));
+                Require(cards.Length == (rooms ? updatedRooms ? 8 : 7 : 9), "Unexpected architectural card count.");
+                if (updatedRooms)
+                {
+                    var legend = cards.Single(c => c.Kind == CardKind.Legend && c.Min.HasValue);
+                    var entries = legend.Thresholds?.Entries.OrderBy(e => e.Value).ToArray();
+                    Require(entries is not null && entries.Select(e => (e.Value, e.Colour))
+                        .SequenceEqual(new[] { (1d, "#F0A628"), (2d, "#BE3238") }), "Unexpected room legend thresholds.");
+                }
                 var metrics = cards.Where(c => c.Kind == CardKind.Metric).ToArray();
                 Require(metrics.Select(c => c.Value).SequenceEqual(rooms ? ["320", "87.5", "12.5", "8"] : new[] { "14976", "16000", "1.87", "2" }), "Unexpected architectural metric precision.");
                 var theme = args.Contains("--theme") ? Theme.Presets.Single(t => string.Equals(t.Name, args[Array.IndexOf(args, "--theme") + 1], StringComparison.OrdinalIgnoreCase)) : Theme.Paper;

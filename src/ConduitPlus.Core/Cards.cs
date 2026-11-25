@@ -21,9 +21,9 @@ public sealed record CardSpec
     public string Unit { get; init; } = "";
     public string Text { get; init; } = "";
     public string[] Colors { get; init; } = [];
-    /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
     public ColourMapping? Mapping { get; init; }
     public ThresholdSet? Thresholds { get; init; }
+    /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
     public double[] ColorPositions { get; init; } = [];
     /// <summary>Optional #RRGGBB extend caps for values outside a gradient legend's range.</summary>
     public string? BelowColor { get; init; }
@@ -302,7 +302,7 @@ public sealed class CardStore
             // Serialize only metadata. Bulk data has independent value equality, with an O(1)
             // shortcut exclusively for our own immutable arrays from an earlier snapshot.
             var content = CardJson.Serialize(input with { Rev = 0, Headers = [], Rows = [], Values = [],
-                Labels = [], Keys = [], Colors = [], ColorPositions = [], ValueLabels = [] });
+                Labels = [], Keys = [], Colors = [], ColorPositions = [], ValueLabels = [], Mapping = null, Thresholds = null });
             _cards.TryGetValue(input.Id, out var old);
             var previous = old.Spec;
             var headers = Own(input.Headers, previous?.Headers);
@@ -314,11 +314,13 @@ public sealed class CardStore
             var positions = Own(input.ColorPositions, previous?.ColorPositions, DoubleContent);
             var valueLabels = Own(input.ValueLabels, previous?.ValueLabels);
             if (!themeChanged && previous is not null && old.Content == content &&
+                SameMapping(input.Mapping, previous.Mapping) && SameThresholds(input.Thresholds, previous.Thresholds) &&
                 ReferenceEquals(headers, previous.Headers) && ReferenceEquals(rows, previous.Rows) &&
                 ReferenceEquals(values, previous.Values) && ReferenceEquals(labels, previous.Labels) &&
                 ReferenceEquals(keys, previous.Keys) && ReferenceEquals(colors, previous.Colors) &&
                 ReferenceEquals(positions, previous.ColorPositions) && ReferenceEquals(valueLabels, previous.ValueLabels)) continue;
             var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision,
+                Mapping = input.Mapping, Thresholds = input.Thresholds,
                 Headers = headers, Rows = rows, Values = values, Labels = labels, Keys = keys,
                 Colors = colors, ColorPositions = positions, ValueLabels = valueLabels };
             _cards[input.Id] = (content, snapshot);
@@ -337,6 +339,23 @@ public sealed class CardStore
             p.First.Key == p.Second.Key && p.First.Cells.SequenceEqual(p.Second.Cells))
             ? owned! : Owned(input.Select(r => r with { Cells = [.. r.Cells] }).ToArray());
     private static TableRow[] Owned(TableRow[] rows) { TableSort.MarkImmutable(rows); return rows; }
+    private static bool SameMapping(ColourMapping? a, ColourMapping? b) =>
+        ReferenceEquals(a, b) || a is not null && b is not null &&
+        DoubleContent.Equals(a.Min, b.Min) && DoubleContent.Equals(a.Max, b.Max) &&
+        DoubleContent.Equals(a.Mid, b.Mid) && a.Below == b.Below && a.Above == b.Above &&
+        a.HasCollapsedClip == b.HasCollapsedClip && a.Palette.Name == b.Palette.Name &&
+        a.Palette.Kind == b.Palette.Kind && a.Palette.Colours.SequenceEqual(b.Palette.Colours) &&
+        SameThresholds(a.Thresholds, b.Thresholds);
+
+    private static bool SameThresholds(ThresholdSet? a, ThresholdSet? b) =>
+        ReferenceEquals(a, b) || a is not null && b is not null &&
+        a.Entries.SequenceEqual(b.Entries, ThresholdContent);
+
+    private static readonly IEqualityComparer<ThresholdEntry> ThresholdContent =
+        EqualityComparer<ThresholdEntry>.Create((a, b) => ReferenceEquals(a, b) ||
+            a is not null && b is not null && DoubleContent.Equals(a.Value, b.Value) &&
+            a.Colour == b.Colour && a.Side == b.Side && a.Count == b.Count);
+
     public CardSpec[] Snapshot => _order.Select(id => _cards[id].Spec).ToArray();
 }
 

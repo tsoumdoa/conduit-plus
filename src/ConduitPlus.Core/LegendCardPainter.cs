@@ -20,16 +20,43 @@ public static class LegendCardPainter
     // Include the exact scale limits so the final color's value is always explicit.
     public static double[] Ticks(CardSpec c) => c.Min == c.Max ? [c.Min!.Value] : ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
     public const string ThresholdKey = "\u0001threshold:";
-    private const double MarkRow = 14;
-    private sealed record Mark(ThresholdEntry Entry, double Tick, double X, double Width, int Row, int Index)
+    private const double MarkRow = 16, LabelHeight = 14, MarkGap = 4;
+    private sealed record Mark(ThresholdEntry Entry, double Tick, Rect2 Label, int Row, int Index, Point2[] Leader)
     {
         public string Text => $"{Entry.Label} · {Entry.Count}";
-        public double Y => GradientTop - 5 + Row * MarkRow;
     }
 
-    private sealed record GradientLayout(double Left, double Right, Mark[] Marks, int Rows)
+    private sealed record GradientLayout(double Left, double Right, Mark[] Marks, int Rows, bool Constant)
     {
-        public double Top => GradientTop + Rows * MarkRow;
+        public double Top => GradientTop + (Constant ? 0 : Rows * MarkRow);
+        public double Height => Rows * MarkRow;
+        public double LabelTop(int row) => Constant ? GradientTop - 2 + row * MarkRow
+            : Top - MarkGap - (row + 1) * MarkRow;
+    }
+
+    // Leaders use the space between rows to step around labels closer to the bar.
+    // Coordinates are relative to the bar, so adding an outer row moves everything together.
+    private static Point2[] Leader(double tick, Rect2 label, int row, List<List<Mark>> rows)
+    {
+        var points = new List<Point2> { new(tick, 0) };
+        var x = tick;
+        for (var i = 0; i < row; i++)
+        {
+            var y = -MarkGap - i * MarkRow - 1;
+            points.Add(new(x, y));
+            foreach (var mark in rows[i].OrderBy(m => m.Label.X))
+                if (x > mark.Label.X - 1 && x < mark.Label.X + mark.Label.Width + 1)
+                    x = mark.Label.X + mark.Label.Width + 1;
+            points.Add(new(x, y));
+        }
+        var approach = label.Y + MarkRow - 1;
+        var edge = tick <= label.X ? label.X : label.X + label.Width;
+        var elbow = edge + (edge == label.X ? -1 : 1);
+        points.Add(new(x, approach));
+        points.Add(new(elbow, approach));
+        points.Add(new(elbow, label.Y + LabelHeight / 2));
+        points.Add(new(edge, label.Y + LabelHeight / 2));
+        return points.ToArray();
     }
 
     private static GradientLayout Layout(CardSpec c, Theme t)
@@ -47,7 +74,7 @@ public static class LegendCardPainter
         {
             var tick = entry.Value < min ? left - cap : entry.Value > max ? right + cap
                 : min == max ? left + 12 : left + ColourRange.Fraction(entry.Value, min, max) * (right - left);
-            var mark = new Mark(entry, tick, 0, 0, 0, marks.Count);
+            var mark = new Mark(entry, tick, default, 0, marks.Count, []);
             var width = TextMetrics.Measurer(mark.Text, 10, t.Font).Width + 2;
             var forward = min == max || entry.Side == ThresholdSide.Above;
             var x = forward ? tick + 4 : tick - width - 4;
@@ -55,22 +82,42 @@ public static class LegendCardPainter
                 x = forward ? tick - width - 4 : tick + 4;
             if (min == max) x = right + cap + 8;
             x = Math.Clamp(x, t.Padding, Math.Max(t.Padding, c.Width - t.Padding - width));
-            var row = rows.FindIndex(r => r.All(m => x >= m.X + m.Width + 4 || x + width + 4 <= m.X));
-            if (row < 0) { row = rows.Count; rows.Add([]); }
-            mark = mark with { X = x, Width = width, Row = row };
+            var row = 0;
+            for (; row < rows.Count; row++)
+            {
+                if (min == max) continue;
+                if (rows[row].Any(m => x < m.Label.X + m.Label.Width + 4 && x + width + 4 > m.Label.X))
+                    continue;
+                var top = -MarkGap - (row + 1) * MarkRow;
+                // A previously routed leader may pass through this row on its way outward.
+                if (marks.Any(m => m.Leader.Zip(m.Leader.Skip(1)).Any(segment =>
+                    Math.Min(segment.First.X, segment.Second.X) < x + width + 1 &&
+                    Math.Max(segment.First.X, segment.Second.X) > x - 1 &&
+                    Math.Min(segment.First.Y, segment.Second.Y) < top + LabelHeight &&
+                    Math.Max(segment.First.Y, segment.Second.Y) > top)))
+                    continue;
+                break;
+            }
+            if (row == rows.Count) rows.Add([]);
+            var label = new Rect2(x, -MarkGap - (row + 1) * MarkRow, width, LabelHeight);
+            mark = mark with { Label = label, Row = row,
+                Leader = min == max ? [] : Leader(tick, label, row, rows) };
             rows[row].Add(mark);
             marks.Add(mark);
         }
-        return new(left, right, marks.ToArray(), rows.Count);
+        return new(left, right, marks.ToArray(), rows.Count, min == max);
     }
 
     public static double ThresholdHeight(CardSpec c, Theme t) =>
-        c.Thresholds is { Entries.Length: > 0 } ? Layout(c, t).Rows * MarkRow : 0;
+        c.Thresholds is { Entries.Length: > 0 } ? Layout(c, t).Height : 0;
 
-    public static IEnumerable<HitRegion> ThresholdHits(CardSpec c, Theme t) =>
-        c.Min.HasValue && c.Thresholds is { Entries.Length: > 0 }
-            ? Layout(c, t).Marks.Select(m => new HitRegion(ThresholdKey + m.Index, m.X, m.Y, m.Width, MarkRow))
-            : [];
+    public static IEnumerable<HitRegion> ThresholdHits(CardSpec c, Theme t)
+    {
+        if (c.Min is null || c.Max is null || c.Thresholds is not { Entries.Length: > 0 }) return [];
+        var layout = Layout(c, t);
+        return layout.Marks.Select(m => new HitRegion(ThresholdKey + m.Index,
+            m.Label.X, layout.LabelTop(m.Row), m.Label.Width, m.Label.Height));
+    }
 
     public static ThresholdEntry? ThresholdAt(CardSpec c, string key)
     {
@@ -120,12 +167,14 @@ public static class LegendCardPainter
                 foreach (var mark in layout.Marks)
                 {
                     var direction = mark.Entry.Value < min ? -1 : mark.Entry.Value > max ? 1 : 0;
-                    if (direction != 0)
+                    if (min != max)
+                        canvas.Polyline(mark.Leader.Select(p => new Point2(p.X, p.Y + top)).ToArray(), t.Ink, .75);
+                    if (min != max && direction != 0)
                         canvas.Polyline([new(mark.Tick - direction * 3, top - 1), new(mark.Tick, top + 3),
                             new(mark.Tick - direction * 3, top + 7)], t.Ink);
-                    else
-                        canvas.Line(new(mark.Tick, top - 4), new(mark.Tick, top + 1), t.Ink);
-                    canvas.Text(mark.Text, new(mark.X, mark.Y), 10, t.Ink, t.Font);
+                    else if (min != max)
+                        canvas.Line(new(mark.Tick, top), new(mark.Tick, top + 1), t.Ink);
+                    canvas.Text(mark.Text, new(mark.Label.X, layout.LabelTop(mark.Row)), 10, t.Ink, t.Font);
                 }
             void Cap(double x, double direction, string colour)
             {

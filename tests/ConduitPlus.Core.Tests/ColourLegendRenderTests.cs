@@ -33,6 +33,39 @@ public sealed class ColourLegendRenderTests
         Save(image, $"thresholds-{name}.png");
     }
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BelowMinCaretAndConstantSwatchRenderWithMarks(bool constant)
+    {
+        var theme = Theme.Paper;
+        var legend = ColourScale.Create([10], min: constant ? null : 10, max: constant ? null : 20,
+            thresholds: [5, 10], thresholdColours: ["#F0A628", "#BE3238"],
+            thresholdSides: ["Below", "Above"]).Legend;
+        using var bitmap = RasterDrawing.Render(legend, theme, 2);
+        using var graphics = Graphics.FromImage(bitmap);
+        using var drawing = new GdiCanvas(graphics);
+        var canvas = new LegendRecordingCanvas(drawing);
+        LegendCardPainter.Paint(canvas, legend, theme);
+        var hits = LegendCardPainter.ThresholdHits(legend, theme).ToArray();
+        Assert.Equal(2, hits.Length);
+        Assert.All(hits, hit => Assert.Contains(canvas.Labels, label => label.At == new Point2(hit.X, hit.Y)));
+        if (constant)
+        {
+            Assert.Empty(canvas.Gradients);
+            Assert.Empty(canvas.Outlines);
+            Assert.All(hits, hit => Assert.True(hit.X > theme.Padding + 24));
+            Near("#BE3238", bitmap.GetPixel(2 * (int)(theme.Padding + 16), 90), 0);
+        }
+        else
+        {
+            var bar = Assert.Single(canvas.Gradients);
+            var caret = Assert.Single(canvas.Outlines, outline => outline.Points.Length == 3).Points;
+            Assert.True(caret[1].X < caret[0].X && caret[0].X < bar.X);
+            Assert.Contains(canvas.Outlines, outline => outline.Points[0] == new Point2(caret[1].X, bar.Y));
+        }
+    }
+
+    [Theory]
     [InlineData("Paper")]
     [InlineData("Night")]
     public void DiagramStylesRenderOneItemPerSwatchWithoutCounts(string name)
