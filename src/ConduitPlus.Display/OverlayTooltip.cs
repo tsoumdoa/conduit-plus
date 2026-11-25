@@ -69,13 +69,14 @@ internal sealed partial class OverlaySession
             SetTooltip(target, labelKey is null ? content : Tooltip.WithMemberGroups(content, snapshot?.Membership, labelKey));
             return;
         }
-        if (!OverlayManager.LocalHover(this) && _cardHover?.Key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) != true) { HideTooltip(); return; }
+        var distributionHover = _cardHover is { } d && Card(d.Card)?.Kind == CardKind.Distribution;
+        if (!distributionHover && !OverlayManager.LocalHover(this) && _cardHover?.Key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) != true) { HideTooltip(); return; }
         var domain = OverlayManager.DomainSnapshot(this);
-        var model = OverlayManager.ModelHover(this);
+        var model = !distributionHover && OverlayManager.ModelHover(this);
         var key = model ? domain?.HoverKey : _cardHover?.Key;
         var membership = domain?.Membership;
         CardSpec? card = null; string[]? lines = null;
-        if (!string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal)))
+        if (!string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || distributionHover || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal)))
         {
             if (model)
             {
@@ -84,7 +85,7 @@ internal sealed partial class OverlaySession
                 lines = Tooltip.WithMemberGroups([key, .. (lines ?? []).Where(line => line != key)], membership, key);
             }
             else if (_cardHover is { } hover && Card(hover.Card) is { } c)
-            { card = c; lines = Tooltip.For(c, key, membership); }
+            { card = c; lines = Tooltip.For(c, key, membership, Theme); }
         }
         if (lines is null || key is null) { HideTooltip(); return; }
         var next = new TooltipTarget(card?.Id, key, card?.Rev ?? 0, UiContext.Dpi(View), model, domain?.Version ?? 0);

@@ -12,6 +12,8 @@ public static partial class OverlayManager
 {
     private sealed class OverlayMouse : MouseCallback
     {
+        private (OverlaySession Session, string Card, string Key, Distribution.Layout Layout, Point2 Origin, double Unit,
+            System.Drawing.Point Point, PointerIntent Intent)? _distributionPress;
         private bool _pressed;
         private bool _buttonDown;
         private (RhinoView View, System.Drawing.Point Point)? _emptyPress;
@@ -51,6 +53,7 @@ public static partial class OverlayManager
         private void Cancel()
         {
             _emptyPress = null;
+            _distributionPress = null;
             var previous = _gesture; _gesture = null;
             if (previous is not null) CancelBrushHover(previous.Session);
         }
@@ -59,6 +62,7 @@ public static partial class OverlayManager
             if (_labelHoverOwner == session) CloseLabelHover();
             if (_pointer is { } pointer && SameView(pointer.View, session.View)) { _modelDwell.Cancel(); _scrollRest.Cancel(); _pointer = null; _movePending = false; _labelRecheckPending = false; }
             if (_emptyPress is { } press && SameView(press.View, session.View)) _emptyPress = null;
+            if (_distributionPress?.Session == session) _distributionPress = null;
             if (_gesture?.Session == session) Cancel();
         }
         private bool Valid(MouseCallbackEventArgs e)
@@ -301,6 +305,7 @@ public static partial class OverlayManager
         {
             if (HiddenHit(view,point.X,point.Y,true)) { _pressed=true; _emptyPress=null; return true; }
             _emptyPress = null;
+            _distributionPress = null;
             var tooltipHit = InView(view).Any(s => s.LabelTooltipBounds is { } bounds &&
                 bounds.Contains(point.X, point.Y));
             foreach (var s in Sessions.Values.ToArray()) s.HideTooltip();
@@ -320,6 +325,13 @@ public static partial class OverlayManager
                 if (hit is null) continue;
                 _pressed = true;
                 CancelPending();
+                if (s.Card(hit.Value.CardId) is { Kind: CardKind.Distribution } distribution)
+                {
+                    if (!string.IsNullOrEmpty(hit.Value.Key) && s.Local(distribution.Id, point.X, point.Y) is { } local)
+                        _distributionPress = (s, distribution.Id, hit.Value.Key, Distribution.Geometry(distribution, s.Theme),
+                            new(point.X - local.X * s.Unit, point.Y - local.Y * s.Unit), s.Unit, point, intent);
+                    return true;
+                }
                 if (TableSort.Column(hit.Value.Key) is { } column)
                 {
                     s.Sort(hit.Value.CardId, column);
@@ -378,6 +390,21 @@ public static partial class OverlayManager
             // Release ownership follows the button alone: a modifier pressed mid-gesture (macOS Control) must not
             // leave a captured press unfinished.
             if (!primaryButton) return false;
+            var distribution = _distributionPress;
+            _distributionPress = null;
+            if (distribution is { } down && !Busy && !Command.InCommand() && SameView(view, down.Session.View) &&
+                (!intent.Shift || down.Intent.Shift) && (!intent.Toggle || down.Intent.Toggle) &&
+                CanvasCardGeometry.WithinClick(new(down.Point.X, down.Point.Y), new(point.X, point.Y)) &&
+                down.Session.Hit(point.X, point.Y) == (down.Card, down.Key) &&
+                down.Session.Card(down.Card) is { } destination && down.Session.Local(down.Card, point.X, point.Y) is { } local &&
+                down.Session.Unit == down.Unit && Math.Abs(point.X - local.X * down.Session.Unit - down.Origin.X) < .01 &&
+                Math.Abs(point.Y - local.Y * down.Session.Unit - down.Origin.Y) < .01 &&
+                ReferenceEquals(down.Layout, Distribution.Geometry(destination, down.Session.Theme)))
+            {
+                if ((!down.Intent.Shift && !down.Intent.Toggle) || !CardMeasure.IsReserved(down.Key) ||
+                    down.Key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal))
+                    down.Session.Select(down.Card, down.Key, BrushSelection.FromModifiers(down.Intent.Shift, down.Intent.Toggle));
+            }
             var empty = _emptyPress; _emptyPress = null;
             if (empty is { } press && !Busy && !Command.InCommand() && !intent.Shift && !intent.Toggle &&
                 SameView(press.View, view) && CanvasCardGeometry.WithinClick(new(press.Point.X, press.Point.Y), new(point.X, point.Y)))

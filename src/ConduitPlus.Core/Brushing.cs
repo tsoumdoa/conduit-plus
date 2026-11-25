@@ -86,6 +86,7 @@ public sealed class BrushState
     public static IEnumerable<string> Keys(CardSpec c) => c.Kind switch
     {
         CardKind.Table => c.Rows.Select(r => r.Key),
+        CardKind.Distribution => c.Keys.Where((_, i) => c.Values[i].HasValue),
         CardKind.Metric or CardKind.Bar or CardKind.Line => c.Keys,
         CardKind.Legend when !c.Min.HasValue => c.Keys,
         _ => []
@@ -131,10 +132,21 @@ public sealed class BrushState
         source ??= LegacySource;
         var target = _membership.Resolve(key, expectedKind);
         if (target is null || target.Members.Length == 0) return false;
+        return SelectResolved(target.Members, key, target.Kind, mode, source);
+    }
+
+    public bool SelectMembers(IEnumerable<string> keys, BrushSelectMode mode, BrushActionSource source)
+    {
+        var members = keys.Where(_membership.MemberKeys.Contains).Distinct(StringComparer.Ordinal).ToArray();
+        return members.Length != 0 && SelectResolved(members, members[0], BrushTargetKind.Member, mode, source);
+    }
+
+    private bool SelectResolved(IReadOnlyList<string> members, string key, BrushTargetKind kind, BrushSelectMode mode, BrushActionSource source)
+    {
         var next = new HashSet<string>(_selected, StringComparer.Ordinal);
-        var remove = mode == BrushSelectMode.Remove || mode == BrushSelectMode.Toggle && target.Members.All(_selected.Contains);
+        var remove = mode == BrushSelectMode.Remove || mode == BrushSelectMode.Toggle && members.All(_selected.Contains);
         if (mode == BrushSelectMode.Replace) next.Clear();
-        if (remove) next.ExceptWith(target.Members); else next.UnionWith(target.Members);
+        if (remove) next.ExceptWith(members); else next.UnionWith(members);
         var affected = _selected.Except(next).Concat(next.Except(_selected)).Order(StringComparer.Ordinal).ToImmutableArray();
         if (affected.Length == 0) return false;
         var touched = new HashSet<string>(StringComparer.Ordinal);
@@ -146,7 +158,7 @@ public sealed class BrushState
         }
         RefreshGroups(touched);
         _selectionRevision++;
-        AddEvent(source, key, "click", target.Kind, affected);
+        AddEvent(source, key, "click", kind, affected);
         Publish(); return true;
     }
 

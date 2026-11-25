@@ -11,6 +11,7 @@ public sealed class ScopeAdapterTests
         public string ParticipantId => Lease.ParticipantId;
         public BrushDomainSnapshot Current => domain.Current;
         public bool IsActive => domain.Contains(Lease) && !domain.IsSuspended;
+        public bool SelectMembers(IEnumerable<string> keys, BrushSelectMode mode, BrushActionSource source) => domain.SelectMembers(Lease, keys, mode, source);
         public bool Select(string key, BrushSelectMode mode, BrushTargetKind kind, BrushActionSource source) => domain.Select(Lease, key, mode, kind, source);
         public bool Toggle(string key, BrushTargetKind kind, BrushActionSource source) => domain.Toggle(Lease, key, kind, source);
         public bool Clear(BrushActionSource source) => domain.Clear(Lease, source);

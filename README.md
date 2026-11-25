@@ -273,6 +273,7 @@ to **Overlay**, **Canvas Card**, or **Canvas Overlay**.
 |---|---|
 | Metric | Value, title, unit, optional slot and appended Decimals (0–12); unwired precision preserves digits, numeric text uses a true minus (−), nonnumeric text is unchanged, missing values display an em dash. Appended optional Key targets a member; Members (exactly one text-tree branch) turns it into a group and requires a single Value. A Value list makes one card per item using native GH matching for Title/Unit/Key. |
 | Bar | Numeric values, optional labels (default 1…n) and stable keys (default labels; repeated labels use 1…n with a Remark), title (default “Bar”), optional threshold and slot. Unset Threshold uses the neutral theme data colour with no marker; a set threshold enables good/bad colouring for Below/Above; Within bars are neutral, only the part beyond the tolerance is red (Below/Above accept zero for deltas; Within needs a positive tolerance). Optional Colors override per-bar status. Members supplies one branch per entry and requires explicit Keys. Old files retain generated M01… keys and stored threshold/title values. Appended inputs: **Good when** (Gw, index 8), right-click Below / Above / Within (unset Below; ≤ / ≥ threshold, or −Threshold ≤ value ≤ Threshold; equality is good); **Sort** (O, index 9), Original / Worst first / Best first; **Visible rows** (N, index 10), default 12, 0 = all, otherwise 1–200. Worst is highest for Below, lowest for Above, or largest \|value\| for Within, including without a threshold. Sort is stable, missing values last in sorted modes, and keys, colours, labels and group memberships stay together. Values share one number of decimals: what the most precise value needs at two places (up to six so small values keep two significant digits). Every value shows that many, so decimal points line up. The measured right-aligned column uses a true minus (−); integer-only data has no decimals. |
+| Distribution | Keyed values as stacked dots or a histogram, with optional Colour Scale fills, thresholds, and quartiles. |
 | Line | Ordered values (NaN leaves a gap), optional labels (1…n) and keys (default labels), title (default “Line”), optional threshold and slot. A positive threshold, typed or wired, shows a band. Repeated labels with no Keys use 1…n with a Remark. |
 | Title | Title (default “Title”), optional Subtitle and multiline Description (at least one text field required); Position tl/tc/tr/bl/bc/br; Plain/Card background; appended Colour sets the text colour (plain text chooses black or white for best worst-case contrast against the viewport/canvas background, including gradient colours and Rendered-mode render settings; a subtle surface halo protects mixed backgrounds). Scales with the viewport, hides last, not clickable. |
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
@@ -346,6 +347,14 @@ Numeric text accepts an optional sign, digits, optional dot fraction and optiona
 commas, grouping separators, percentages and units remain text. Keys and sorting retain raw values.
 
 Slot codes are `tl`, `tr`, `bl`, `br`, `lc`, `rc`. Set Slot by wire or right-click; otherwise each component’s first card takes the next automatic slot (cycling through six). Later solve iterations share that slot. Cards from each component stay together in input order within each slot.
+
+## Distribution
+
+Wire **Values** and optional **Labels** and **Keys**. Connect **Card** to Overlay or Canvas Card. Use the card header to switch between Dots and Histogram or set **Show as** to fix the mode. Large or dense samples automatically use a histogram. **Bin width** defaults to Auto.
+
+Connect **Colour Scale → Legend** for value-based colours or wire one **Colors** entry per value. Threshold inputs replace the scale's thresholds. The component menu controls the quartile strip and threshold annotations.
+
+Hover a dot for its value or a bar for its range and count. Click a bar to select its members together. Shared keys connect the selection to Scope and linked geometry.
 
 ## Colour helpers
 

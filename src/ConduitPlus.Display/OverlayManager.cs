@@ -341,7 +341,19 @@ public static partial class OverlayManager
 
     internal static void Select(OverlaySession session, string card, string key, BrushSelectMode mode, bool label = false)
     {
-        var clear = key == CardMeasure.ClearKey;
+        if (!label && session.Card(card) is { Kind: CardKind.Distribution } distribution)
+        {
+            if (Distribution.Choice(key) is { } choice) { session.ChooseDistribution(distribution, choice); return; }
+            if (Distribution.Members(distribution, session.Theme, key) is { } members)
+            {
+                var origin = new BrushActionSource(session.Owner, card, "card");
+                if (Change(session, b => b.SelectMembers(members, mode, origin), b => b.SelectMembers(members, mode, origin)) &&
+                    DomainSnapshot(session)?.Events.LastOrDefault() is { } selection)
+                    Interaction?.Invoke(OverlayInteraction.From(selection));
+                return;
+            }
+        }
+        var clear = key == CardMeasure.ClearKey || key == Distribution.EmptyKey;
         if (!clear && CardMeasure.IsReserved(key)) return;
         var source = new BrushActionSource(session.Owner, card, label ? "label" : card == "model" ? "model" : "card");
         var kind = !label && session.Card(card) is { } spec ? BrushPresentation.TargetKind(spec, key) : BrushTargetKind.Member;

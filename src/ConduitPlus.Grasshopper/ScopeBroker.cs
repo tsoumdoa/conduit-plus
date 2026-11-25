@@ -276,6 +276,7 @@ public sealed class ScopeBinding : IDisposable, IBrushBinding
         return BeginPublication() is { } publication && Stage(publication, registration);
     }
     public void RecordOutputs() => _broker.RecordOutputs(this);
+    public bool SelectMembers(IEnumerable<string> keys, BrushSelectMode mode, BrushActionSource source) => IsActive && Domain.SelectMembers(Lease, keys, mode, source);
     public bool Select(string key, BrushSelectMode mode, BrushTargetKind kind, BrushActionSource source) => IsActive && Domain.Select(Lease, key, mode, kind, source);
     public bool Toggle(string key, BrushTargetKind kind, BrushActionSource source) => IsActive && Domain.Toggle(Lease, key, kind, source);
     public bool Clear(BrushActionSource source) => IsActive && Domain.Clear(Lease, source);

@@ -8,7 +8,14 @@ public readonly record struct Rect2(double X, double Y, double Width, double Hei
 }
 public sealed record HitRegion(string Key, double X, double Y, double W, double H)
 {
-    public bool Contains(double x, double y) => new Rect2(X, Y, W, H).Contains(x, y);
+    public bool Circular { get; init; }
+    public bool Contains(double x, double y)
+    {
+        if (!new Rect2(X, Y, W, H).Contains(x, y)) return false;
+        if (!Circular) return true;
+        var dx = x - X - W / 2; var dy = y - Y - H / 2;
+        return dx * dx + dy * dy <= W * W / 4;
+    }
 }
 public sealed record CardLayout(string Id, long Rev, double X, double Y, double W, double H, HitRegion[] HitRegions);
 
@@ -51,7 +58,7 @@ public static class CardMeasure
     public static double TickLeft(HitRegion row) => Math.Max(0, row.X - 6);
     private static HitRegion Actionable(CardSpec c, HitRegion row) => c.Kind == CardKind.Line ? row :
         row with { X = TickLeft(row), W = row.W + row.X - TickLeft(row) };
-    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. LegendCardPainter.ThresholdHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
+    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Distribution ? [.. Distribution.Hits(c, t), .. (Clear(c,t) is { } button ? new[] { button } : [])] : c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. LegendCardPainter.ThresholdHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],

@@ -78,7 +78,7 @@ public sealed class CoreTests
     [InlineData(2d)]
     public void CardPainterRendersEveryCardKindThroughGdiCanvas(double scale)
     {
-        var cards = AllCards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
+        var cards = AllCards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).Append(DistributionTests.PaintFixture()).GroupBy(c => c.Kind).Select(g => g.First()).ToArray();
         Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Order());
         foreach (var card in cards)
         {

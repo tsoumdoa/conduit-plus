@@ -189,6 +189,13 @@ internal sealed class ReviewDefinition
             categories.Attributes.Pivot = new(700, top + 1100); preview.Attributes.Pivot = new(1040, top + 1100);
             var helloCards = cards.ToArray(); Finish("2  Cards · Metric, Bar, Table + programme preview"); cards.AddRange(helloCards);
         }
+        if (!hello)
+        {
+            var distribution = Card(new DistributionComponent());
+            Wire(distribution, 0, rooms!.Params.Output[12]); Wire(distribution, 1, names); Wire(distribution, 2, keys);
+            Text(distribution, 3, "Room areas"); Text(distribution, 4, "m²"); Text(distribution, 5, "bl");
+            Wire(distribution, 6, scaleColours!.Params.Output[1]);
+        }
         var scope = Add(new ScopeComponent(), hello ? 740 : 980, top - 120); Text(scope, 0, "Room review");
         Stack(scope);
         // The same cards serve both displays; Scope shares their keyed selection.

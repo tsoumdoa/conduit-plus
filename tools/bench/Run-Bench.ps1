@@ -5,6 +5,8 @@ param(
     [string]$Output,
     [switch]$Compact,
     [switch]$Thresholds,
+    [switch]$Distribution,
+    [ValidateSet('Paper', 'Night')][string]$DistributionTheme,
     [ValidateRange(10, 600)][int]$TimeoutSeconds = 90
 )
 $ErrorActionPreference = 'Stop'
@@ -15,6 +17,13 @@ if (-not $Output) {
         else { Join-Path ([IO.Path]::GetTempPath()) "ConduitPlus/bench-$stamp" }
 }
 $destination = [IO.Path]::GetFullPath($Output)
+if ($Distribution -and ($Mode -eq 'Capture' -or $Mode -eq 'Pdf') -and !$DistributionTheme) {
+    # A second viewport PNG capture in the same headless RhinoCore can fail natively.
+    foreach ($theme in @('Paper', 'Night')) {
+        & $PSCommandPath -Mode $Mode -Distribution -DistributionTheme $theme -Configuration $Configuration -Scale $Scale -TimeoutSeconds $TimeoutSeconds -Output (Join-Path $destination $theme.ToLowerInvariant())
+    }
+    return
+}
 $project = Join-Path $PSScriptRoot 'ConduitPlus.RhinoBench/ConduitPlus.RhinoBench.csproj'
 & dotnet build $project -c $Configuration
 if ($LASTEXITCODE -ne 0) { throw 'Benchmark build failed.' }
@@ -30,6 +39,8 @@ if ($Mode -eq 'LabelOcclusion') { $arguments += '--label-occlusion' }
 if ($Mode -eq 'Labels') { $arguments += '--labels' }
 if ($Mode -eq 'LabelInput') { $arguments += '--label-input' }
 if ($Compact) { $arguments += '--compact' }
+if ($Distribution) { $arguments += '--distribution' }
+if ($DistributionTheme -eq 'Night') { $arguments += '--distribution-night' }
 if ($Thresholds) { $arguments += '--thresholds' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {

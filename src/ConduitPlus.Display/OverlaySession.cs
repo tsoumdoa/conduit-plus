@@ -59,6 +59,8 @@ internal sealed partial class OverlaySession : IDisposable
     private readonly Dictionary<string, int> _scroll = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int? Column, bool Descending)> _sort = new(StringComparer.Ordinal);
     private (string Card, string Key)? _headerHover;
+    private readonly Dictionary<string, (CardSpec From, long Started)> _distributionTransitions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DistributionMode Default, DistributionMode Choice)> _distributionChoices = new(StringComparer.Ordinal);
     internal const string ScrollbarKey = "\u0001scrollbar";
     public OverlaySession(RhinoDoc doc, RhinoView view, Guid owner)
     { OverlayManager.Start(); Document = doc; View = view; Owner = owner; Unit = UiContext.Dpi(view); _conduit = new(this) { Enabled = true }; _tooltipTimer.Tick += (_, _) => TickTooltip(); }
@@ -93,6 +95,8 @@ internal sealed partial class OverlaySession : IDisposable
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
         foreach (var id in _sort.Keys.Where(id => !live.Contains(id)).ToArray()) _sort.Remove(id);
+        foreach (var id in _distributionTransitions.Keys.Where(id => !live.Contains(id)).ToArray()) _distributionTransitions.Remove(id);
+        foreach (var id in _distributionChoices.Keys.Where(id => !live.Contains(id)).ToArray()) _distributionChoices.Remove(id);
         foreach (var id in _forms.Keys.Where(id => !live.Contains(id)).ToArray()) _forms.Remove(id);
         SyncTooltip();
     }
@@ -123,9 +127,15 @@ internal sealed partial class OverlaySession : IDisposable
             { _sort.Remove(c.Id); c = c with { SortColumn = null, SortDescending = false }; }
             else c = c with { SortColumn = sort.Column, SortDescending = sort.Descending };
         }
+        if (c.DistributionChoice is not null) c = c with { DistributionChoice = null };
+        if (_distributionChoices.TryGetValue(c.Id, out var choice))
+        {
+            if (c.Kind != CardKind.Distribution || choice.Default != (c.Distribution?.Default ?? DistributionMode.Dots)) _distributionChoices.Remove(c.Id);
+            else c = c with { DistributionChoice = choice.Choice };
+        }
         if (_headerHover is { } header && header.Card == c.Id)
         {
-            if (c.Kind == CardKind.Table && TableSort.Column(header.Key) is { } col && col < c.Headers.Length) c = c with { HoverKey = header.Key };
+            if (c.Kind == CardKind.Distribution || c.Kind == CardKind.Table && TableSort.Column(header.Key) is { } col && col < c.Headers.Length) c = c with { HoverKey = header.Key };
             else _headerHover = null;
         }
         // Reveal only newly selected keys: hover, solves and manual scrolling must not snap back.
@@ -139,6 +149,17 @@ internal sealed partial class OverlaySession : IDisposable
     }).ToArray();
 
     public CardSpec? Card(string id) => Cards.FirstOrDefault(c => c.Id == id);
+    internal void ChooseDistribution(CardSpec card, DistributionMode mode)
+    {
+        if (card.Distribution?.Wired is not null || Distribution.Geometry(card, Theme).Forced) return;
+        if (Distribution.Geometry(card, Theme).Mode != mode && DistributionMotion.Enabled)
+            _distributionTransitions[card.Id] = (BrushPresentation.WithoutHover(card), Environment.TickCount64);
+        _distributionChoices[card.Id] = (card.Distribution?.Default ?? DistributionMode.Dots, mode);
+        _headerHover = null;
+        HideTooltip();
+        UpdateInteraction();
+    }
+
     internal void Sort(string id, int column)
     {
         if (Card(id) is not { Kind: CardKind.Table } c || column < 0 || column >= c.Headers.Length) return;
@@ -186,7 +207,7 @@ internal sealed partial class OverlaySession : IDisposable
             var prepared = _raster.Prepared;
             var hits = prepared.TryGetValue(layout.Id, out var p) && p.Capture.Spec.Rev == spec.Rev
                 ? p.Capture.Layout.HitRegions : CardMeasure.Hits(spec, Theme);
-            var hit = hits.FirstOrDefault(h => h.Contains((x - layout.X) / Unit, (y - layout.Y) / Unit));
+            var hit = (spec.Kind == CardKind.Distribution ? Enumerable.Reverse(hits) : hits).FirstOrDefault(h => h.Contains((x - layout.X) / Unit, (y - layout.Y) / Unit));
             return (layout.Id, hit?.Key ?? "");
         }
         return null;
@@ -194,8 +215,8 @@ internal sealed partial class OverlaySession : IDisposable
     public void SetHover(string? card, string? key)
     {
         if (_disposed) return;
-        _cardHover = card is not null && !string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal)) ? (card, key) : null;
-        var header = card is not null && key is not null && TableSort.Column(key).HasValue ? (card, key) : ((string, string)?)null;
+        _cardHover = card is not null && !string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) || Distribution.Choice(key).HasValue || key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal)) ? (card, key) : null;
+        var header = card is not null && key is not null && (TableSort.Column(key).HasValue || key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal)) ? (card, key) : ((string, string)?)null;
         var changed = _headerHover != header; _headerHover = header;
         OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key, card: card);
         if (changed) UpdateInteraction();
@@ -269,7 +290,22 @@ internal sealed partial class OverlaySession : IDisposable
         foreach (var layout in layouts)
         {
             if (_raster.Prepared.TryGetValue(layout.Id, out var p))
+            {
+                if (!e.Display.IsInViewCapture && _distributionTransitions.TryGetValue(layout.Id, out var transition))
+                {
+                    var progress = (Environment.TickCount64 - transition.Started) / 450d;
+                    if (progress < 1 && transition.From.Width == p.Capture.Spec.Width)
+                    {
+                        using var bitmap = DistributionMotion.Blend(transition.From, p.Capture, Theme, progress);
+                        using var display = new DisplayBitmap(bitmap);
+                        e.Display.DrawBitmap(display, (int)Math.Round(layout.X) - p.Capture.Margin, (int)Math.Round(layout.Y) - p.Capture.Margin);
+                        OverlayManager.RequestInteractionRedraw(this);
+                        continue;
+                    }
+                    _distributionTransitions.Remove(layout.Id);
+                }
                 e.Display.DrawBitmap(p.Display, (int)Math.Round(layout.X) - p.Capture.Margin, (int)Math.Round(layout.Y) - p.Capture.Margin);
+            }
         }
         if (!e.Display.IsInViewCapture && OverlayManager.ShownId(this) is { } shownId && layouts.FirstOrDefault(l => l.Id == shownId) is { } shownLayout)
             e.Display.Draw2dRectangle(new System.Drawing.Rectangle((int)shownLayout.X, (int)shownLayout.Y, (int)shownLayout.W, (int)shownLayout.H), ConduitPlus.Rendering.GdiCanvas.ParseColor(Theme.Accent), 2, System.Drawing.Color.Transparent);

@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace ConduitPlus.Core;
 
-public enum CardKind { Metric, Bar, Table, Line, Text, Legend, Title }
+public enum CardKind { Metric, Bar, Table, Line, Text, Legend, Title, Distribution }
 public enum Slot { Tl, Tr, Bl, Br, Lc, Rc, Tc, Bc }
 public enum TitleBackground { Plain, Card }
 public sealed record TableRow(string Key, string?[] Cells);
@@ -23,6 +23,8 @@ public sealed record CardSpec
     public string[] Colors { get; init; } = [];
     public ColourMapping? Mapping { get; init; }
     public ThresholdSet? Thresholds { get; init; }
+    public DistributionOptions? Distribution { get; init; }
+    [JsonIgnore] public DistributionMode? DistributionChoice { get; init; }
     /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
     public double[] ColorPositions { get; init; } = [];
     /// <summary>Optional #RRGGBB extend caps for values outside a gradient legend's range.</summary>
@@ -102,7 +104,15 @@ public sealed record CardSpec
         if (!double.IsFinite(Width) || Width < 180 || Width > 1200) throw new ArgumentException("Width must be 180–1200 CSS pixels.");
         if (!double.IsFinite(Threshold) || (Threshold < 0 && !(Kind == CardKind.Bar && GoodWhen == BarGoodWhen.Within)) || (Kind is not (CardKind.Line or CardKind.Bar) && Threshold == 0)) throw new ArgumentException("Threshold must be positive and finite (Bar/Line also accept zero).");
         if (Values.Any(v => v.HasValue && !double.IsFinite(v.Value))) throw new ArgumentException("Use null for missing values; infinity/NaN are invalid.");
-        if (Kind is CardKind.Bar or CardKind.Line && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
+        if (Kind is CardKind.Bar or CardKind.Line or CardKind.Distribution && (Values.Length != Keys.Length || Values.Length != Labels.Length)) throw new ArgumentException("Chart values, labels and keys must have equal lengths.");
+        if (Kind == CardKind.Distribution)
+        {
+            if (Colors.Length != 0 && (Colors.Length != Values.Length || Colors.Any(color =>
+                color is null || color.Length != 0 && (color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit)))))
+                throw new ArgumentException("Distribution needs one colour per value.");
+            if (Distribution?.BinWidth is { } width && (!double.IsFinite(width) || width <= 0))
+                throw new ArgumentException("Bin width must be positive and finite.");
+        }
         if (Kind == CardKind.Line && Values.Length < 2) throw new ArgumentException("Line cards need at least two samples.");
         if (Kind == CardKind.Bar && Colors.Length != 0 && (Colors.Length != Values.Length || Colors.Any(color => color is null || color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit)))) throw new ArgumentException("Optional bar colors must match values and be #RRGGBB strings.");
         if (Kind == CardKind.Text && (Text is null || Keys.Length > 0)) throw new ArgumentException("Text cards require text and are not keyed.");
@@ -313,13 +323,13 @@ public sealed class CardStore
             var colors = Own(input.Colors, previous?.Colors);
             var positions = Own(input.ColorPositions, previous?.ColorPositions, DoubleContent);
             var valueLabels = Own(input.ValueLabels, previous?.ValueLabels);
-            if (!themeChanged && previous is not null && old.Content == content &&
+            if (!themeChanged && previous is not null && old.Content == content && previous.DistributionChoice == input.DistributionChoice &&
                 SameMapping(input.Mapping, previous.Mapping) && SameThresholds(input.Thresholds, previous.Thresholds) &&
                 ReferenceEquals(headers, previous.Headers) && ReferenceEquals(rows, previous.Rows) &&
                 ReferenceEquals(values, previous.Values) && ReferenceEquals(labels, previous.Labels) &&
                 ReferenceEquals(keys, previous.Keys) && ReferenceEquals(colors, previous.Colors) &&
                 ReferenceEquals(positions, previous.ColorPositions) && ReferenceEquals(valueLabels, previous.ValueLabels)) continue;
-            var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision,
+            var snapshot = CardJson.Deserialize<CardSpec>(content) with { Rev = ++_revision, DistributionChoice = input.DistributionChoice,
                 Mapping = input.Mapping, Thresholds = input.Thresholds,
                 Headers = headers, Rows = rows, Values = values, Labels = labels, Keys = keys,
                 Colors = colors, ColorPositions = positions, ValueLabels = valueLabels };

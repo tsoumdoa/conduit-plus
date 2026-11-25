@@ -7,6 +7,7 @@ public interface IBrushBinding
     BrushDomainSnapshot Current { get; }
     bool IsActive { get; }
     bool Select(string key, BrushSelectMode mode, BrushTargetKind kind, BrushActionSource source);
+    bool SelectMembers(IEnumerable<string> keys, BrushSelectMode mode, BrushActionSource source);
     bool Toggle(string key, BrushTargetKind kind, BrushActionSource source);
     bool Clear(BrushActionSource source);
     bool Hover(BrushOrigin origin, string? key, BrushTargetKind? kind = null);
