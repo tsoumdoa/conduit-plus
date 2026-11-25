@@ -6,6 +6,8 @@ public static class Tooltip
 {
     public static string[]? For(CardSpec c, string? key, MembershipIndex? membership = null)
     {
+        if (key is not null && LegendCardPainter.ThresholdAt(c, key) is { } threshold)
+            return [$"{(threshold.Side == ThresholdSide.Above ? "≥" : "≤")} {threshold.Value.ToString("R", CultureInfo.InvariantCulture)} · {threshold.Count}"];
         var lines = Content(c, key);
         if (lines is null && key is not null && c.Groups.ContainsKey(key)) lines = [key];
         if (lines is null || key is null) return lines;

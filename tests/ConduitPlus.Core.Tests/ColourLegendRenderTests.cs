@@ -12,6 +12,29 @@ public sealed class ColourLegendRenderTests
     [Theory]
     [InlineData("Paper")]
     [InlineData("Night")]
+    [InlineData("Smoke")]
+    [InlineData("Blueprint")]
+    public void ThresholdBandsMarksAndTooltipsShareLegendLayout(string name)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        var legend = ColourScale.Create([6, 24, 25, 43], min: 0, max: 40,
+            thresholds: [6, 24.000000000000004, 25, 42],
+            thresholdColours: ["#622E94", "#E9A028", "#B93238", "#852733"],
+            thresholdSides: ["Below", "Above", "Above", "Above"]).Legend;
+        using var image = RasterDrawing.Render(legend, theme, 2);
+        var hits = CardMeasure.Hits(legend, theme);
+        Assert.Equal(4, hits.Length);
+        Assert.Equal(2, hits.Select(h => h.Y).Distinct().Count());
+        Assert.All(hits, h => Assert.InRange(h.X + h.W, 0, legend.Width));
+        Assert.Contains("24.000000000000004", Tooltip.For(legend, hits[1].Key)![0]);
+        var top = LegendCardPainter.GradientTop + LegendCardPainter.ThresholdHeight(legend, theme);
+        Near("#622E94", image.GetPixel(60, (int)(2 * (top + 5))), 0);
+        Near("#B93238", image.GetPixel(450, (int)(2 * (top + 5))), 0);
+        Save(image, $"thresholds-{name}.png");
+    }
+    [Theory]
+    [InlineData("Paper")]
+    [InlineData("Night")]
     public void DiagramStylesRenderOneItemPerSwatchWithoutCounts(string name)
     {
         Assert.True(Theme.TryGet(name, out var theme));

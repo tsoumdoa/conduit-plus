@@ -19,6 +19,65 @@ public static class LegendCardPainter
     }
     // Include the exact scale limits so the final color's value is always explicit.
     public static double[] Ticks(CardSpec c) => c.Min == c.Max ? [c.Min!.Value] : ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
+    public const string ThresholdKey = "\u0001threshold:";
+    private const double MarkRow = 14;
+    private sealed record Mark(ThresholdEntry Entry, double Tick, double X, double Width, int Row, int Index)
+    {
+        public string Text => $"{Entry.Label} · {Entry.Count}";
+        public double Y => GradientTop - 5 + Row * MarkRow;
+    }
+
+    private sealed record GradientLayout(double Left, double Right, Mark[] Marks, int Rows)
+    {
+        public double Top => GradientTop + Rows * MarkRow;
+    }
+
+    private static GradientLayout Layout(CardSpec c, Theme t)
+    {
+        var min = c.Min!.Value;
+        var max = c.Max!.Value;
+        var cap = (c.Form.Compact ? GradientCompactBar : GradientBar) * .6 + .5;
+        double Reserve(double value) => Math.Max(cap,
+            TextMetrics.Measurer(value.ToString("G4", CultureInfo.InvariantCulture), 10, t.Font).Width / 2);
+        var left = t.Padding + Reserve(min);
+        var right = min == max ? left + 24 : Math.Max(left + 1, c.Width - t.Padding - Reserve(max));
+        var rows = new List<List<Mark>>();
+        var marks = new List<Mark>();
+        foreach (var entry in c.Thresholds?.Entries.OrderBy(e => e.Value).ThenBy(e => e.Side) ?? Enumerable.Empty<ThresholdEntry>())
+        {
+            var tick = entry.Value < min ? left - cap : entry.Value > max ? right + cap
+                : min == max ? left + 12 : left + ColourRange.Fraction(entry.Value, min, max) * (right - left);
+            var mark = new Mark(entry, tick, 0, 0, 0, marks.Count);
+            var width = TextMetrics.Measurer(mark.Text, 10, t.Font).Width + 2;
+            var forward = min == max || entry.Side == ThresholdSide.Above;
+            var x = forward ? tick + 4 : tick - width - 4;
+            if (x < t.Padding || x + width > c.Width - t.Padding)
+                x = forward ? tick - width - 4 : tick + 4;
+            if (min == max) x = right + cap + 8;
+            x = Math.Clamp(x, t.Padding, Math.Max(t.Padding, c.Width - t.Padding - width));
+            var row = rows.FindIndex(r => r.All(m => x >= m.X + m.Width + 4 || x + width + 4 <= m.X));
+            if (row < 0) { row = rows.Count; rows.Add([]); }
+            mark = mark with { X = x, Width = width, Row = row };
+            rows[row].Add(mark);
+            marks.Add(mark);
+        }
+        return new(left, right, marks.ToArray(), rows.Count);
+    }
+
+    public static double ThresholdHeight(CardSpec c, Theme t) =>
+        c.Thresholds is { Entries.Length: > 0 } ? Layout(c, t).Rows * MarkRow : 0;
+
+    public static IEnumerable<HitRegion> ThresholdHits(CardSpec c, Theme t) =>
+        c.Min.HasValue && c.Thresholds is { Entries.Length: > 0 }
+            ? Layout(c, t).Marks.Select(m => new HitRegion(ThresholdKey + m.Index, m.X, m.Y, m.Width, MarkRow))
+            : [];
+
+    public static ThresholdEntry? ThresholdAt(CardSpec c, string key)
+    {
+        if (!key.StartsWith(ThresholdKey, StringComparison.Ordinal) ||
+            !int.TryParse(key.AsSpan(ThresholdKey.Length), out var index) || index < 0) return null;
+        return c.Thresholds?.Entries.OrderBy(e => e.Value).ThenBy(e => e.Side).ElementAtOrDefault(index);
+    }
     public static void Paint(ICanvas2D canvas, CardSpec c, Theme t)
     {
         if (c.Min is { } min && c.Max is { } max)
@@ -34,22 +93,54 @@ public static class LegendCardPainter
             // Caps stay inside the existing measured card bounds in both forms.
             var left = t.Padding + Math.Max(c.BelowColor is null ? 2 : capW + .5, LabelWidth(min) / 2);
             var right = c.Width - t.Padding - Math.Max(c.AboveColor is null ? 2 : capW + .5, LabelWidth(max) / 2);
+            var layout = c.Thresholds is { Entries.Length: > 0 } ? Layout(c, t) : null;
+            var top = min == max ? GradientTop : layout?.Top ?? GradientTop;
+            if (layout is not null) { left = layout.Left; right = layout.Right; }
             var width = Math.Max(1, right - left);
-            canvas.Gradient(new(left, GradientTop, width, barH), c.Colors, c.ColorPositions);
+            if (layout is null)
+                canvas.Gradient(new(left, top, width, barH), c.Colors, c.ColorPositions);
+            else if (min == max)
+                canvas.Rect(new(left, top, 24, barH), c.Thresholds!.WinnerFor(min)?.Colour ?? c.Mapping?.ColourAt(min) ?? c.Colors[0]);
+            else
+            {
+                canvas.Gradient(new(left, top, width, barH), c.Colors, c.ColorPositions);
+                var edges = layout.Marks.Select(m => m.Entry.Value).Where(v => v > min && v < max)
+                    .Distinct().Prepend(min).Append(max).ToArray();
+                foreach (var (lo, hi) in edges.Zip(edges.Skip(1)))
+                {
+                    // Compare interval boundaries directly, even when no double lies between them.
+                    var winner = c.Thresholds!.WinnerBetween(lo, hi);
+                    if (winner is null || winner.Value < min || winner.Value > max) continue;
+                    var start = ColourRange.Fraction(lo, min, max);
+                    var end = ColourRange.Fraction(hi, min, max);
+                    if (end > start) canvas.Rect(new(left + start * width, top, (end - start) * width, barH), winner.Colour);
+                }
+            }
+            if (layout is not null)
+                foreach (var mark in layout.Marks)
+                {
+                    var direction = mark.Entry.Value < min ? -1 : mark.Entry.Value > max ? 1 : 0;
+                    if (direction != 0)
+                        canvas.Polyline([new(mark.Tick - direction * 3, top - 1), new(mark.Tick, top + 3),
+                            new(mark.Tick - direction * 3, top + 7)], t.Ink);
+                    else
+                        canvas.Line(new(mark.Tick, top - 4), new(mark.Tick, top + 1), t.Ink);
+                    canvas.Text(mark.Text, new(mark.X, mark.Y), 10, t.Ink, t.Font);
+                }
             void Cap(double x, double direction, string colour)
             {
-                Point2[] points = [new(x, GradientTop), new(x + direction * capW, GradientTop + barH / 2), new(x, GradientTop + barH)];
+                Point2[] points = [new(x, top), new(x + direction * capW, top + barH / 2), new(x, top + barH)];
                 canvas.FillPolygon(points, colour);
                 canvas.Polyline([.. points, points[0]], t.Muted, .75);
             }
-            if (c.BelowColor is { } below) Cap(left, -1, below);
-            if (c.AboveColor is { } above) Cap(right, 1, above);
-            var tickTop = GradientTop + barH; var labelTop = tickTop + 6;
+            if ((layout is null || min != max) && c.BelowColor is { } below) Cap(left, -1, below);
+            if ((layout is null || min != max) && c.AboveColor is { } above) Cap(right, 1, above);
+            var tickTop = top + barH; var labelTop = tickTop + 6;
             var placed = new List<(double Left, double Right)>();
             // End labels first so a middle label never crowds them out; then middle ticks that fit.
             foreach (var tick in Ticks(c).OrderBy(v => v == min || v == max ? 0 : 1))
             {
-                var x = left + (min == max ? .5 : ColourRange.Fraction(tick, min, max)) * width;
+                var x = min == max && layout is not null ? left + 12 : left + (min == max ? .5 : ColourRange.Fraction(tick, min, max)) * width;
                 var labelWidth = LabelWidth(tick);
                 var labelX = x - labelWidth / 2;
                 if (placed.Any(p => labelX < p.Right + 6 && labelX + labelWidth > p.Left - 6)) continue;

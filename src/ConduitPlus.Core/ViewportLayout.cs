@@ -21,7 +21,7 @@ public static class FormMeasure
             CardKind.Bar => 48 + Math.Min(Math.Min(c.Values.Length, c.RowLimit), f.VisibleRows ?? int.MaxValue) * t.RowHeight,
             CardKind.Line => f.Compact ? 140 : 220,
             CardKind.Metric => f.Compact ? 48 : 92,
-            CardKind.Legend => c.Min.HasValue ? f.Compact ? LegendCardPainter.GradientCompactHeight : LegendCardPainter.GradientHeight : 48 + c.Colors.Length * t.RowHeight,
+            CardKind.Legend => c.Min.HasValue ? (f.Compact ? LegendCardPainter.GradientCompactHeight : LegendCardPainter.GradientHeight) + LegendCardPainter.ThresholdHeight(c with { Form = f }, t) : 48 + c.Colors.Length * t.RowHeight,
             _ => f.Compact ? text!.Top + Math.Min(2, text.Lines.Length) * text.LineHeight + t.Padding : text!.Height
         } + TableScroll.FooterHeight(c with { Form = f }, t));
     }
@@ -42,6 +42,7 @@ public static class ViewportLayout
             Cards = p.Cards.Zip(SlotLayout.ResolveAll(p.Cards), (c, slot) => (c, slot)).Select((x, i) => (x.c, x.slot, i)).Select(x => new { x.c.Id, x.c.Kind, x.c.Width, Index = x.i, Slot = x.slot, x.c.Title, x.c.Subtitle, x.c.Background, x.c.Text, x.c.Value, x.c.Unit, Rows = x.c.Rows.Length, Values = x.c.Values.Length, Colors = x.c.Colors.Length, Labels = x.c.Labels.Length, HasMin = x.c.Min.HasValue, x.c.MaxRows,
                 LegendLabels = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.Labels : null,
                 LegendValues = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue ? x.c.ValueLabels : null,
+                LegendThresholds = x.c.Thresholds,
                 LegendHasKeys = x.c.Kind == CardKind.Legend && !x.c.Min.HasValue && x.c.Keys.Length > 0 })
         })
     });
@@ -269,4 +270,3 @@ public static class ViewportLayout
     }
     private static bool Overlap(Rect2 a, Rect2 b) => a.X < b.X+b.Width && b.X < a.X+a.Width && a.Y < b.Y+b.Height && b.Y < a.Y+a.Height;
 }
-

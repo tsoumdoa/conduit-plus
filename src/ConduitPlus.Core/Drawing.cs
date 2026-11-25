@@ -51,7 +51,7 @@ public static class CardMeasure
     public static double TickLeft(HitRegion row) => Math.Max(0, row.X - 6);
     private static HitRegion Actionable(CardSpec c, HitRegion row) => c.Kind == CardKind.Line ? row :
         row with { X = TickLeft(row), W = row.W + row.X - TickLeft(row) };
-    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
+    public static HitRegion[] Hits(CardSpec c, Theme t) => c.Kind == CardKind.Title ? [] : [.. DataHits(c, t).Select(h => Actionable(c, h)), .. LegendCardPainter.ThresholdHits(c, t), .. TableSort.Headers(c, t), .. (Clear(c, t) is { } clear ? new[] { clear } : [])];
     public static HitRegion[] DataHits(CardSpec c, Theme t) => c.Kind switch
     {
         CardKind.Metric when c.Keys.Length == 1 && c.Form.Compact => [new(c.Keys[0], 0, 0, Clear(c, t)?.X ?? c.Width, 48)],

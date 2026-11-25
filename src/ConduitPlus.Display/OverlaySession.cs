@@ -194,7 +194,7 @@ internal sealed partial class OverlaySession : IDisposable
     public void SetHover(string? card, string? key)
     {
         if (_disposed) return;
-        _cardHover = card is not null && !string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key) ? (card, key) : null;
+        _cardHover = card is not null && !string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal)) ? (card, key) : null;
         var header = card is not null && key is not null && TableSort.Column(key).HasValue ? (card, key) : ((string, string)?)null;
         var changed = _headerHover != header; _headerHover = header;
         OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key, card: card);

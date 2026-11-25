@@ -4,6 +4,7 @@ param(
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
     [string]$Output,
     [switch]$Compact,
+    [switch]$Thresholds,
     [ValidateRange(10, 600)][int]$TimeoutSeconds = 90
 )
 $ErrorActionPreference = 'Stop'
@@ -29,6 +30,7 @@ if ($Mode -eq 'LabelOcclusion') { $arguments += '--label-occlusion' }
 if ($Mode -eq 'Labels') { $arguments += '--labels' }
 if ($Mode -eq 'LabelInput') { $arguments += '--label-input' }
 if ($Compact) { $arguments += '--compact' }
+if ($Thresholds) { $arguments += '--thresholds' }
 $previousOutput = $env:CONDUITPLUS_RESULTS
 try {
     $env:CONDUITPLUS_RESULTS = $destination

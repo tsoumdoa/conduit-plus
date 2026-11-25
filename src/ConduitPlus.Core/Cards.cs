@@ -22,6 +22,8 @@ public sealed record CardSpec
     public string Text { get; init; } = "";
     public string[] Colors { get; init; } = [];
     /// <summary>Optional normalized gradient stop positions; empty means uniformly spaced.</summary>
+    public ColourMapping? Mapping { get; init; }
+    public ThresholdSet? Thresholds { get; init; }
     public double[] ColorPositions { get; init; } = [];
     /// <summary>Optional #RRGGBB extend caps for values outside a gradient legend's range.</summary>
     public string? BelowColor { get; init; }

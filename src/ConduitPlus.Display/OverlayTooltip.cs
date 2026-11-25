@@ -69,13 +69,13 @@ internal sealed partial class OverlaySession
             SetTooltip(target, labelKey is null ? content : Tooltip.WithMemberGroups(content, snapshot?.Membership, labelKey));
             return;
         }
-        if (!OverlayManager.LocalHover(this)) { HideTooltip(); return; }
+        if (!OverlayManager.LocalHover(this) && _cardHover?.Key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) != true) { HideTooltip(); return; }
         var domain = OverlayManager.DomainSnapshot(this);
         var model = OverlayManager.ModelHover(this);
         var key = model ? domain?.HoverKey : _cardHover?.Key;
         var membership = domain?.Membership;
         CardSpec? card = null; string[]? lines = null;
-        if (!string.IsNullOrEmpty(key) && !CardMeasure.IsReserved(key))
+        if (!string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal)))
         {
             if (model)
             {
