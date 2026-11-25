@@ -589,7 +589,7 @@ for lifecycle evidence, feedback details and 1× PNGs.
 |---|---|
 | `ConduitPlusDemo` | Shows metrics, bars, a table, a line chart, legends and a design note, with linked frame members M01–M20 visible on hover/selection. |
 | `ConduitPlusCapture` | Saves a transparent PNG at 1×, 2× or 4×, re-rendering all visible sessions at the target scale inside the drawing callback. Interactive filenames are `<view>-<yyyyMMdd-HHmmss>-<n>x.png`; automated fixtures retain `raster-<n>x.png`. |
-| `ConduitPlusPdf` | **Experimental** vector PDF export; searchable card text, page size and coordinate alignment checked in RhinoCore 8.36. See [verification and limitations](docs/verification/capture-pdf.md). |
+| `ConduitPlusPdf` | **Experimental** viewport PDF with searchable Conduit+ cards and labels. Press Enter to export with the viewport default, or set Model to Shaded (raster model with vector overlays) or Vector (pure vector). See [verification and limitations](docs/verification/capture-pdf.md). |
 | `ConduitPlusBench` | Measures Raster metric-update, compact-bar hover and model-pick latency, checks cache lifecycle and runs per-card raster benchmarks. |
 
 Command output defaults to `Documents\ConduitPlus` (captures in `captures/`).

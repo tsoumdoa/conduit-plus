@@ -77,6 +77,50 @@ now use `dpi` dots per CSS pixel; fonts retain `72/96` points per CSS pixel.
 The actual PDF title-coordinate assertions cover this regression. PNG capture
 implementation is unchanged.
 
+## Shaded rooms PDF
+
+On Rhino **8.36.26296.17001**, vector `FilePdf.AddPage(ViewCaptureSettings)`
+omitted shaded fills for both a document Brep and a document mesh in a shaded
+Top viewport. It did record solid fills issued by `DisplayPipeline.DrawMeshShaded`
+from a `PostDrawObjects` handler. Replaying all 17 solved room meshes with their
+Colour Scale materials through that handler produced flat vector fills in the source material colours. The checked-in definition uses Demo Rooms
+preview and the hidden host has no Grasshopper canvas. This fixture exercises
+the same mesh draw primitive with the solved colours, so the live Custom Preview
+callback and the exact reason Rhino skips it remain unverified.
+
+RhinoCommon 8.20 exposes `RasterMode`, vector polygon drawing, and
+`FilePdf.AddPage(width, height, dpi)` with `DrawBitmap` in page dots.
+The vector capture settings expose no switch to request shaded document
+faces. A raster-mode `AddPage(settings)` attempt after a PNG capture hit an
+`SEHException` in RhinoCore. The shaded command uses `ViewCapture` at the
+viewport dimensions and places that image on a blank page before adding the
+existing vector labels and cards. The same capture preserves model linework
+and shading together as pixels, including depth and occlusion. A separate
+vector pass would require reconciling visibility and linework from two Rhino
+pipelines. Drawing projected polygons would also require recreating materials,
+clipping and depth sorting. `Model=Vector` retains the original vector export.
+The default follows the viewport's `ShadingEnabled` flag.
+
+In fresh headless hosts at **150% DPI**, both modes produced one
+**939 × 872 point** page from a **1878 × 1744 pixel** viewport.
+The same fixture produced **259,037 bytes** with the original vector path
+and **291,830 bytes** with Shaded. PyMuPDF found **8 searchable card titles**
+and **17 searchable room labels** in both modes. It checked matching card title
+positions, a single page-sized image with **17 opaque coloured face samples**,
+and a transparent sample at the location of the top-left metric card.
+The original unmodified rooms export harness, which supplies document Breps in
+place of preview geometry, measured **259,632 bytes**.
+
+Run the rooms PDF cases in separate normal-mode processes. Repeated bitmap
+captures in the hidden host can hit a native `SEHException`.
+
+```powershell
+$results = Join-Path $env:TEMP 'ConduitPlus'
+./tools/examples/Build-Examples.ps1 -VerifyOnly -Example Rooms -RoomsPdf Shaded -Output "$results/rooms-pdf-shaded"
+./tools/examples/Build-Examples.ps1 -VerifyOnly -Example Rooms -RoomsPdf Vector -Output "$results/rooms-pdf-vector"
+python tools/examples/Verify-Rooms-Pdf.py "$results/rooms-pdf-shaded" "$results/rooms-pdf-vector"
+```
+
 ## Outputs
 
 All originals and logs are outside the repository, under

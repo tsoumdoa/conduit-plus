@@ -9,6 +9,7 @@ param(
     [switch]$ReviewCaptureChecks,
     [switch]$CanvasStackChecks,
     [switch]$Exports,
+    [ValidateSet('Shaded', 'Vector')][string]$RoomsPdf,
     [switch]$Safe,
     [switch]$Compact,
     [ValidateSet(1, 2, 4)][int]$Scale = 1,
@@ -19,6 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Compact -and $Example -eq 'All') { $Example = 'Structural' }
 if ($Compact -and $Example -ne 'Structural') { throw 'Compact fixtures require -Example Structural.' }
+if ($RoomsPdf -and ($Example -ne 'Rooms' -or $Exports -or $Safe)) { throw '-RoomsPdf requires -Example Rooms and a separate normal-mode capture.' }
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $destination = [IO.Path]::GetFullPath($Output)
 $project = Join-Path $PSScriptRoot 'ConduitPlus.Examples/ConduitPlus.Examples.csproj'
@@ -38,6 +40,8 @@ foreach ($fixture in $fixtures) {
     if ($LegacyRooms) { $arguments += '--legacy-rooms' }
     if ($ReviewCaptureChecks) { $arguments += '--review-capture-checks' }
     if ($CanvasStackChecks) { $arguments += '--canvas-stack-checks' }
+    if ($RoomsPdf -eq 'Shaded') { $arguments += '--rooms-pdf' }
+    if ($RoomsPdf -eq 'Vector') { $arguments += '--rooms-vector-pdf' }
     if ($Exports) { $arguments += '--exports' }
     if ($Safe) { $arguments += '--safe' }
     if ($Compact) { $arguments += '--compact' }
