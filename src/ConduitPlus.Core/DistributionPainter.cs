@@ -9,8 +9,6 @@ internal static class DistributionPainter
         var plot = layout.Plot;
         var bottom = plot.Y + plot.Height;
         var right = plot.X + plot.Width;
-        double X(double value) => plot.X + plot.Width * (layout.Min == layout.Max ? .5 :
-            Math.Clamp(ColourRange.Fraction(value, layout.Min, layout.Max), 0, 1));
         void Text(string text, double x, double y, string colour) => canvas.Text(text, new(x, y), 10, colour, theme.Font);
         foreach (var hit in Distribution.HeaderHits(card, theme))
         {
@@ -20,15 +18,12 @@ internal static class DistributionPainter
         }
         canvas.Line(new(plot.X, bottom), new(right, bottom), theme.Muted);
         if (layout.Count == 0) { Text("No values", plot.X, plot.Y + 52, theme.Muted); return; }
-        if (card.Distribution?.ThresholdLines != false && card.Thresholds is { } thresholds)
+        foreach (var mark in layout.Annotations)
         {
-            foreach (var threshold in thresholds.Entries)
-            {
-                var x = X(threshold.Value);
-                var left = threshold.Side == ThresholdSide.Above ? x : plot.X;
-                var end = threshold.Side == ThresholdSide.Above ? right : x;
-                canvas.Rect(new(left, plot.Y, end - left, plot.Height), threshold.Colour + "18");
-            }
+            var threshold = mark.Entry;
+            var left = threshold.Side == ThresholdSide.Above ? mark.Tick : plot.X;
+            var end = threshold.Side == ThresholdSide.Above ? right : mark.Tick;
+            canvas.Rect(new(left, plot.Y, end - left, plot.Height), threshold.Colour + "18");
         }
         var selected = card.SelectedKeys.ToHashSet(StringComparer.Ordinal);
         var hoveredMembers = card.HoveredKeys.ToHashSet(StringComparer.Ordinal);
@@ -69,25 +64,36 @@ internal static class DistributionPainter
             if (count > 0 && count < mark.Members.Length)
                 canvas.Line(new(rect.X + rect.Width / 4, rect.Y + 3), new(rect.X + rect.Width * .75, rect.Y + 3), accent, 2);
         }
-        if (card.Distribution?.ThresholdLines != false && card.Thresholds is { } lines)
+        foreach (var mark in layout.Annotations)
         {
-            foreach (var threshold in lines.Entries)
+            var x = mark.Tick;
+            var threshold = mark.Entry;
+            using (canvas.Clip(new(theme.Padding, 32, card.Width - 2 * theme.Padding, plot.Y - 32)))
             {
-                var x = X(threshold.Value);
-                var label = threshold.Value < layout.Min ? "‹ " + threshold.Label :
-                    threshold.Value > layout.Max ? threshold.Label + " ›" : threshold.Label;
-                for (var y = plot.Y; y < bottom; y += 7)
-                    canvas.Line(new(x, y), new(x, Math.Min(bottom, y + 4)), threshold.Colour);
-                Text(label, Math.Clamp(x - 10, plot.X, right - canvas.MeasureText(label, 10, theme.Font).Width), plot.Y - 14, threshold.Colour);
+                if (mark.Leader.Length == 2)
+                    canvas.Line(new(x, plot.Y), new(mark.Leader[1].X, plot.Y + mark.Leader[1].Y), threshold.Colour, .75);
+                Text(mark.Text, mark.Label.X, plot.Y + mark.Label.Y, threshold.Colour);
             }
+            for (var y = plot.Y; y < bottom; y += 7)
+                canvas.Line(new(x, y), new(x, Math.Min(bottom, y + 4)), threshold.Colour);
+        }
+        var tickRight = right;
+        if (!string.IsNullOrWhiteSpace(card.Unit))
+        {
+            var unitWidth = canvas.MeasureText(card.Unit, 10, theme.Font).Width;
+            var unitX = Math.Max(plot.X, right - unitWidth);
+            using var clip = canvas.Clip(new(unitX, bottom + 5, right - unitX, 15));
+            Text(card.Unit, unitX, bottom + 5, theme.Muted);
+            tickRight = unitX - 6;
         }
         var labelRight = double.NegativeInfinity;
         foreach (var tick in ChartTicks.Nice(layout.Min, layout.Max).Where(v => v >= layout.Min && v <= layout.Max))
         {
-            var x = X(tick);
+            var x = layout.X(tick);
             var text = Distribution.Number(tick);
             var width = canvas.MeasureText(text, 10, theme.Font).Width;
-            var start = Math.Clamp(x - width / 2, plot.X, right - width);
+            if (width > tickRight - plot.X) continue;
+            var start = Math.Clamp(x - width / 2, plot.X, tickRight - width);
             if (start < labelRight + 4) continue;
             canvas.Line(new(x, bottom), new(x, bottom + 4), theme.Muted);
             Text(text, start, bottom + 5, theme.Muted);
@@ -95,16 +101,11 @@ internal static class DistributionPainter
         }
         if (card.Distribution?.Quartiles != false)
         {
-            double Q(double p)
-            {
-                var rank = p * (layout.SortedValues.Length - 1);
-                return ColourRange.Lerp(layout.SortedValues[(int)rank], layout.SortedValues[(int)Math.Ceiling(rank)], rank % 1);
-            }
-            var q1 = X(Q(.25)); var median = X(Q(.5)); var q3 = X(Q(.75));
-            canvas.RoundedRect(new(q1, bottom + 23, Math.Max(1, q3 - q1), 6), 3, ColorRgba.Parse(accent).WithAlpha(0x55).ToHex());
+            var median = layout.X(layout.Quantile(.5));
+            canvas.RoundedRect(layout.QuartileStrip, 3, ColorRgba.Parse(accent).WithAlpha(0x55).ToHex());
             canvas.Line(new(median, bottom + 20), new(median, bottom + 32), accent, 2);
+            Text("Middle 50%", plot.X, bottom + 33, theme.Muted);
         }
-        if (card.Unit.Length > 0) Text(card.Unit, plot.X, bottom + 33, theme.Muted);
     }
 
     private static void Outline(ICanvas2D canvas, Rect2 r, string accent)

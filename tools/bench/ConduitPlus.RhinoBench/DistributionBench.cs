@@ -71,8 +71,16 @@ internal static class DistributionBench
         var coloured = Distribution.Create(dots with { Id = "distribution-scale", Title = "Room areas · Colour Scale", WiredSlot = Slot.Br }, scale, null);
         var thresholds = ThresholdSet.Resolve([18, 29], ["#B44E48", "#20856E"], ["Below", "Above"], []);
         var threshold = Distribution.Create(histogram with { Id = "distribution-threshold", Title = "Room areas · thresholds", WiredSlot = Slot.Lc }, null, thresholds);
+        var crowded = Distribution.Create(dots with { Id = "distribution-crowded", Title = "Crowded thresholds", WiredSlot = Slot.Lc },
+            null, ThresholdSet.Resolve([22, 22.1, 50, 51], ["#B44E48", "#20856E", "#B44E48", "#20856E"], null, []));
+        var decimalWidth = histogram with
+        {
+            Id = "distribution-decimal", Title = "Decimal bin edges", Unit = "m", WiredSlot = Slot.Rc,
+            Values = [-.15, -.1, 0, .3, .4], Keys = ["1", "2", "3", "4", "5"], Labels = ["1", "2", "3", "4", "5"],
+            Distribution = new(DistributionMode.Histogram, BinWidth: .1)
+        };
         OverlayManager.Set(doc, view, new Guid("b644c623-4ae0-478b-b398-b2cfde7bc505"),
-            [dots, histogram, forced, coloured, threshold], theme: theme);
+            [dots, histogram, forced, coloured, threshold, crowded, decimalWidth], theme: theme);
         view.Redraw();
         RhinoApp.Wait();
         export();

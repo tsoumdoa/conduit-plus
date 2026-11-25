@@ -71,6 +71,7 @@ internal sealed partial class OverlaySession : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         OverlayManager.InteractionUpdated(this);
         if (theme is not null) _themeSelection = theme;
+        var previousTheme = Theme;
         var resolved = ResolveTheme();
         if (Theme != resolved)
         {
@@ -91,6 +92,17 @@ internal sealed partial class OverlaySession : IDisposable
         if (_disposed) return;
         _raster.Prepare(next, Theme, Unit, force: _rasterHasCaptureState);
         _rasterHasCaptureState = false;
+        if (DistributionMotion.Enabled)
+        {
+            foreach (var previous in Cards.Where(c => c.Kind == CardKind.Distribution))
+            {
+                var current = next.FirstOrDefault(c => c.Id == previous.Id && c.Kind == CardKind.Distribution);
+                if (current is null) _distributionTransitions.Remove(previous.Id);
+                else if (Distribution.Geometry(previous, previousTheme).Mode != Distribution.Geometry(current, Theme).Mode)
+                    _distributionTransitions[previous.Id] = (BrushPresentation.WithoutHover(previous), Environment.TickCount64);
+            }
+        }
+        else _distributionTransitions.Clear();
         Cards = next;
         var live = next.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var id in _scroll.Keys.Where(id => !live.Contains(id)).ToArray()) _scroll.Remove(id);
@@ -152,8 +164,6 @@ internal sealed partial class OverlaySession : IDisposable
     internal void ChooseDistribution(CardSpec card, DistributionMode mode)
     {
         if (card.Distribution?.Wired is not null || Distribution.Geometry(card, Theme).Forced) return;
-        if (Distribution.Geometry(card, Theme).Mode != mode && DistributionMotion.Enabled)
-            _distributionTransitions[card.Id] = (BrushPresentation.WithoutHover(card), Environment.TickCount64);
         _distributionChoices[card.Id] = (card.Distribution?.Default ?? DistributionMode.Dots, mode);
         _headerHover = null;
         HideTooltip();
@@ -215,7 +225,7 @@ internal sealed partial class OverlaySession : IDisposable
     public void SetHover(string? card, string? key)
     {
         if (_disposed) return;
-        _cardHover = card is not null && !string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) || Distribution.Choice(key).HasValue || key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal)) ? (card, key) : null;
+        _cardHover = card is not null && !string.IsNullOrEmpty(key) && (!CardMeasure.IsReserved(key) || key.StartsWith(LegendCardPainter.ThresholdKey, StringComparison.Ordinal) || Distribution.Choice(key).HasValue || key == Distribution.QuartilesKey || key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal)) ? (card, key) : null;
         var header = card is not null && key is not null && (TableSort.Column(key).HasValue || key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal)) ? (card, key) : ((string, string)?)null;
         var changed = _headerHover != header; _headerHover = header;
         OverlayManager.Hover(this, string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key) ? null : key, card: card);
@@ -294,7 +304,7 @@ internal sealed partial class OverlaySession : IDisposable
                 if (!e.Display.IsInViewCapture && _distributionTransitions.TryGetValue(layout.Id, out var transition))
                 {
                     var progress = (Environment.TickCount64 - transition.Started) / 450d;
-                    if (progress < 1 && transition.From.Width == p.Capture.Spec.Width)
+                    if (progress < 1)
                     {
                         using var bitmap = DistributionMotion.Blend(transition.From, p.Capture, Theme, progress);
                         using var display = new DisplayBitmap(bitmap);

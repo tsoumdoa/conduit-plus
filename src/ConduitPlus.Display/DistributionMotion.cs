@@ -23,8 +23,10 @@ internal static class DistributionMotion
 
     public static Bitmap Blend(CardSpec from, CapturedCard to, Theme theme, double progress)
     {
-        var result = RasterDrawing.Render(from, theme, to.Scale);
+        using var previous = RasterDrawing.Render(from, theme, to.Scale);
+        var result = new Bitmap(to.Bitmap.Width, to.Bitmap.Height, PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(result);
+        graphics.DrawImageUnscaled(previous, 0, 0);
         using var attributes = new ImageAttributes();
         var mix = (float)(progress * progress * (3 - 2 * progress));
         attributes.SetColorMatrix(new ColorMatrix { Matrix33 = mix });

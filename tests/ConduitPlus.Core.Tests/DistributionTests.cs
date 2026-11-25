@@ -123,6 +123,81 @@ public sealed class DistributionTests
         Assert.Throws<ArgumentException>(() => Distribution.Create(card, scale.Legend with { Mapping = null }, null));
     }
 
+    [Theory]
+    [InlineData(.1, .3, .4)]
+    [InlineData(.2, .6, .8)]
+    [InlineData(.05, .15, .2)]
+    [InlineData(.1, -.3, -.2)]
+    [InlineData(.2, -.6, -.4)]
+    [InlineData(.05, -.15, -.1)]
+    public void DecimalEdgesAssignOriginalMemberKeys(double width, double edge, double upper)
+    {
+        var card = Card([edge - width / 2, edge, upper], DistributionMode.Histogram, width);
+        var marks = Distribution.Geometry(card, Theme.Paper).Marks;
+        Assert.Equal(2, marks.Length);
+        Assert.Equal(["1"], Distribution.Members(card, Theme.Paper, marks[0].Hit.Key)!);
+        Assert.Equal(["2", "3"], Distribution.Members(card, Theme.Paper, marks[1].Hit.Key)!);
+    }
+
+    [Fact]
+    public void NearbyThresholdsExtendBinnedDomainEvenWithClippedScale()
+    {
+        var scale = ColourScale.Create([0, 10], min: 2, max: 8).Legend;
+        var card = Distribution.Create(Card([0, 10], width: 1), scale,
+            ThresholdSet.Resolve([-2, 12, 30], ["#112233", "#445566", "#778899"], null, []));
+        var layout = Distribution.Geometry(card, Theme.Paper);
+        Assert.Equal(-5, layout.Min);
+        Assert.Equal(15, layout.Max);
+        var hidden = Distribution.Geometry(card with { Distribution = card.Distribution! with { ThresholdLines = false } }, Theme.Paper);
+        Assert.Equal(0, hidden.Min);
+        Assert.Equal(10, hidden.Max);
+        var replaced = Distribution.Geometry(card with { Thresholds = ThresholdSet.Resolve([30], ["#778899"], null, []) }, Theme.Paper);
+        Assert.Equal(10, replaced.Max);
+    }
+
+    [Theory]
+    [InlineData(4.9, 5.0, false)]
+    [InlineData(20, 21, true)]
+    public void ThresholdLabelsHaveRoomBelowHeader(double first, double second, bool caret)
+    {
+        var thresholds = ThresholdSet.Resolve([first, second], ["#112233", "#445566"], null, []);
+        var card = Distribution.Create(Card([0, 10], width: 1), null, thresholds);
+        var canvas = new LabelsCanvas();
+        CardPainter.Paint(canvas, card, Theme.Paper);
+        var bounds = canvas.Labels.Where(label => label.Colour is "#112233" or "#445566").ToArray();
+        Assert.Equal(2, bounds.Length);
+        Assert.All(bounds, label =>
+        {
+            Assert.True(label.Bounds.Y >= 32);
+            Assert.Equal(caret, label.Text.EndsWith(" \u203a", StringComparison.Ordinal));
+        });
+        var a = bounds[0].Bounds;
+        var b = bounds[1].Bounds;
+        Assert.True(a.X + a.Width <= b.X || b.X + b.Width <= a.X ||
+            a.Y + a.Height <= b.Y || b.Y + b.Height <= a.Y);
+        Assert.Equal(CardMeasure.Measure(card, Theme.Paper),
+            CardMeasure.Measure(card with { DistributionChoice = DistributionMode.Histogram }, Theme.Paper));
+    }
+
+    private sealed class LabelsCanvas : ICanvas2D
+    {
+        private sealed class Scope : IDisposable { public void Dispose() { } }
+        public List<(string Text, Rect2 Bounds, string Colour)> Labels { get; } = [];
+        public Size2 MeasureText(string text, double size, string font) => TextMetrics.Measurer(text, size, font);
+        public void Text(string text, Point2 p, double size, string color, string font)
+        {
+            var measured = MeasureText(text, size, font);
+            Labels.Add((text, new(p.X, p.Y, measured.Width, measured.Height), color));
+        }
+        public void Rect(Rect2 rect, string fill) { }
+        public void Gradient(Rect2 rect, IReadOnlyList<string> colors) { }
+        public void RoundedRect(Rect2 rect, double radius, string fill) { }
+        public void Line(Point2 from, Point2 to, string color, double width = 1) { }
+        public void Polyline(IReadOnlyList<Point2> points, string color, double width = 1) { }
+        public void FillPolygon(IReadOnlyList<Point2> points, string fill) { }
+        public IDisposable Clip(Rect2 rect) => new Scope();
+    }
+
     private static CardInteractionFrame Frame(CardSpec spec) => new(
         [new(spec, Theme.Paper, new(0, 0, spec.Width, 218), CardMeasure.Hits(spec, Theme.Paper))]);
 }
