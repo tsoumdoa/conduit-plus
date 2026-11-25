@@ -162,6 +162,17 @@ internal static class ArchitectureDashboard
                     ExportInputChecks.CheckFailedLabelCapture(doc, view, session);
                     return;
                 }
+                if (rooms && (args.Contains("--rooms-pdf") || args.Contains("--rooms-vector-pdf")))
+                {
+                    var previous = Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS");
+                    try
+                    {
+                        Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", result);
+                        ExportChecks.RunRoomsPdf(doc, view, gh, cards, result, args.Contains("--rooms-vector-pdf"));
+                    }
+                    finally { Environment.SetEnvironmentVariable("CONDUITPLUS_RESULTS", previous); }
+                    return;
+                }
                 var groupState = args[Array.IndexOf(args, "--state") + 1];
                 if (args.Contains("--exports") && groupState != "scope" && !groupState.StartsWith("group", StringComparison.Ordinal))
                 {

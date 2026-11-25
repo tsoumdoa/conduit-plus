@@ -3,6 +3,8 @@ using System.Reflection;
 using ConduitPlus.Core;
 using ConduitPlus.Rendering;
 using ConduitPlus.Rhino;
+using Grasshopper.Kernel;
+using Grasshopper.Kernel.Types;
 using Rhino;
 using Rhino.Display;
 using Rhino.Geometry;
@@ -28,6 +30,49 @@ internal static class ExportChecks
             finally { foreach (var id in ids) doc.Objects.Delete(id, true); }
         }
     }
+    internal static void RunRoomsPdf(RhinoDoc doc, RhinoView view, GH_Document gh, CardSpec[] cards, string output, bool vector)
+    {
+        // The saved fixture has no Custom Preview component. Reproduce a shaded
+        // GH preview using its solved room geometry and Colour Scale materials.
+        var rooms = gh.Objects.OfType<ConduitPlus.Grasshopper.DemoRoomsComponent>().Single();
+        var scale = gh.Objects.OfType<ConduitPlus.Grasshopper.ColourScaleComponent>().Single();
+        var breps = rooms.Params.Output[0].VolatileData.AllData(true).Cast<GH_Brep>().Select(g => g.Value).ToArray();
+        var colours = scale.Params.Output[0].VolatileData.AllData(true).Cast<GH_Colour>().Select(c => c.Value).ToArray();
+        Require(breps.Length == 17 && colours.Length == breps.Length, "Rooms preview inputs are incomplete.");
+        var meshes = breps.Select(brep => Mesh.CreateFromBrep(brep, MeshingParameters.Default).Single()).ToArray();
+        var materials = colours.Select(colour => new DisplayMaterial(colour)).ToArray();
+        var viewport = view.ActiveViewport;
+        var mode = viewport.DisplayMode;
+        EventHandler<DrawEventArgs> draw = (_, e) =>
+        {
+            if (e.Viewport.Id != viewport.Id) return;
+            for (var i = 0; i < meshes.Length; i++)
+                e.Display.DrawMeshShaded(meshes[i], materials[i]);
+        };
+        try
+        {
+            viewport.DisplayMode = DisplayModeDescription.GetDisplayMode(DisplayModeDescription.ShadedId);
+            DisplayPipeline.PostDrawObjects += draw;
+            var points = DemoRooms.Create().Rooms.Select(r =>
+                viewport.WorldToClient(new Point3d(r.X + r.Width / 2, r.Y + r.Depth * .75, 0)))
+                .Select(p => new { p.X, p.Y }).ToArray();
+            var path = Path.Combine(output, "pdf-samples.json");
+            File.WriteAllText(path, CardJson.Serialize(new
+            {
+                points, width = viewport.Size.Width, height = viewport.Size.Height,
+                dpi = Dpi(view), titles = cards.Select(c => c.Title)
+            }));
+            if (vector) ConduitPlusPdf.RunAutomatedWithModel(doc, view, shaded: false);
+            else ConduitPlusPdf.RunAutomated(doc, view);
+        }
+        finally
+        {
+            DisplayPipeline.PostDrawObjects -= draw;
+            viewport.DisplayMode = mode;
+            foreach (var mesh in meshes) mesh.Dispose();
+        }
+    }
+
     internal static void RunCompact(RhinoDoc doc, RhinoView fullView, object fullSession, CardSpec[] fullCards, string output, int scale, string state)
     {
         Console.WriteLine("Preparing compact fixture.");
