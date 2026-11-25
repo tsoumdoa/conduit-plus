@@ -34,30 +34,18 @@ public static class LegendCardPainter
             : Top - MarkGap - (row + 1) * MarkRow;
     }
 
-    // Leaders use the space between rows to step around labels closer to the bar.
-    // Coordinates are relative to the bar, so adding an outer row moves everything together.
-    private static Point2[] Leader(double tick, Rect2 label, int row, List<List<Mark>> rows)
-    {
-        var points = new List<Point2> { new(tick, 0) };
-        var x = tick;
-        for (var i = 0; i < row; i++)
-        {
-            var y = -MarkGap - i * MarkRow - 1;
-            points.Add(new(x, y));
-            foreach (var mark in rows[i].OrderBy(m => m.Label.X))
-                if (x > mark.Label.X - 1 && x < mark.Label.X + mark.Label.Width + 1)
-                    x = mark.Label.X + mark.Label.Width + 1;
-            points.Add(new(x, y));
-        }
-        var approach = label.Y + MarkRow - 1;
-        var edge = tick <= label.X ? label.X : label.X + label.Width;
-        var elbow = edge + (edge == label.X ? -1 : 1);
-        points.Add(new(x, approach));
-        points.Add(new(elbow, approach));
-        points.Add(new(elbow, label.Y + LabelHeight / 2));
-        points.Add(new(edge, label.Y + LabelHeight / 2));
-        return points.ToArray();
-    }
+    private const double LeaderWidth = .75;
+
+    private static Rect2 SegmentBounds(Point2 a, Point2 b, double padding = 0) =>
+        new(Math.Min(a.X, b.X) - padding, Math.Min(a.Y, b.Y) - padding,
+            Math.Abs(a.X - b.X) + 2 * padding, Math.Abs(a.Y - b.Y) + 2 * padding);
+
+    private static bool Overlaps(Rect2 a, Rect2 b) =>
+        a.X < b.X + b.Width && a.X + a.Width > b.X &&
+        a.Y < b.Y + b.Height && a.Y + a.Height > b.Y;
+
+    private static IEnumerable<(Point2 Start, Point2 End)> Segments(Point2[] path) =>
+        path.Zip(path.Skip(1));
 
     private static GradientLayout Layout(CardSpec c, Theme t)
     {
@@ -68,44 +56,90 @@ public static class LegendCardPainter
             TextMetrics.Measurer(value.ToString("G4", CultureInfo.InvariantCulture), 10, t.Font).Width / 2);
         var left = t.Padding + Reserve(min);
         var right = min == max ? left + 24 : Math.Max(left + 1, c.Width - t.Padding - Reserve(max));
-        var rows = new List<List<Mark>>();
+        double Tick(ThresholdEntry entry) => entry.Value < min ? left - cap : entry.Value > max ? right + cap
+            : min == max ? left + 12 : left + ColourRange.Fraction(entry.Value, min, max) * (right - left);
+        var entries = c.Thresholds?.Entries.OrderBy(e => e.Value).ThenBy(e => e.Side)
+            .Select((entry, index) => new Mark(entry, Tick(entry), default, 0, index, [])).ToArray() ?? [];
         var marks = new List<Mark>();
-        foreach (var entry in c.Thresholds?.Entries.OrderBy(e => e.Value).ThenBy(e => e.Side) ?? Enumerable.Empty<ThresholdEntry>())
+        var rows = 0;
+        var constant = min == max;
+        var limit = c.Width - t.Padding;
+        double Width(Mark mark) => Math.Min(TextMetrics.Measurer(mark.Text, 10, t.Font).Width + 2,
+            Math.Max(0, limit - t.Padding));
+        // Work right to left so two crowded Above labels can face away from each other.
+        // At the right end, work outward so inward-facing labels keep the next tick clear.
+        var sequence = constant ? entries : entries.OrderBy(m => m.Tick + Width(m) > limit)
+            .ThenBy(m => m.Tick + Width(m) > limit ? m.Tick : -m.Tick).ToArray();
+        var pending = entries.ToHashSet();
+        foreach (var mark in sequence)
         {
-            var tick = entry.Value < min ? left - cap : entry.Value > max ? right + cap
-                : min == max ? left + 12 : left + ColourRange.Fraction(entry.Value, min, max) * (right - left);
-            var mark = new Mark(entry, tick, default, 0, marks.Count, []);
-            var width = TextMetrics.Measurer(mark.Text, 10, t.Font).Width + 2;
-            var forward = min == max || entry.Side == ThresholdSide.Above;
-            var x = forward ? tick + 4 : tick - width - 4;
-            if (x < t.Padding || x + width > c.Width - t.Padding)
-                x = forward ? tick - width - 4 : tick + 4;
-            if (min == max) x = right + cap + 8;
-            x = Math.Clamp(x, t.Padding, Math.Max(t.Padding, c.Width - t.Padding - width));
-            var row = 0;
-            for (; row < rows.Count; row++)
+            pending.Remove(mark);
+            var width = Width(mark);
+            Rect2 Label(double x, int row) => new(x, -MarkGap - (row + 1) * MarkRow, width, LabelHeight);
+            var tick = mark.Tick;
+            var above = mark.Entry.Side == ThresholdSide.Above;
+            var placed = constant
+                ? mark with { Label = Label(Math.Clamp(right + cap + 8, t.Padding, limit - width), rows), Row = rows }
+                : Place();
+            marks.Add(placed);
+            rows = Math.Max(rows, placed.Row + 1);
+
+            Mark Place()
             {
-                if (min == max) continue;
-                if (rows[row].Any(m => x < m.Label.X + m.Label.Width + 4 && x + width + 4 > m.Label.X))
-                    continue;
-                var top = -MarkGap - (row + 1) * MarkRow;
-                // A previously routed leader may pass through this row on its way outward.
-                if (marks.Any(m => m.Leader.Zip(m.Leader.Skip(1)).Any(segment =>
-                    Math.Min(segment.First.X, segment.Second.X) < x + width + 1 &&
-                    Math.Max(segment.First.X, segment.Second.X) > x - 1 &&
-                    Math.Min(segment.First.Y, segment.Second.Y) < top + LabelHeight &&
-                    Math.Max(segment.First.Y, segment.Second.Y) > top)))
-                    continue;
-                break;
+                var leaders = marks.SelectMany(m => Segments(m.Leader)).ToArray();
+                // Try both sides at the tick before shifting the attachment or adding a row.
+                // Keep other ticks accessible for straight leaders in subsequent rows.
+                for (var row = 0; row <= rows; row++)
+                {
+                    foreach (var forward in new[] { above, !above })
+                    {
+                        var label = Label(forward ? tick : tick - width, row);
+                        Point2[] path = [new(tick, 0), new(tick, label.Y + label.Height)];
+                        if (Fits(label, path)) return mark with { Label = label, Row = row, Leader = path };
+                    }
+                }
+
+                for (var row = 1; row <= rows; row++)
+                {
+                    var anchors = marks.SelectMany(m => new[] { m.Label.X - 1, m.Label.X + m.Label.Width + 1 })
+                        .Concat([t.Padding, limit, t.Padding + width, limit - width])
+                        .OrderBy(x => Math.Abs(x - tick));
+                    for (var gap = row - 1; gap >= 0; gap--)
+                    foreach (var anchor in anchors)
+                    foreach (var forward in new[] { above, !above })
+                    {
+                        if (anchor == tick) continue;
+                        var label = Label(forward ? anchor : anchor - width, row);
+                        var y = -MarkGap - gap * MarkRow - 1;
+                        Point2[] path = [new(tick, 0), new(tick, y), new(anchor, y), new(anchor, label.Y + label.Height)];
+                        if (Fits(label, path)) return mark with { Label = label, Row = row, Leader = path };
+                    }
+                }
+
+                // A very narrow authored card may leave no collision-free route.
+                return mark with { Label = Label(Math.Clamp(tick, t.Padding, limit - width), rows), Row = rows };
+
+                bool Fits(Rect2 label, Point2[] path)
+                {
+                    if (label.X < t.Padding || label.X + label.Width > limit ||
+                        marks.Any(m => Overlaps(label with { X = label.X - MarkGap, Width = width + 2 * MarkGap }, m.Label)) ||
+                        pending.Any(m => m.Tick > label.X && m.Tick < label.X + width) ||
+                        leaders.Any(s => Overlaps(label, SegmentBounds(s.Start, s.End))))
+                        return false;
+
+                    return Segments(path).All(s =>
+                    {
+                        var bounds = SegmentBounds(s.Start, s.End);
+                        return !marks.Any(m => Overlaps(bounds, m.Label)) && !leaders.Any(other =>
+                            // Parallel tick stems may be arbitrarily close or share the same x.
+                            !(s.Start.X == tick && s.End.X == tick && other.Start.X == other.End.X) &&
+                            Overlaps(SegmentBounds(s.Start, s.End, LeaderWidth / 2),
+                                SegmentBounds(other.Start, other.End, LeaderWidth / 2)));
+                    });
+                }
             }
-            if (row == rows.Count) rows.Add([]);
-            var label = new Rect2(x, -MarkGap - (row + 1) * MarkRow, width, LabelHeight);
-            mark = mark with { Label = label, Row = row,
-                Leader = min == max ? [] : Leader(tick, label, row, rows) };
-            rows[row].Add(mark);
-            marks.Add(mark);
         }
-        return new(left, right, marks.ToArray(), rows.Count, min == max);
+        return new(left, right, marks.OrderBy(m => m.Index).ToArray(), rows, constant);
     }
 
     public static double ThresholdHeight(CardSpec c, Theme t) =>
@@ -115,8 +149,16 @@ public static class LegendCardPainter
     {
         if (c.Min is null || c.Max is null || c.Thresholds is not { Entries.Length: > 0 }) return [];
         var layout = Layout(c, t);
-        return layout.Marks.Select(m => new HitRegion(ThresholdKey + m.Index,
-            m.Label.X, layout.LabelTop(m.Row), m.Label.Width, m.Label.Height));
+        return layout.Marks.SelectMany(m =>
+        {
+            var key = ThresholdKey + m.Index;
+            var label = new HitRegion(key, m.Label.X, layout.LabelTop(m.Row), m.Label.Width, m.Label.Height);
+            return Segments(m.Leader).Select(s =>
+            {
+                var bounds = SegmentBounds(s.Start, s.End, LeaderWidth / 2);
+                return new HitRegion(key, bounds.X, bounds.Y + layout.Top, bounds.Width, bounds.Height);
+            }).Prepend(label);
+        });
     }
 
     public static ThresholdEntry? ThresholdAt(CardSpec c, string key)
@@ -167,8 +209,8 @@ public static class LegendCardPainter
                 foreach (var mark in layout.Marks)
                 {
                     var direction = mark.Entry.Value < min ? -1 : mark.Entry.Value > max ? 1 : 0;
-                    if (min != max)
-                        canvas.Polyline(mark.Leader.Select(p => new Point2(p.X, p.Y + top)).ToArray(), t.Ink, .75);
+                    if (mark.Leader.Length > 0)
+                        canvas.Polyline(mark.Leader.Select(p => new Point2(p.X, p.Y + top)).ToArray(), t.Ink, LeaderWidth);
                     if (min != max && direction != 0)
                         canvas.Polyline([new(mark.Tick - direction * 3, top - 1), new(mark.Tick, top + 3),
                             new(mark.Tick - direction * 3, top + 7)], t.Ink);
