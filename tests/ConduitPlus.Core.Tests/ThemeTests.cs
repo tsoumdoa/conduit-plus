@@ -133,7 +133,7 @@ public sealed class ThemeTests
             var tokens = typeof(Theme).GetProperties().Where(p => p.PropertyType == typeof(string))
                 .Select(p => (string)p.GetValue(theme)!).Where(s => s is not null && s.StartsWith('#')).ToHashSet(StringComparer.Ordinal);
             tokens.Add(ColorRgba.Parse(theme.Ink).WithAlpha(0x29).ToHex()); // categorical swatch inset edge
-            tokens.Add(ColorRgba.Parse(theme.Accent).WithAlpha(0x55).ToHex()); // quartile strip
+            tokens.Add(ColorRgba.Parse(theme.Accent).Over(ColorRgba.Parse(theme.Surface), 0x55).ToHex()); // quartile strip, composited onto the surface
             var cards = Cards().Append(new CardSpec { Id = "title", Kind = CardKind.Title, Title = "Heading", Background = TitleBackground.Card }).Append(DistributionTests.PaintFixture()).ToArray();
             Assert.Equal(Enum.GetValues<CardKind>().Order(), cards.Select(c => c.Kind).Distinct().Order());
             foreach (var card in cards)

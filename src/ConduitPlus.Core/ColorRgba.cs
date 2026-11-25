@@ -13,5 +13,14 @@ public readonly record struct ColorRgba(byte R, byte G, byte B, byte A = 255)
         return new(Part(1), Part(3), Part(5), value.Length == 9 ? Part(7) : (byte)255);
     }
     public ColorRgba WithAlpha(byte alpha) => this with { A = alpha };
+    /// <summary>
+    /// This colour at <paramref name="alpha"/> composited over <paramref name="background"/>'s RGB, keeping the
+    /// background's alpha. Lets translucent tints on a card surface paint identically on canvases without alpha (PDF).
+    /// </summary>
+    public ColorRgba Over(ColorRgba background, byte alpha)
+    {
+        byte Mix(byte fg, byte bg) => (byte)Math.Round((fg * alpha + bg * (255 - alpha)) / 255.0);
+        return new(Mix(R, background.R), Mix(G, background.G), Mix(B, background.B), background.A);
+    }
     public string ToHex() => $"#{R:X2}{G:X2}{B:X2}{A:X2}";
 }

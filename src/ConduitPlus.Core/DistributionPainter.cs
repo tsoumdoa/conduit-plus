@@ -23,7 +23,7 @@ internal static class DistributionPainter
             var threshold = mark.Entry;
             var left = threshold.Side == ThresholdSide.Above ? mark.Tick : plot.X;
             var end = threshold.Side == ThresholdSide.Above ? right : mark.Tick;
-            canvas.Rect(new(left, plot.Y, end - left, plot.Height), threshold.Colour + "18");
+            canvas.Rect(new(left, plot.Y, end - left, plot.Height), ColorRgba.Parse(threshold.Colour).Over(ColorRgba.Parse(theme.Surface), 0x18).ToHex());
         }
         var selected = card.SelectedKeys.ToHashSet(StringComparer.Ordinal);
         var hoveredMembers = card.HoveredKeys.ToHashSet(StringComparer.Ordinal);
@@ -102,7 +102,7 @@ internal static class DistributionPainter
         if (card.Distribution?.Quartiles != false)
         {
             var median = layout.X(layout.Quantile(.5));
-            canvas.RoundedRect(layout.QuartileStrip, 3, ColorRgba.Parse(accent).WithAlpha(0x55).ToHex());
+            canvas.RoundedRect(layout.QuartileStrip, 3, ColorRgba.Parse(accent).Over(ColorRgba.Parse(theme.Surface), 0x55).ToHex());
             canvas.Line(new(median, bottom + 20), new(median, bottom + 32), accent, 2);
             Text("Middle 50%", plot.X, bottom + 33, theme.Muted);
         }
