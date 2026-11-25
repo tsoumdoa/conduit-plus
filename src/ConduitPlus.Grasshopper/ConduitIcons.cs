@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 namespace ConduitPlus.Grasshopper;
 
 /// <summary>Component artwork: one white glyph on the dark rounded tile shared with Panel+ and HopperFormat.</summary>
-public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories, ColourPalette, CanvasOverlay, Labels }
+public enum ComponentIcon { Metric, Bar, Line, Title, Text, Legend, KeyLegend, Table, Overlay, CanvasCard, Link, Scope, Rooms, Massing, Truss, ColourScale, ColourCategories, ColourPalette, CanvasOverlay, Labels, Distribution }
 
 /// <summary>Draws the icons in a 24-unit grid (the plug-in logo in a 64-unit grid), so they stay crisp at any size.
 /// Only System.Drawing is used: tools/Generate-Icons.ps1 compiles this file to regenerate assets/icon.png.</summary>
@@ -57,6 +57,10 @@ public static class ConduitIcons
             case ComponentIcon.Bar:
                 Line(g, Ink, W * 0.8f, 5, 4.5f, 5, 19.5f);
                 Bar(g, Ink, 5.5f, 19, 7.5f); Bar(g, Ink, 5.5f, 14.5f, 12); Bar(g, Soft, 5.5f, 11, 16.5f);
+                break;
+            case ComponentIcon.Distribution:
+                Line(g, Soft, W, 4.5f, 19, 19.5f, 19);
+                Bar(g, Ink, 3, 17, 6); Bar(g, Ink, 8, 17, 8); Bar(g, Ink, 13, 17, 10);
                 break;
             case ComponentIcon.Line:
                 Lines(g, Ink, W * 0.8f, 4.5f, 4.5f, 4.5f, 19.5f, 19.5f, 19.5f);

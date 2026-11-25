@@ -39,14 +39,29 @@ public static class CardPainter
         // A gradient legend shows its unit at the right of the title row; keep the title clear of it.
         var titleRight = clear?.X ?? (size.Width - t.Padding);
         if (c.Kind == CardKind.Legend && c.Min.HasValue && !string.IsNullOrWhiteSpace(c.Unit)) titleRight = Math.Min(titleRight, c.Width - t.Padding - canvas.MeasureText(c.Unit, t.FontSize, t.Font).Width - 8);
+        if (c.Kind == CardKind.Distribution && Distribution.HeaderHits(c, t).FirstOrDefault() is { } toggle)
+            titleRight = toggle.X;
         var titleGap = c.Kind == CardKind.Legend && !c.Min.HasValue && clear is null ? 0 : 4;
-        using (canvas.Clip(new(t.Padding, 7, titleRight - t.Padding - titleGap, 24)))
-            canvas.Text(c.Title, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
+        var titleWidth = titleRight - t.Padding - titleGap;
+        var headerTitle = c.Title;
+        if (c.Kind == CardKind.Distribution)
+        {
+            titleWidth = Math.Max(0, titleWidth);
+            if (canvas.MeasureText(headerTitle, t.FontSize, t.Font).Width > titleWidth)
+            {
+                while (headerTitle.Length > 0 && canvas.MeasureText(headerTitle + "…", t.FontSize, t.Font).Width > titleWidth)
+                    headerTitle = headerTitle[..^1];
+                headerTitle = canvas.MeasureText("…", t.FontSize, t.Font).Width <= titleWidth ? headerTitle + "…" : "";
+            }
+        }
+        using (canvas.Clip(new(t.Padding, 7, titleWidth, 24)))
+            canvas.Text(headerTitle, new(t.Padding, 10), t.FontSize, t.Muted, t.Font);
         if (clear is not null)
         {
             canvas.RoundedRect(new(clear.X, clear.Y, clear.W, clear.H), 3, t.Track);
             canvas.Text("Clear", new(clear.X + 5, clear.Y + 3), t.FontSize, t.Muted, t.Font);
         }
+        if (c.Kind == CardKind.Distribution) { DistributionPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Line) { LineCardPainter.Paint(canvas, c, t); return; }
         if (c.Kind == CardKind.Text)
         {

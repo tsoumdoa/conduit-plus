@@ -4,8 +4,9 @@ namespace ConduitPlus.Core;
 
 public static class Tooltip
 {
-    public static string[]? For(CardSpec c, string? key, MembershipIndex? membership = null)
+    public static string[]? For(CardSpec c, string? key, MembershipIndex? membership = null, Theme? theme = null)
     {
+        if (key is not null && c.Kind == CardKind.Distribution) return Distribution.Tooltip(c, theme ?? Theme.Paper, key);
         if (key is not null && LegendCardPainter.ThresholdAt(c, key) is { } threshold)
             return [$"{(threshold.Side == ThresholdSide.Above ? "≥" : "≤")} {threshold.Value.ToString("R", CultureInfo.InvariantCulture)} · {threshold.Count}"];
         var lines = Content(c, key);

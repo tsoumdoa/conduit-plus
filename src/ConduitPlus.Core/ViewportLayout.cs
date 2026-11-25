@@ -19,6 +19,7 @@ public static class FormMeasure
         {
             CardKind.Table => 48 + (Math.Min(Math.Min(c.RowLimit, c.Rows.Length), f.VisibleRows ?? int.MaxValue) + 1) * t.RowHeight,
             CardKind.Bar => 48 + Math.Min(Math.Min(c.Values.Length, c.RowLimit), f.VisibleRows ?? int.MaxValue) * t.RowHeight,
+            CardKind.Distribution => 170 + Distribution.Geometry(c, t).Plot.Y,
             CardKind.Line => f.Compact ? 140 : 220,
             CardKind.Metric => f.Compact ? 48 : 92,
             CardKind.Legend => c.Min.HasValue ? (f.Compact ? LegendCardPainter.GradientCompactHeight : LegendCardPainter.GradientHeight) + LegendCardPainter.ThresholdHeight(c with { Form = f }, t) : 48 + c.Colors.Length * t.RowHeight,

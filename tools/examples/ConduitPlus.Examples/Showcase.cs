@@ -94,7 +94,7 @@ internal static class Showcase
             }
             else
             {
-                Require(cards.Length == 9 && cards.Count(c => c.Title == "01 Programme") == 1 && !cards.Any(c => c.Title.StartsWith("Programme palette", StringComparison.Ordinal)),
+                Require(cards.Length == 10 && cards.Any(c => c.Kind == CardKind.Distribution) && cards.Count(c => c.Title == "01 Programme") == 1 && !cards.Any(c => c.Title.StartsWith("Programme palette", StringComparison.Ordinal)),
                     "Showcase viewport must have one programme legend and no canvas palette reference.");
                 var palette = gh.Objects.OfType<ConduitPlus.Grasshopper.KeyLegendComponent>().Single(c => c.Params.Output[0].VolatileData.AllData(true)
                     .OfType<GH_ObjectWrapper>().Any(w => w.Value is CardSpec card && card.Title == "Programme palette · canvas reference"));

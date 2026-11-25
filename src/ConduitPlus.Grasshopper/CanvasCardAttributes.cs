@@ -108,7 +108,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     {
         var hit = _hoverPoint is { } p ? Hit(p) : null;
         var rev = Component.State.Revision;
-        Component.State.Hover(hit?.CardId, hit is not null && !CardMeasure.IsReserved(hit.Key) ? hit.Key : null);
+        Component.State.Hover(hit?.CardId, hit?.Key);
         if (rev != Component.State.Revision) RequestDisplay();
     }
     private Point2 Local(PointF point) => CanvasCardGeometry.ToLocal(new(point.X, point.Y), new(_body.X, _body.Y));
@@ -303,7 +303,7 @@ internal sealed class CanvasCardAttributes(CanvasCardComponent component) : GH_C
     public override void SetupTooltip(PointF point, GH_TooltipDisplayEventArgs e)
     {
         if (!Interactive || _interaction.Active || _canvas?.IsActiveInteraction == true) return;
-        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Specs.Single(c => c.Id == hit.CardId), hit.Key, Component.State.Membership) is { } lines)
+        if (Frame is { } frame && Hit(point) is { } hit && Tooltip.For(frame.Specs.Single(c => c.Id == hit.CardId), hit.Key, Component.State.Membership, frame.Theme) is { } lines)
         {
             _tooltipOwned = true;
             e.Title = frame.Specs.Single(c => c.Id == hit.CardId).Title; e.Text = string.Join(Environment.NewLine, lines); e.Description = "";

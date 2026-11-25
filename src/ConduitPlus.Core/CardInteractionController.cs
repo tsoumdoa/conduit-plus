@@ -4,12 +4,12 @@ namespace ConduitPlus.Core;
 public enum CardModifiers { None = 0, Shift = 1, Control = 2, Alt = 4, Other = 8 }
 public enum CardResponse { Pass, Capture, Handled, Release }
 public enum CardActionKind { Activate, Scroll }
-public sealed record CardAction(CardActionKind Kind, string CardId, string? Key = null, int Offset = 0, BrushSelectMode Mode = BrushSelectMode.Replace)
+public sealed record CardAction(CardActionKind Kind, string CardId, string? Key = null, int Offset = 0, BrushSelectMode Mode = BrushSelectMode.Replace, string[]? Members = null, Theme? DisplayTheme = null)
 {
     public void Apply(CanvasCardState state)
     {
         if (Kind == CardActionKind.Scroll) state.Scroll(CardId, Offset);
-        else if (Key is not null) state.Activate(CardId, Key, Mode);
+        else if (Key is not null) state.Activate(CardId, Key, Mode, Members, DisplayTheme);
     }
 }
 public readonly record struct CardInteractionResult(CardResponse Response, CardAction? Action = null)
@@ -39,6 +39,8 @@ public sealed class CardInteractionFrame(IReadOnlyList<InteractionCard> cards)
 public sealed class CardInteractionController
 {
     private string? _key;
+    private Distribution.Layout? _distributionLayout;
+    private Rect2 _distributionBounds;
     public string? PressedCard { get; private set; }
     public int OriginalOffset { get; private set; }
     public CardModifiers Modifiers { get; private set; }
@@ -50,7 +52,7 @@ public sealed class CardInteractionController
     private int _page;
     private bool _moved;
     public bool ModifiersValid(CardModifiers modifiers) => (modifiers & ~Modifiers) == 0;
-    public bool IsSelectionGesture => Active && _key is not null && !CardMeasure.IsReserved(_key);
+    public bool IsSelectionGesture => Active && _key is not null && (!CardMeasure.IsReserved(_key) || _key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal));
     public CardInteractionResult Down(CardInteractionFrame frame, Point2 point, Point2 control, CardModifiers modifiers,
         bool leftOnly = true, bool enabled = true, bool busy = false, bool consumeBody = false)
     {
@@ -63,9 +65,12 @@ public sealed class CardInteractionController
         var bar = TableScroll.Bar(card.Spec, card.Theme);
         var track = bar?.Track.Contains(local.X, local.Y) == true;
         var hit = card.Hit(point);
-        if (modifiers != CardModifiers.None && (track || hit is null || CardMeasure.IsReserved(hit.Key) || !BrushState.Keys(card.Spec).Contains(hit.Key, StringComparer.Ordinal))) return new(CardResponse.Pass);
+        var bin = hit?.Key.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal) == true;
+        if (!bin && modifiers != CardModifiers.None && (track || hit is null || CardMeasure.IsReserved(hit.Key) || !BrushState.Keys(card.Spec).Contains(hit.Key, StringComparer.Ordinal))) return new(CardResponse.Pass);
         if (!track && hit is null && !consumeBody) return new(CardResponse.Pass);
         Active = OwnsRelease = true; _key = hit?.Key; PressedCard = card.Spec.Id;
+        _distributionLayout = card.Spec.Kind == CardKind.Distribution ? Distribution.Geometry(card.Spec, card.Theme) : null;
+        _distributionBounds = card.Bounds;
         Modifiers = modifiers; _down = control; _moved = false; OriginalOffset = card.Spec.ScrollOffset;
         DraggingScroll = track && bar!.Value.Thumb.Contains(local.X, local.Y);
         if (track)
@@ -98,8 +103,8 @@ public sealed class CardInteractionController
             var local = card.Local(point);
             if (_page != 0 && !DraggingScroll && TableScroll.Bar(card.Spec, card.Theme) is { } bar && bar.Track.Contains(local.X, local.Y) && !bar.Thumb.Contains(local.X, local.Y))
                 action = new(CardActionKind.Scroll, card.Spec.Id, Offset: OriginalOffset + _page);
-            else if (_key is not null && card.Hit(point)?.Key == _key)
-                action = new(CardActionKind.Activate, card.Spec.Id, _key, Mode: BrushSelection.FromModifiers((Modifiers & CardModifiers.Shift) != 0, (Modifiers & CardModifiers.Control) != 0));
+            else if (_key is not null && card.Hit(point)?.Key == _key && (_distributionLayout is null || _distributionBounds == card.Bounds && ReferenceEquals(_distributionLayout, Distribution.Geometry(card.Spec, card.Theme))))
+                action = new(CardActionKind.Activate, card.Spec.Id, _key, Mode: BrushSelection.FromModifiers((Modifiers & CardModifiers.Shift) != 0, (Modifiers & CardModifiers.Control) != 0), Members: Distribution.Members(card.Spec, card.Theme, _key), DisplayTheme: _distributionLayout is null ? null : card.Theme);
         }
         if (!valid && Active && DraggingScroll && PressedCard is { } id) action = new(CardActionKind.Scroll, id, Offset: OriginalOffset);
         Reset(); OwnsRelease = false;

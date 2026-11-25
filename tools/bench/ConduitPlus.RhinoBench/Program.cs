@@ -1,4 +1,5 @@
 using System.Reflection;
+using ConduitPlus.Core;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
@@ -44,6 +45,12 @@ internal static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Run(string pluginDirectory, string[] args)
     {
+        if (args.Contains("--distribution") && !args.Contains("--capture") && !args.Contains("--pdf"))
+        {
+            DistributionBench.Run(Environment.GetEnvironmentVariable("CONDUITPLUS_RESULTS")!);
+            Console.WriteLine("Benchmark workload completed successfully.");
+            return 0;
+        }
         Console.WriteLine("Starting RhinoCore under .NET " + Environment.Version);
         // FilePdf.Create needs the Rhino PDF writer, which does not load in safe mode.
         var options = new List<string> { "/nosplash", "/notemplate", "/scheme=ConduitPlusBench" };
@@ -81,7 +88,21 @@ internal static class Program
                     if (args.Contains("--thresholds")) AddThresholdLegend(doc, view);
                     var entry = assembly.GetType("ConduitPlus.Rhino." + type)!
                         .GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
-                    try { entry.Invoke(null, arguments); }
+                    try
+                    {
+                        if (args.Contains("--distribution"))
+                        {
+                            var theme = args.Contains("--distribution-night") ? Theme.Night : Theme.Paper;
+                            if (captureIndex >= 0)
+                            {
+                                var capture = assembly.GetType("ConduitPlus.Rhino.ConduitPlusCapture")!
+                                    .GetMethod("CaptureToFile", BindingFlags.NonPublic | BindingFlags.Static)!;
+                                DistributionBench.Export(doc, view, theme, () => capture.Invoke(null, [doc, view, arguments[2], false]));
+                            }
+                            else DistributionBench.Export(doc, view, theme, () => entry.Invoke(null, arguments));
+                        }
+                        else entry.Invoke(null, arguments);
+                    }
                     catch (TargetInvocationException e) { Console.Error.WriteLine(e.InnerException); throw; }
                 }
                 return true;

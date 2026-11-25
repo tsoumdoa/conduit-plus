@@ -129,7 +129,7 @@ public sealed class CanvasCardState(string surface = "canvas", bool retainSlots 
     private BrushState _brush = new();
     private CardSpec[] _sources = [];
     private readonly CardStore _store = new();
-    private sealed class ViewState { public int Offset; public int? Column; public bool Descending; }
+    private sealed class ViewState { public int Offset; public int? Column; public bool Descending; public DistributionMode? Choice; public DistributionMode? Default; public string? Hover; }
     private readonly Dictionary<string, ViewState> _views = new(StringComparer.Ordinal);
     private IBrushBinding? _binding;
     private Guid _owner;
@@ -178,7 +178,8 @@ public sealed class CanvasCardState(string surface = "canvas", bool retainSlots 
             if (source.Kind != CardKind.Table || view.Column < 0 || view.Column >= source.Headers.Length)
             { view.Column = null; view.Descending = false; }
             view.Offset = source.Kind is CardKind.Table or CardKind.Bar ? Math.Clamp(view.Offset, 0, TableScroll.MaxOffset(source)) : 0;
-            var spec = projected[i] with { ScrollOffset = view.Offset, SortColumn = view.Column, SortDescending = view.Descending, WiredSlot = retainSlots ? source.WiredSlot : null };
+            if (view.Default != source.Distribution?.Default) { view.Default = source.Distribution?.Default; view.Choice = null; }
+            var spec = projected[i] with { ScrollOffset = view.Offset, SortColumn = view.Column, SortDescending = view.Descending, DistributionChoice = view.Choice, HoverKey = view.Hover ?? projected[i].HoverKey, WiredSlot = retainSlots ? source.WiredSlot : null };
             if (spec.Kind is (CardKind.Table or CardKind.Bar) && BrushPresentation.FirstNewRow(spec, _selectedMembers, Current.SelectedMemberKeys) is { } added)
             { view.Offset = TableScroll.Reveal(spec, added); spec = spec with { ScrollOffset = view.Offset }; }
             projected[i] = spec;
@@ -191,6 +192,12 @@ public sealed class CanvasCardState(string surface = "canvas", bool retainSlots 
     public void Hover(string? key) => Hover(Spec?.Id, key);
     public void Hover(string? cardId, string? key)
     {
+        var repaint = false;
+        foreach (var (id, view) in _views)
+        {
+            var local = id == cardId && key?.StartsWith(Distribution.BinPrefix, StringComparison.Ordinal) == true ? key : null;
+            if (view.Hover != local) { view.Hover = local; repaint = true; }
+        }
         var origin = Origin;
         var card = Specs.FirstOrDefault(c => c.Id == cardId);
         var clear = card is null || string.IsNullOrEmpty(key) || CardMeasure.IsReserved(key);
@@ -199,16 +206,26 @@ public sealed class CanvasCardState(string surface = "canvas", bool retainSlots 
         var changed = _binding is { } binding
             ? clear ? binding.ClearHover(origin) : binding.Hover(origin, key, kind)
             : clear ? _brush.ClearHover(origin) : _brush.Hover(origin, key, kind);
-        if (changed) Reconcile();
+        if (changed || repaint) Reconcile();
     }
     public void Activate(string key, BrushSelectMode mode = BrushSelectMode.Replace) { if (Spec is { } spec) Activate(spec.Id, key, mode); }
-    public void Activate(string cardId, string key, BrushSelectMode mode = BrushSelectMode.Replace)
+    public void Activate(string cardId, string key, BrushSelectMode mode = BrushSelectMode.Replace, string[]? members = null, Theme? theme = null)
     {
         var spec = Specs.FirstOrDefault(c => c.Id == cardId);
         if (spec is null || !CanInteract) return;
         var previous = Current.SelectionRevision;
         var source = new BrushActionSource(_owner, spec.Id, surface);
-        if (key == CardMeasure.ClearKey) { if (_binding is { } binding) binding.Clear(source); else _brush.Clear(source); }
+        if (Distribution.Choice(key) is { } choice && spec.Kind == CardKind.Distribution)
+        {
+            if (spec.Distribution?.Wired is null && !Distribution.Geometry(spec, theme ?? Theme.Paper).Forced)
+                _views[cardId].Choice = choice;
+        }
+        else if (members is not null)
+        {
+            if (_binding is { } domain) domain.SelectMembers(members, mode, source);
+            else _brush.SelectMembers(members, mode, source);
+        }
+        else if (key == CardMeasure.ClearKey || key == Distribution.EmptyKey) { if (_binding is { } binding) binding.Clear(source); else _brush.Clear(source); }
         else if (TableSort.Column(key) is { } column && spec.Kind == CardKind.Table && column >= 0 && column < spec.Headers.Length)
         { var sorted = TableSort.Cycle(spec, column); var view = _views[cardId]; view.Column = sorted.SortColumn; view.Descending = sorted.SortDescending; }
         else if (_binding is { } binding) binding.Select(key, mode, BrushPresentation.TargetKind(spec, key), source);

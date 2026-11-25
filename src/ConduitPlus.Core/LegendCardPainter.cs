@@ -21,10 +21,7 @@ public static class LegendCardPainter
     public static double[] Ticks(CardSpec c) => c.Min == c.Max ? [c.Min!.Value] : ChartTicks.Nice(c.Min!.Value, c.Max!.Value).Where(v => v > c.Min.Value && v < c.Max.Value).Prepend(c.Min.Value).Append(c.Max.Value).ToArray();
     public const string ThresholdKey = "\u0001threshold:";
     private const double MarkRow = 16, LabelHeight = 14, MarkGap = 4;
-    private sealed record Mark(ThresholdEntry Entry, double Tick, Rect2 Label, int Row, int Index, Point2[] Leader)
-    {
-        public string Text => $"{Entry.Label} · {Entry.Count}";
-    }
+    internal sealed record Mark(ThresholdEntry Entry, double Tick, string Text, Rect2 Label, int Row, int Index, Point2[] Leader);
 
     private sealed record GradientLayout(double Left, double Right, Mark[] Marks, int Rows, bool Constant)
     {
@@ -59,11 +56,19 @@ public static class LegendCardPainter
         double Tick(ThresholdEntry entry) => entry.Value < min ? left - cap : entry.Value > max ? right + cap
             : min == max ? left + 12 : left + ColourRange.Fraction(entry.Value, min, max) * (right - left);
         var entries = c.Thresholds?.Entries.OrderBy(e => e.Value).ThenBy(e => e.Side)
-            .Select((entry, index) => new Mark(entry, Tick(entry), default, 0, index, [])).ToArray() ?? [];
+            .Select((entry, index) => new Mark(entry, Tick(entry), $"{entry.Label} · {entry.Count}", default, 0, index, [])).ToArray() ?? [];
+        var constant = min == max;
+        var (marks, rows) = PlaceLabels(entries, t, c.Width, constant ? right + cap + 8 : null);
+        return new(left, right, marks, rows, constant);
+    }
+
+    internal static (Mark[] Marks, int Rows) PlaceLabels(Mark[] entries, Theme t, double cardWidth,
+        double? constantAnchor = null, bool straightOnly = false)
+    {
         var marks = new List<Mark>();
         var rows = 0;
-        var constant = min == max;
-        var limit = c.Width - t.Padding;
+        var constant = constantAnchor.HasValue;
+        var limit = cardWidth - t.Padding;
         double Width(Mark mark) => Math.Min(TextMetrics.Measurer(mark.Text, 10, t.Font).Width + 2,
             Math.Max(0, limit - t.Padding));
         // Work right to left so two crowded Above labels can face away from each other.
@@ -79,7 +84,7 @@ public static class LegendCardPainter
             var tick = mark.Tick;
             var above = mark.Entry.Side == ThresholdSide.Above;
             var placed = constant
-                ? mark with { Label = Label(Math.Clamp(right + cap + 8, t.Padding, limit - width), rows), Row = rows }
+                ? mark with { Label = Label(Math.Clamp(constantAnchor!.Value, t.Padding, limit - width), rows), Row = rows }
                 : Place();
             marks.Add(placed);
             rows = Math.Max(rows, placed.Row + 1);
@@ -99,7 +104,7 @@ public static class LegendCardPainter
                     }
                 }
 
-                for (var row = 1; row <= rows; row++)
+                for (var row = 1; !straightOnly && row <= rows; row++)
                 {
                     var anchors = marks.SelectMany(m => new[] { m.Label.X - 1, m.Label.X + m.Label.Width + 1 })
                         .Concat([t.Padding, limit, t.Padding + width, limit - width])
@@ -117,7 +122,10 @@ public static class LegendCardPainter
                 }
 
                 // A very narrow authored card may leave no collision-free route.
-                return mark with { Label = Label(Math.Clamp(tick, t.Padding, limit - width), rows), Row = rows };
+                var fallback = Label(Math.Clamp(tick, t.Padding, limit - width), rows);
+                return mark with { Label = fallback, Row = rows, Leader = straightOnly
+                    ? [new(tick, 0), new(Math.Clamp(tick, fallback.X, fallback.X + width), fallback.Y + fallback.Height)]
+                    : [] };
 
                 bool Fits(Rect2 label, Point2[] path)
                 {
@@ -139,7 +147,7 @@ public static class LegendCardPainter
                 }
             }
         }
-        return new(left, right, marks.OrderBy(m => m.Index).ToArray(), rows, constant);
+        return (marks.OrderBy(m => m.Index).ToArray(), rows);
     }
 
     public static double ThresholdHeight(CardSpec c, Theme t) =>
