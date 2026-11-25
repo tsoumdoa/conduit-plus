@@ -93,7 +93,7 @@ public sealed class ColourScaleComponent : ColourComponent
         (_rangeMode, _clipPercent) = ColourRangeSettings.FromArchive(
             reader.ItemExists(ColourRangeSettings.ModeKey) ? reader.GetInt32(ColourRangeSettings.ModeKey) : null,
             reader.ItemExists(ColourRangeSettings.ClipKey) ? reader.GetInt32(ColourRangeSettings.ClipKey) : null);
-        return base.Read(reader);
+        return AppendedInputs.Read(this, reader, () => base.Read(reader));
     }
 
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
@@ -143,6 +143,15 @@ public sealed class ColourScaleComponent : ColourComponent
         p.AddParameter(new Param_TextOption(), "Slot", "S", "Right-click to choose a position", GH_ParamAccess.item); p[7].Optional = true;
         p.AddColourParameter("Below", "Bl", "Colour for values below Min; unset uses the first colour", GH_ParamAccess.item); p[8].Optional = true;
         p.AddColourParameter("Above", "Ab", "Colour for values above Max; unset uses the last colour", GH_ParamAccess.item); p[9].Optional = true;
+        p.AddNumberParameter("Thresholds", "Th", "Threshold values", GH_ParamAccess.list);
+        p.AddColourParameter("Threshold colours", "TC", "One colour or one per threshold", GH_ParamAccess.list);
+        p.AddParameter(new Param_TextOption { Options = [new("Above", "Above"), new("Below", "Below")] },
+            "Threshold sides", "TS", "Above (≥) or Below (≤); defaults to Above", GH_ParamAccess.list);
+        for (var i = 10; i <= 12; i++)
+        {
+            p[i].Optional = true;
+            p[i].DataMapping = GH_DataMapping.Flatten;
+        }
     }
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
@@ -165,9 +174,19 @@ public sealed class ColourScaleComponent : ColourComponent
                 var colour = Color.Empty;
                 return da.GetData(index, ref colour) ? $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}" : null;
             }
+            bool Supplied(int index) => Params.Input[index].SourceCount > 0 || Params.Input[index].VolatileData.PathCount > 0;
+            var thresholds = new List<GH_Number>();
+            var colours = new List<GH_Colour>();
+            var sides = new List<string>();
+            da.GetDataList(10, thresholds);
+            da.GetDataList(11, colours);
+            da.GetDataList(12, sides);
+            var thresholdValues = thresholds.Select(v => v?.Value ?? double.NaN).ToArray();
+            var thresholdColours = colours.Select(v => v is null ? "" : $"#{v.Value.R:X2}{v.Value.G:X2}{v.Value.B:X2}").ToArray();
             var result = ColourScale.Create(tree.Branches.SelectMany(b => b.Select(v => (double?)v?.Value)).ToArray(),
                 ReadPalette(da, 1), hasMin ? min : null, hasMax ? max : null, hasMid ? mid : null, title, unit, CardId, ReadSlot(da, 7),
-                ReadColour(8), ReadColour(9), _rangeMode, _clipPercent);
+                ReadColour(8), ReadColour(9), _rangeMode, _clipPercent, thresholdValues,
+                Supplied(11) ? thresholdColours : null, Supplied(12) ? sides : null);
             da.SetDataTree(0, ColourTree(tree, result.Colours)); da.SetData(1, new GH_ObjectWrapper(result.Legend)); Messages(result.Messages);
         }
         catch (ArgumentException e) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, e.Message); }

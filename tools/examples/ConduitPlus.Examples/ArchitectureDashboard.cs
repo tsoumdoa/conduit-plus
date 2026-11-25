@@ -23,7 +23,8 @@ internal static class ArchitectureDashboard
             var name = rooms ? "room-areas" : "massing";
             if (example != "all" && example != (rooms ? "rooms" : "massing")) continue;
             var path = Path.Combine(root, "examples", name + ".gh");
-            if (!args.Contains("--verify-only")) Build(path, rooms);
+            var verifyOnly = args.Contains("--verify-only");
+            if (!verifyOnly) Build(path, rooms);
             using var gh = new GH_Document(); var archive = new GH_Archive();
             Require(archive.ReadFromFile(path) && archive.ExtractObject(gh, "Definition"), "Cannot reopen " + path);
             DisplayLifecycleChecks.ArchiveClean(archive, path);
@@ -39,7 +40,16 @@ internal static class ArchitectureDashboard
                 var sessions = (Array)manager.GetMethod("InView", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [doc, view])!;
                 var session = sessions.Cast<object>().Single(s => (Guid)Get(s, "Owner") == overlay.InstanceGuid);
                 var cards = (CardSpec[])Get(session, "Cards");
-                Require(cards.Length == (rooms ? 7 : 9), "Unexpected architectural card count.");
+                // A fresh build always includes the legend. Only explicitly legacy archives omit it.
+                var updatedRooms = rooms && !(verifyOnly && args.Contains("--legacy-rooms"));
+                Require(cards.Length == (rooms ? updatedRooms ? 8 : 7 : 9), "Unexpected architectural card count.");
+                if (updatedRooms)
+                {
+                    var legend = cards.Single(c => c.Kind == CardKind.Legend && c.Min.HasValue);
+                    var entries = legend.Thresholds?.Entries.OrderBy(e => e.Value).ToArray();
+                    Require(entries is not null && entries.Select(e => (e.Value, e.Colour))
+                        .SequenceEqual(new[] { (1d, "#F0A628"), (2d, "#BE3238") }), "Unexpected room legend thresholds.");
+                }
                 var metrics = cards.Where(c => c.Kind == CardKind.Metric).ToArray();
                 Require(metrics.Select(c => c.Value).SequenceEqual(rooms ? ["320", "87.5", "12.5", "8"] : new[] { "14976", "16000", "1.87", "2" }), "Unexpected architectural metric precision.");
                 var theme = args.Contains("--theme") ? Theme.Presets.Single(t => string.Equals(t.Name, args[Array.IndexOf(args, "--theme") + 1], StringComparison.OrdinalIgnoreCase)) : Theme.Paper;
@@ -236,6 +246,11 @@ internal static class ArchitectureDashboard
             typeof(ConduitPlus.Grasshopper.OverlayComponent).GetProperty("ShowLinkKeys", Instance)!.SetValue(overlay, true);
             var colours = Add(new ConduitPlus.Grasshopper.ColourScaleComponent(), 1050, 540);
             Wire(colours, 0, demo.Params.Output[3]);
+            ((Param_Number)colours.Params.Input[10]).PersistentData.AppendRange(new[] { new GH_Number(1), new GH_Number(2) });
+            ((Param_Colour)colours.Params.Input[11]).PersistentData.AppendRange(new[] {
+                new GH_Colour(Color.FromArgb(240, 166, 40)), new GH_Colour(Color.FromArgb(190, 50, 56)) });
+            Text(colours, 5, "m²"); Text(colours, 6, "Area margin thresholds"); Text(colours, 7, "rc");
+            Wire(overlay, 0, colours.Params.Output[1]);
             var labels = Add(new ConduitPlus.Grasshopper.LabelsComponent(), 1050, 660);
             Wire(labels, 0, link.Params.Output[0]);
             Wire(labels, 5, colours.Params.Output[0]);

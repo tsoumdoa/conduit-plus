@@ -33,10 +33,22 @@ internal static class Program
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void AddThresholdLegend(Rhino.RhinoDoc doc, Rhino.Display.RhinoView view)
+    {
+        var scale = ConduitPlus.Core.ColourScale.Create([2, 6, 12, 24, 25, 28, 43], ["Viridis"], 0, 40,
+            title: "Thresholds", slot: ConduitPlus.Core.Slot.Tr, thresholds: [6, 24, 25, 42],
+            thresholdColours: ["#622E94", "#E9A028", "#B93238", "#852733"],
+            thresholdSides: ["Below", "Above", "Above", "Above"]);
+        ConduitPlus.Rhino.OverlayManager.Set(doc, view, new Guid("98a9906b-30dd-425f-bd56-78ec86378a61"), [scale.Legend]);
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Run(string pluginDirectory, string[] args)
     {
         Console.WriteLine("Starting RhinoCore under .NET " + Environment.Version);
-        using var core = new Rhino.Runtime.InProcess.RhinoCore(["/nosplash", "/notemplate", "/safemode", "/scheme=ConduitPlusBench"], Rhino.Runtime.InProcess.WindowStyle.Hidden);
+        // FilePdf.Create needs the Rhino PDF writer, which does not load in safe mode.
+        var options = new List<string> { "/nosplash", "/notemplate", "/scheme=ConduitPlusBench" };
+        if (!args.Contains("--pdf")) options.Add("/safemode");
+        using var core = new Rhino.Runtime.InProcess.RhinoCore(options.ToArray(), Rhino.Runtime.InProcess.WindowStyle.Hidden);
         Console.WriteLine("RhinoCore initialized.");
         var doc = Rhino.RhinoDoc.ActiveDoc ?? Rhino.RhinoDoc.Create(null);
         var bounds = args.Contains("--compact") ? new System.Drawing.Rectangle(0, 0, 500, 400) : new System.Drawing.Rectangle(0, 0, 1900, 1800);
@@ -66,6 +78,7 @@ internal static class Program
                         benchmark: args.Contains("--labels"));
                 else
                 {
+                    if (args.Contains("--thresholds")) AddThresholdLegend(doc, view);
                     var entry = assembly.GetType("ConduitPlus.Rhino." + type)!
                         .GetMethod("RunAutomated", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
                     try { entry.Invoke(null, arguments); }

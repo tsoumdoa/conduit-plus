@@ -278,7 +278,7 @@ to **Overlay**, **Canvas Card**, or **Canvas Overlay**.
 | Text | Optional title, text with explicit newlines and word wrapping, width (default 280) and slot; capped at 30 lines with an ellipsis. |
 | Legend | Colors and labels for categorical swatches; set both Min and Max (typed or wired) for a gradient with nice ticks and optional unit. Optional categorical keys enable brushing and selection; appended Members defines one group per entry (requires explicit Keys). Gradient mode rejects Members. One bound warns and keeps swatches when labels match; otherwise supply matching labels or both bounds. |
 | Key Legend | Required Keys (display labels) and Colors, optional text Values, title and slot. A simple display-only colour key with no selection or linked geometry. |
-| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title, Slot and optional Below/Above colours → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
+| Colour Scale | Colour: Values tree, Palette (Blue), optional Min/Max/Mid, Unit, Title, Slot and optional Below/Above colours and thresholds → Colours tree and a finished gradient Legend. One scale spans every branch; outputs keep the input paths. |
 | Colour Palette | Colour: Style (Programme), Count (8), Shift (0) → Colours and #RRGGBB Hex lists. Curated diagram styles keep the first colours the same when Count grows. |
 | Colour Categories | Colour: Categories tree, optional member Keys, Palette (Categorical), Order, Title and Slot → Colours tree, Legend, distinct Categories, Category colours, Group keys and Members for a grouped Bar. Order pins colours across filtering; right-click Show counts defaults on. |
 | Table | Headers (H); optional Rows (R), one text-tree branch per row; Keys (K), default first-column values when unique and valid, otherwise 1…n with a remark; Title (T, default “Table”); Slot (S); Visible rows (N, default 8); Width (W, default 380 CSS px); appended Columns (Co, index 7), one text-tree branch per column; appended Decimals (D, index 8), optional 0–12 numeric display precision. Set exactly one of Rows or Columns. |
@@ -381,13 +381,22 @@ The range settings are saved with the component and support Undo.
 | Slot | S | Text option, optional | Automatic. |
 | Below | Bl | Colour, optional | Colour for values below Min; unset uses the first colour. Alpha is ignored. |
 | Above | Ab | Colour, optional | Colour for values above Max; unset uses the last colour. Alpha is ignored. |
+| Thresholds | Th | Number list, optional | Cutoffs for stepped colours. |
+| Threshold colours | TC | Colour list, optional | One colour for all cutoffs or one for each. |
+| Threshold sides | TS | Text list, optional | Right-click Above or Below. Leave empty for Above, or supply one side for all cutoffs or one per cutoff. |
 
 Outputs: **Colours (C)** colour tree, **Legend (L)** card. Mid is the value at the
 palette's middle colour; each side of it is linear, and automatic bounds grow to include
 it. The legend is drawn from the same mapping as the model colours, so the two always
 agree. Give one Title, Unit, Slot, Min, Max, Mid, Below and Above per component: it makes one legend.
 
-**Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1.
+Thresholds recolour values at or beyond each cutoff, including values outside the scale.
+The highest matching Above cutoff wins, followed by the lowest matching Below cutoff.
+The legend shows the winning colour bands, the number of values each threshold catches,
+and carets for off-scale cutoffs. Hover a threshold label for its full value.
+
+**Utilisation recipe:** Status, Min 0, Max 1.2, Mid 1. For stepped warnings, set
+Thresholds to 0.9 and 1.0 with amber and red Threshold colours.
 
 **Colour Categories**
 

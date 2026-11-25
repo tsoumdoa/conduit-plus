@@ -5,6 +5,7 @@ param(
     [string]$Shot = 'paper',
     [ValidateRange(0.5, 2)][decimal]$PlanScale = 1,
     [switch]$VerifyOnly,
+    [switch]$LegacyRooms,
     [switch]$ReviewCaptureChecks,
     [switch]$CanvasStackChecks,
     [switch]$Exports,
@@ -34,6 +35,7 @@ foreach ($fixture in $fixtures) {
     $assembly = Join-Path $PSScriptRoot "ConduitPlus.Examples/bin/$Configuration/net8.0-windows/ConduitPlus.Examples.dll"
     $arguments = @('"' + $assembly + '"')
     if ($VerifyOnly) { $arguments += '--verify-only' }
+    if ($LegacyRooms) { $arguments += '--legacy-rooms' }
     if ($ReviewCaptureChecks) { $arguments += '--review-capture-checks' }
     if ($CanvasStackChecks) { $arguments += '--canvas-stack-checks' }
     if ($Exports) { $arguments += '--exports' }

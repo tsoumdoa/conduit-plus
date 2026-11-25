@@ -12,6 +12,117 @@ public sealed class ColourLegendRenderTests
     [Theory]
     [InlineData("Paper")]
     [InlineData("Night")]
+    [InlineData("Smoke")]
+    [InlineData("Blueprint")]
+    public void ThresholdBandsMarksAndTooltipsShareLegendLayout(string name)
+    {
+        Assert.True(Theme.TryGet(name, out var theme));
+        var legend = ColourScale.Create([6, 24, 25, 43], min: 0, max: 40,
+            thresholds: [6, 24.000000000000004, 25, 42],
+            thresholdColours: ["#622E94", "#E9A028", "#B93238", "#852733"],
+            thresholdSides: ["Below", "Above", "Above", "Above"]).Legend;
+        using var image = RasterDrawing.Render(legend, theme, 2);
+        var hits = CardMeasure.Hits(legend, theme).DistinctBy(h => h.Key).ToArray();
+        Assert.Equal(4, hits.Length);
+        Assert.Single(hits.Select(h => h.Y).Distinct());
+        Assert.All(hits, h => Assert.InRange(h.X + h.W, 0, legend.Width));
+        Assert.Contains("24.000000000000004", Tooltip.For(legend, hits[1].Key)![0]);
+        var top = LegendCardPainter.GradientTop + LegendCardPainter.ThresholdHeight(legend, theme);
+        Near("#622E94", image.GetPixel(60, (int)(2 * (top + 5))), 0);
+        Near("#B93238", image.GetPixel(450, (int)(2 * (top + 5))), 0);
+        Save(image, $"thresholds-{name}.png");
+    }
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public void CrowdedThresholdLeadersMeetTheirOwnLabelAndClearTheOthers(int count)
+    {
+        var theme = Theme.Paper;
+        var values = new[] { 24d, 25, 25.5, 26, 27 }[..count];
+        var legend = ColourScale.Create([], min: 0, max: 40, thresholds: values,
+            thresholdColours: new[] { "#622E94", "#E9A028", "#B93238", "#852733", "#526338" }[..count],
+            thresholdSides: count == 5 ? ["Below", "Above", "Below", "Above", "Above"] : null).Legend;
+        using var bitmap = RasterDrawing.Render(legend, theme, 2);
+        using var graphics = Graphics.FromImage(bitmap);
+        using var drawing = new GdiCanvas(graphics);
+        var canvas = new LegendRecordingCanvas(drawing);
+        LegendCardPainter.Paint(canvas, legend, theme);
+        var bar = Assert.Single(canvas.Gradients);
+        var groups = LegendCardPainter.ThresholdHits(legend, theme).GroupBy(h => h.Key).ToArray();
+        var labels = groups.Select(g => g.First()).ToArray();
+        var leaders = canvas.Outlines.Where(o => o.Colour == theme.Ink).ToArray();
+        Assert.Equal(count, labels.Length);
+        Assert.Equal(count, leaders.Length);
+        if (count == 2)
+        {
+            Assert.All(labels, h => Assert.Equal(bar.Y - 20, h.Y));
+            Assert.All(leaders, l => Assert.Equal(2, l.Points.Length));
+            Assert.Equal(labels[0].X + labels[0].W, leaders[0].Points[0].X, 8);
+            Assert.Equal(labels[1].X, leaders[1].Points[0].X, 8);
+        }
+        else
+            Assert.Contains(labels, h => h.Y < bar.Y - 20);
+
+        for (var i = 0; i < count; i++)
+        {
+            var hit = labels[i];
+            var leader = leaders[i];
+            Assert.Contains(canvas.Labels, l => l.At == new Point2(hit.X, hit.Y));
+            Assert.Equal(bar.Y, leader.Points[0].Y);
+            Assert.Equal(hit.Y + hit.H, leader.Points[^1].Y);
+            Assert.Contains(leader.Points.Length, new[] { 2, 4 });
+            var segments = leader.Points.Zip(leader.Points.Skip(1)).ToArray();
+            Assert.Equal(segments.Length, groups[i].Count() - 1);
+            foreach (var ((a, b), region) in segments.Zip(groups[i].Skip(1)))
+            {
+                var half = leader.Width / 2;
+                Assert.Equal(new HitRegion(hit.Key, Math.Min(a.X, b.X) - half, Math.Min(a.Y, b.Y) - half,
+                    Math.Abs(a.X - b.X) + leader.Width, Math.Abs(a.Y - b.Y) + leader.Width), region);
+                Assert.DoesNotContain(labels, box =>
+                    Math.Min(a.X, b.X) < box.X + box.W && Math.Max(a.X, b.X) > box.X &&
+                    Math.Min(a.Y, b.Y) < box.Y + box.H && Math.Max(a.Y, b.Y) > box.Y);
+            }
+        }
+        if (count == 5) Save(bitmap, "thresholds-crowded-Paper.png");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BelowMinCaretAndConstantSwatchRenderWithMarks(bool constant)
+    {
+        var theme = Theme.Paper;
+        var legend = ColourScale.Create([10], min: constant ? null : 10, max: constant ? null : 20,
+            thresholds: [5, 10], thresholdColours: ["#F0A628", "#BE3238"],
+            thresholdSides: ["Below", "Above"]).Legend;
+        using var bitmap = RasterDrawing.Render(legend, theme, 2);
+        using var graphics = Graphics.FromImage(bitmap);
+        using var drawing = new GdiCanvas(graphics);
+        var canvas = new LegendRecordingCanvas(drawing);
+        LegendCardPainter.Paint(canvas, legend, theme);
+        var hits = LegendCardPainter.ThresholdHits(legend, theme).DistinctBy(h => h.Key).ToArray();
+        Assert.Equal(2, hits.Length);
+        Assert.All(hits, hit => Assert.Contains(canvas.Labels, label => label.At == new Point2(hit.X, hit.Y)));
+        if (constant)
+        {
+            Assert.Empty(canvas.Gradients);
+            Assert.Empty(canvas.Outlines);
+            Assert.All(hits, hit => Assert.True(hit.X > theme.Padding + 24));
+            Near("#BE3238", bitmap.GetPixel(2 * (int)(theme.Padding + 16), 90), 0);
+        }
+        else
+        {
+            var bar = Assert.Single(canvas.Gradients);
+            var caret = Assert.Single(canvas.Outlines, outline => outline.Points.Length == 3).Points;
+            Assert.True(caret[1].X < caret[0].X && caret[0].X < bar.X);
+            Assert.Contains(canvas.Outlines, outline => outline.Points[0] == new Point2(caret[1].X, bar.Y));
+        }
+    }
+
+    [Theory]
+    [InlineData("Paper")]
+    [InlineData("Night")]
     public void DiagramStylesRenderOneItemPerSwatchWithoutCounts(string name)
     {
         Assert.True(Theme.TryGet(name, out var theme));

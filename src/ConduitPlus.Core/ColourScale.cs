@@ -13,11 +13,16 @@ public static class ColourRange
 public sealed record ColourScaleResult(string[] Colours, CardSpec Legend, ColourMessage[] Messages,
     ColourPalette Palette, double Min, double Max, double Mid, string? Below = null, string? Above = null)
 {
-    internal bool HasCollapsedClip { get; init; }
+    public string ColourAt(double? value) => Legend.Mapping!.ColourAt(value);
+}
 
+public sealed record ColourMapping(ColourPalette Palette, double Min, double Max, double Mid,
+    string? Below, string? Above, ThresholdSet Thresholds, bool HasCollapsedClip = false)
+{
     public string ColourAt(double? value)
     {
         if (value is not { } v || !double.IsFinite(v)) return Palettes.Missing;
+        if (Thresholds.WinnerFor(v) is { } threshold) return threshold.Colour;
         if (v < Min && Below is { } below) return below;
         if (v > Max && Above is { } above) return above;
         // Work relative to each side: a global normalized pivot can round to 0 or 1
@@ -46,7 +51,8 @@ public static class ColourScale
     public static ColourScaleResult Create(IReadOnlyList<double?> values, IReadOnlyList<string>? palette = null,
         double? min = null, double? max = null, double? mid = null, string title = "Legend", string unit = "",
         string id = "colour-scale", Slot? slot = null, string? below = null, string? above = null,
-        ColourRangeMode rangeMode = ColourRangeMode.Auto, int clipPercent = 2)
+        ColourRangeMode rangeMode = ColourRangeMode.Auto, int clipPercent = 2, IReadOnlyList<double>? thresholds = null,
+        IReadOnlyList<string>? thresholdColours = null, IReadOnlyList<string>? thresholdSides = null)
     {
         static void ValidateColour(string? colour, string name)
         {
@@ -103,10 +109,17 @@ public static class ColourScale
             throw new ArgumentException("Automatic bounds cannot include these controls; set finite Min and Max around Mid.");
         var explicitMid = mid.HasValue;
         mid ??= scheme.Kind is PaletteKind.Diverging or PaletteKind.Status && min < 0 && max > 0 ? 0 : ColourRange.Lerp(min.Value, max.Value, .5);
+        var resolved = ThresholdSet.Resolve(thresholds ?? [], thresholdColours, thresholdSides, messages).WithCounts(finite);
+        foreach (var threshold in resolved.Entries)
+        {
+            if (threshold.Value < min || threshold.Value > max)
+                messages.Add(new(ColourMessageLevel.Warning, $"Threshold {threshold.Label} is outside the scale."));
+            messages.Add(new(ColourMessageLevel.Remark, $"{threshold.Label}: {threshold.Count} of {values.Count} values use the threshold colour"));
+        }
+        var mapping = new ColourMapping(scheme, min.Value, max.Value, mid.Value, below, above, resolved, collapsedClip);
         var legend = new CardSpec { Id = id, Kind = CardKind.Legend, Title = title, Unit = unit, Min = min, Max = max, WiredSlot = slot,
-            BelowColor = below, AboveColor = above };
-        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value, below, above)
-        { HasCollapsedClip = collapsedClip };
+            BelowColor = below, AboveColor = above, Mapping = mapping, Thresholds = resolved };
+        var result = new ColourScaleResult([], legend, [], scheme, min.Value, max.Value, mid.Value, below, above);
         // Compute the breakpoint from the nearer side, without subtracting two
         // almost equal values at the far endpoint. Explicit controls must fit the
         // positioned-stop transport; never silently discard an accepted Mid.
@@ -137,7 +150,8 @@ public static class ColourScale
         legend.Validate();
         var missing = values.Count - finite.Length;
         if (missing > 0) messages.Add(new(ColourMessageLevel.Remark, $"{missing} missing {(missing == 1 ? "value" : "values")} shown in grey ({Palettes.Missing})."));
-        var belowCount = finite.Count(v => v < min); var aboveCount = finite.Count(v => v > max);
+        var belowCount = finite.Count(v => v < min && resolved.WinnerFor(v) is null);
+        var aboveCount = finite.Count(v => v > max && resolved.WinnerFor(v) is null);
         var outside = belowCount + aboveCount;
         if (outside > 0)
         {

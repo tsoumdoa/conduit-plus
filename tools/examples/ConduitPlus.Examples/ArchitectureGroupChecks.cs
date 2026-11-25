@@ -27,7 +27,7 @@ internal static class ArchitectureGroupChecks
         var owner = (Guid)Get(session, "Owner");
         CardSpec[] Cards() => (CardSpec[])Get(session, "Cards");
         var groupKey = rooms ? "type:bedroom" : "use:residential";
-        var legend = Cards().Single(c => c.Kind == CardKind.Legend);
+        var legend = Cards().Single(c => c.Kind == CardKind.Legend && !c.Min.HasValue);
         var target = rooms ? legend : Cards().Single(c => c.Title == "GFA by use (m²)");
         var members = target.Groups[groupKey].Members;
         var table = Cards().Single(c => c.Kind == CardKind.Table);
